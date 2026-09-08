@@ -16,6 +16,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['images/app-icon.svg', 'images/logo.png', 'images/apple-touch-icon.png', 'images/favicon-32.png'],
+      workbox: {
+        navigateFallbackDenylist: [/^\/admin/, /^\/api/]
+      },
       manifest: {
         name: 'علاء الدين',
         short_name: 'علاء الدين',
