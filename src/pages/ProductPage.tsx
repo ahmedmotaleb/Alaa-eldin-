@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { useCatalog } from '../store/CatalogContext'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
+import { api, type ApiAlternativeProduct } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ar } from '../i18n/ar'
 
@@ -15,11 +16,23 @@ export function ProductPage() {
   const product = products.find(p => p.slug === slug)
   const { items, addItem } = useCart()
   const flash = useToast()
+  const [alternatives, setAlternatives] = useState<ApiAlternativeProduct[]>([])
 
   const similar = useMemo(
     () => products.filter(p => p.categoryId === product?.categoryId && p.id !== product?.id).slice(0, 6),
     [product]
   )
+
+  // بدائل مشابهة مُدارة يدوياً من الإدارة — اقتراح فقط، مفيش أي استبدال تلقائي للمنتج
+  // الحالي؛ العميل هو اللي بيقرر يفتح البديل أو لأ.
+  useEffect(() => {
+    if (!product) return
+    let cancelled = false
+    api.getAlternatives(product.id)
+      .then(({ alternatives }) => { if (!cancelled) setAlternatives(alternatives) })
+      .catch(() => { if (!cancelled) setAlternatives([]) })
+    return () => { cancelled = true }
+  }, [product])
 
   if (!product) return <Navigate to="/" replace />
 
@@ -57,6 +70,25 @@ export function ProductPage() {
           <div><div className="tile-icon">🔄</div><div>{ar.product.exchange24h}</div></div>
           <div><div className="tile-icon">✅</div><div>{ar.product.checkBeforeDelivery}</div></div>
         </div>
+
+        {alternatives.length > 0 && (
+          <div>
+            <h2 className="related-title">{ar.product.similarAlternatives}</h2>
+            <div className="related-rail">
+              {alternatives.map(p => (
+                <button key={p.id} className="related-card" onClick={() => navigate(`/product/${p.slug}`)}>
+                  <span className="related-card-art">
+                    {p.primaryImage ? <img src={p.primaryImage} alt="" loading="lazy" /> : <span className="related-card-emoji">{p.emoji}</span>}
+                  </span>
+                  <span className="related-card-body">
+                    <span className="related-card-name">{p.name}</span>
+                    <span className="related-card-price">{formatMoney(p.price)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {similar.length > 0 && (
           <div>

@@ -121,6 +121,18 @@ export interface ApiContentPage {
   content: string
 }
 
+export interface ApiAlternativeProduct {
+  id: string
+  slug: string
+  name: string
+  price: number
+  oldPrice?: number
+  unit: string
+  emoji: string
+  available: boolean
+  primaryImage?: string
+}
+
 export interface ApiBanner {
   id: number
   kicker: string
@@ -160,6 +172,7 @@ export const api = {
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),
   getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),
+  getAlternatives: (productId: string) => request<{ alternatives: ApiAlternativeProduct[] }>(`/products/${encodeURIComponent(productId)}/alternatives`),
   listOrders: () => request<{ orders: ApiOrder[], pagination: { page: number, limit: number, total: number, pages: number } }>('/orders'),
   getOrder: (orderNumber: string) => request<{ order: ApiOrder }>(`/orders/${encodeURIComponent(orderNumber)}`),
   // السيرفر هو اللي بيحسب كل حاجة (سعر الوحدة، الإجمالي الفرعي، الخصم، التوصيل، الإجمالي

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
+import { listPublicAlternatives } from '../services/productAlternativeService.js'
 
 export const catalogRouter = Router()
 
@@ -75,4 +76,11 @@ catalogRouter.get('/products', async (_req, res) => {
     ORDER BY p.name
   `)
   res.json({ products: rows.map(serializeProduct) })
+})
+
+// بدائل مشابهة مُدارة يدوياً من الإدارة — لعرض اقتراحات فقط، مفيش أي استبدال تلقائي
+// للمنتج في السلة أو الطلب من هنا. بيانات خفيفة (زي كارت منتج) بس.
+catalogRouter.get('/products/:id/alternatives', async (req, res) => {
+  const alternatives = await listPublicAlternatives(String(req.params.id))
+  res.json({ alternatives })
 })

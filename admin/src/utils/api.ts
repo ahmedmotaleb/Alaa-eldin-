@@ -149,6 +149,18 @@ export interface AdminAuditLog {
   createdAt: string
 }
 
+export interface AdminAlternativeProduct {
+  id: string
+  slug: string
+  name: string
+  price: number
+  oldPrice?: number
+  unit: string
+  emoji: string
+  available: boolean
+  primaryImage?: string
+}
+
 export interface AdminContentPage {
   id: number
   slug: string
@@ -284,6 +296,14 @@ export const api = {
     }),
   deleteProductImage: (productId: string, imageId: string) =>
     request<void>(`/admin/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
+  listProductAlternatives: (productId: string) =>
+    request<{ alternatives: AdminAlternativeProduct[] }>(`/admin/products/${encodeURIComponent(productId)}/alternatives`),
+  addProductAlternative: (productId: string, alternativeProductId: string) =>
+    request<{ alternatives: AdminAlternativeProduct[] }>(`/admin/products/${encodeURIComponent(productId)}/alternatives`, {
+      method: 'POST', body: JSON.stringify({ alternativeProductId })
+    }),
+  removeProductAlternative: (productId: string, alternativeProductId: string) =>
+    request<void>(`/admin/products/${encodeURIComponent(productId)}/alternatives/${encodeURIComponent(alternativeProductId)}`, { method: 'DELETE' }),
   listAuditLogs: (page = 1, limit = 20) =>
     request<{ logs: AdminAuditLog[], page: number, limit: number, total: number, totalPages: number }>(
       `/admin/audit-logs?page=${page}&limit=${limit}`

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { api, ApiError, type AdminCategory, type AdminProductInput } from '../../utils/api'
 import { ProductImagesManager } from '../../components/ProductImagesManager'
+import { ProductAlternativesManager } from '../../components/ProductAlternativesManager'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
@@ -75,6 +76,7 @@ export function ProductFormPage() {
   return (
     <div className="admin-form-grid">
       {isEdit && id && <ProductImagesManager productId={id} />}
+      {isEdit && id && <ProductAlternativesManager productId={id} />}
 
       <div className="admin-form-card">
         <div>

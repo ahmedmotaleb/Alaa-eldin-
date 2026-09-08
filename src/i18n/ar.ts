@@ -70,6 +70,7 @@ export const ar = {
     exchange24h: 'استبدال خلال 24س',
     checkBeforeDelivery: 'فحص قبل التسليم',
     similarProducts: 'منتجات مشابهة',
+    similarAlternatives: 'بدائل مشابهة',
     addToCart: 'أضف إلى السلة',
     updateCart: 'تحديث السلة'
   },
@@ -178,7 +179,11 @@ export const ar = {
     favorites: 'المفضلة',
     returnPolicy: 'سياسة الاسترجاع والاستبدال',
     settingsAndNotifications: 'الإعدادات والإشعارات',
-    logout: 'تسجيل الخروج'
+    logout: 'تسجيل الخروج',
+    reorder: 'إعادة الطلب',
+    reorderAllAdded: 'تم إضافة كل منتجات الطلب للسلة بالأسعار الحالية',
+    reorderSomeSkipped: (count: number) => `تم إضافة المنتجات المتاحة للسلة — ${count} منتج غير متوفر حالياً وتم تخطيه`,
+    reorderNoneAvailable: 'كل منتجات هذا الطلب غير متاحة حالياً، تعذّرت إعادة الطلب'
   },
 
   auth: {
