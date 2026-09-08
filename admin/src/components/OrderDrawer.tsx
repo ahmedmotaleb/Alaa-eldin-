@@ -32,7 +32,7 @@ export function OrderDrawer({
         </div>
 
         <div className="admin-drawer-card">
-          <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">👤</span><span>{order.customer.fullName} ({order.accountEmail})</span></div>
+          <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">👤</span><span>{order.customer.fullName} ({order.accountEmail ?? 'طلب زائر بدون حساب'})</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📞</span><span>{order.customer.mobile}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">🗺️</span><span>{order.customer.governorate}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📍</span><span>{order.customer.address}</span></div>

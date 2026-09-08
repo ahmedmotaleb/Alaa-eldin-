@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { useRequireAuth } from '../hooks/useRequireAuth'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../store/AuthContext'
 import { deliverySlots } from '../data/deliverySlots'
 import { formatMoney } from '../utils/money'
 import { api, ApiError, type ApiOrder } from '../utils/api'
@@ -8,19 +8,22 @@ import { ar } from '../i18n/ar'
 
 export function ConfirmationPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { orderId } = useParams()
-  const { user } = useRequireAuth()
-  const [order, setOrder] = useState<ApiOrder | null>(null)
+  const { user, loading } = useAuth()
+  const stateOrder = (location.state as { order?: ApiOrder } | null)?.order ?? null
+  const [order, setOrder] = useState<ApiOrder | null>(stateOrder)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user || !orderId) return
+    if (stateOrder || loading || !user || !orderId) return
     api.getOrder(orderId)
       .then(({ order }) => setOrder(order))
       .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
-  }, [user, orderId])
+  }, [stateOrder, loading, user, orderId])
 
-  if (!user || (!order && !error)) return null
+  if (!order && !error && (loading || (!stateOrder && user))) return null
+  if (!stateOrder && !user && !order) return <div className="empty-card">{ar.confirmation.guestDetailsUnavailable}</div>
   if (error || !order) return <div className="empty-card">{error || ar.errors.forCode('order_not_found')}</div>
 
   const slot = deliverySlots.find(s => s.id === order.deliverySlot)?.label ?? ''
@@ -54,7 +57,7 @@ export function ConfirmationPage() {
         <div className="invoice-line invoice-total"><span>{ar.confirmation.totalCash}</span><span>{formatMoney(order.total)}</span></div>
       </div>
 
-      <button className="primary-button" onClick={() => navigate(`/track/${order.id}`)}>{ar.confirmation.trackOrder}</button>
+      {user && <button className="primary-button" onClick={() => navigate(`/track/${order.id}`)}>{ar.confirmation.trackOrder}</button>}
       <button className="secondary-button" onClick={() => navigate('/')}>{ar.confirmation.backHome}</button>
 
       <div className="whatsapp-note">

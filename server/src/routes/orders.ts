@@ -4,7 +4,6 @@ import { requireAuth } from '../auth.js'
 import { evaluateDiscount } from '../discounts.js'
 
 export const ordersRouter = Router()
-ordersRouter.use(requireAuth)
 
 interface OrderItemInput {
   productId: string
@@ -65,7 +64,7 @@ const SELECT_ORDER_FIELDS = `
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount"
 `
 
-ordersRouter.get('/', async (req, res) => {
+ordersRouter.get('/', requireAuth, async (req, res) => {
   const { rows } = await pool.query<OrderRow>(`
     SELECT ${SELECT_ORDER_FIELDS}
     FROM orders WHERE user_id = $1 ORDER BY created_at DESC
@@ -74,7 +73,7 @@ ordersRouter.get('/', async (req, res) => {
   res.json({ orders: await Promise.all(rows.map(serializeOrder)) })
 })
 
-ordersRouter.get('/:id', async (req, res) => {
+ordersRouter.get('/:id', requireAuth, async (req, res) => {
   const { rows } = await pool.query<OrderRow>(`
     SELECT ${SELECT_ORDER_FIELDS}
     FROM orders WHERE id = $1 AND user_id = $2
@@ -88,6 +87,10 @@ ordersRouter.get('/:id', async (req, res) => {
   res.json({ order: await serializeOrder(row) })
 })
 
+// الطلب بدون تسجيل دخول مسموح (زائر) — لو فيه جلسة صالحة، الطلب يترتبط بالحساب تلقائياً؛
+// لو لأ، user_id بيتسجّل NULL. مفيش أي طريقة تانية للزائر يرجع يشوف طلبه غير صفحة التأكيد
+// مباشرة بعد الإنشاء (اللي بتستخدم الرد ده نفسه) — عشان مفيش endpoint عام يسمح بمعرفة تفاصيل
+// طلب حد تاني لو حد لقط رقم الطلب.
 ordersRouter.post('/', async (req, res) => {
   const body = req.body ?? {}
   const { id, deliverySlot, paymentMethod, customer, items, subtotal, deliveryFee, total, discountCode } = body
@@ -131,7 +134,7 @@ ordersRouter.post('/', async (req, res) => {
       await client.query(
         `INSERT INTO orders (id, user_id, created_at, delivery_slot, payment_method, customer_full_name, customer_mobile, customer_governorate, customer_address, subtotal, delivery_fee, total, status, discount_code, discount_amount)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'placed', $13, $14)`,
-        [id, req.user!.id, createdAt, deliverySlot, paymentMethod, customer.fullName.trim(), customer.mobile.trim(), customer.governorate.trim(), customer.address.trim(), subtotal, deliveryFee, total, appliedCode, discountAmount]
+        [id, req.user?.id ?? null, createdAt, deliverySlot, paymentMethod, customer.fullName.trim(), customer.mobile.trim(), customer.governorate.trim(), customer.address.trim(), subtotal, deliveryFee, total, appliedCode, discountAmount]
       )
       for (const item of items as OrderItemInput[]) {
         await client.query(

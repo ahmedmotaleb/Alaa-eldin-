@@ -20,7 +20,7 @@ interface OrderRow {
   deliveryFee: number
   total: number
   status: string
-  accountEmail: string
+  accountEmail: string | null
   discountCode: string | null
   discountAmount: number
   riderId: string | null
@@ -66,7 +66,7 @@ const SELECT_ORDER = `
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
          o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
          u.email as "accountEmail"
-  FROM orders o JOIN users u ON u.id = o.user_id
+  FROM orders o LEFT JOIN users u ON u.id = o.user_id
        LEFT JOIN riders r ON r.id = o.rider_id
 `
 

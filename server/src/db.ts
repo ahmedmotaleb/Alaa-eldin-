@@ -88,7 +88,7 @@ export async function initDb() {
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       delivery_slot TEXT NOT NULL,
       payment_method TEXT NOT NULL,
@@ -181,6 +181,11 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
     CREATE INDEX IF NOT EXISTS idx_settlements_rider ON settlements(rider_id);
   `)
+
+  // طلبات الزوّار (بدون تسجيل دخول) أصبحت مسموحة — عمود user_id بقى nullable.
+  // ده تعديل على عمود موجود بالفعل في قواعد بيانات منشورة قبل كده، فمحتاج ALTER صريح
+  // (على عكس باقي الأعمدة اللي بتتزرع كاملة من الأول في CREATE TABLE). آمن يتنفذ كذا مرة.
+  await pool.query('ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL')
 
   const { rows: [{ n: categoryCount }] } = await pool.query<{ n: string }>('SELECT COUNT(*) as n FROM categories')
   if (Number(categoryCount) === 0) {

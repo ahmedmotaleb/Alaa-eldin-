@@ -4,7 +4,6 @@ import { StickyActionBar } from '../components/StickyActionBar'
 import { deliverySlots } from '../data/deliverySlots'
 import { governorates } from '../data/governorates'
 import { useCart } from '../store/CartContext'
-import { useRequireAuth } from '../hooks/useRequireAuth'
 import type { CustomerDetails, DeliverySlotId, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl, createOrderId } from '../utils/order'
@@ -16,7 +15,6 @@ const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { user } = useRequireAuth()
   const { detailedItems, subtotal, deliveryFee, discount, total, clearCart } = useCart()
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
@@ -40,7 +38,6 @@ export function CheckoutPage() {
       setFormError(true)
       return
     }
-    if (!user) return
 
     setFormError(false)
     setApiError('')
@@ -71,7 +68,7 @@ export function CheckoutPage() {
       const order = created as unknown as Order
       window.open(buildWhatsAppUrl(order), '_blank', 'noopener,noreferrer')
       clearCart()
-      navigate(`/confirmation/${order.id}`)
+      navigate(`/confirmation/${order.id}`, { state: { order } })
     } catch (err) {
       setApiError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
       setSubmitting(false)

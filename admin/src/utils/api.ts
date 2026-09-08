@@ -54,7 +54,7 @@ export interface AdminOrder {
   deliverySlot: string
   paymentMethod: string
   customer: { fullName: string, mobile: string, governorate: string, address: string }
-  accountEmail: string
+  accountEmail: string | null
   items: AdminOrderItem[]
   subtotal: number
   deliveryFee: number
