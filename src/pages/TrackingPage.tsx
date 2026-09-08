@@ -9,26 +9,26 @@ const STATUSES: OrderStatus[] = ['placed', 'preparing', 'ready_for_delivery', 'o
 const STEPS = ar.tracking.steps
 
 export function TrackingPage() {
-  const { orderId } = useParams()
+  const { orderNumber } = useParams()
   const { user } = useRequireAuth()
   const [order, setOrder] = useState<ApiOrder | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user || !orderId) return
+    if (!user || !orderNumber) return
     function load() {
-      api.getOrder(orderId!)
+      api.getOrder(orderNumber!)
         .then(({ order }) => setOrder(order))
         .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
     }
     load()
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
-  }, [user, orderId])
+  }, [user, orderNumber])
 
   if (!user || (!order && !error)) return null
   if (error) return <div className="empty-card">{error}</div>
-  if (!order || !orderId) return null
+  if (!order || !orderNumber) return null
 
   const statusIndex = STATUSES.indexOf(order.status)
 
@@ -53,7 +53,7 @@ export function TrackingPage() {
       </div>
 
       <div className="tracking-timeline-card">
-        <h2>{ar.tracking.statusTitle(order.id)}</h2>
+        <h2>{ar.tracking.statusTitle(order.orderNumber)}</h2>
         <div className="tracking-timeline">
           {STEPS.map((step, i) => {
             const done = i <= statusIndex

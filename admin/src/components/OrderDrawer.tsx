@@ -22,7 +22,7 @@ export function OrderDrawer({
       <div className="admin-drawer" onClick={e => e.stopPropagation()}>
         <div className="admin-drawer-head">
           <div>
-            <div className="admin-drawer-title">{order.id}</div>
+            <div className="admin-drawer-title">{order.orderNumber}</div>
             <div className="admin-drawer-sub">{new Date(order.createdAt).toLocaleString('ar-EG')}</div>
           </div>
           <div className="admin-drawer-head-actions">
@@ -36,7 +36,7 @@ export function OrderDrawer({
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📞</span><span>{order.customer.mobile}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">🗺️</span><span>{order.customer.governorate}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📍</span><span>{order.customer.address}</span></div>
-          <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">💵</span><span>{order.paymentMethod}</span></div>
+          <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">💵</span><span>{order.paymentMethod === 'COD' ? 'الدفع عند الاستلام' : order.paymentMethod}</span></div>
         </div>
 
         <div className="admin-drawer-card">

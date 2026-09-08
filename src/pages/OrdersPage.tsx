@@ -41,10 +41,10 @@ export function OrdersPage() {
       {orders.map(order => {
         const terminal = order.status === 'delivered' || order.status === 'cancelled'
         return (
-          <button key={order.id} className="order-row" onClick={() => navigate(`/track/${order.id}`)}>
+          <button key={order.id} className="order-row" onClick={() => navigate(`/track/${order.orderNumber}`)}>
             <span className="order-row-icon">{order.status === 'delivered' ? '📦' : order.status === 'cancelled' ? '⛔' : '🛵'}</span>
             <span className="order-row-info">
-              <span className="order-row-id">{order.id}</span>
+              <span className="order-row-id">{order.orderNumber}</span>
               <span className="order-row-date">{new Date(order.createdAt).toLocaleDateString('ar-EG')} · {ar.account.productsCount(order.items.length)}</span>
             </span>
             <span className="order-row-end">

@@ -1,14 +1,16 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
+import { isValidOrderStatus, canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
+import { cancelOrder } from '../services/orderService.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
 
-const STATUSES = ['placed', 'preparing', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'cancelled']
-
 interface OrderRow {
   id: string
+  orderNumber: string
   createdAt: string
   deliverySlot: string
   paymentMethod: string
@@ -28,14 +30,10 @@ interface OrderRow {
   settlementId: number | null
 }
 
-async function serializeOrder(row: OrderRow) {
-  const { rows: items } = await pool.query(
-    'SELECT product_id as "productId", name, unit, unit_price as "unitPrice", quantity, line_total as "lineTotal" FROM order_items WHERE order_id = $1',
-    [row.id]
-  )
-
+function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
   return {
     id: row.id,
+    orderNumber: row.orderNumber,
     createdAt: row.createdAt,
     deliverySlot: row.deliverySlot,
     paymentMethod: row.paymentMethod,
@@ -60,7 +58,7 @@ async function serializeOrder(row: OrderRow) {
 }
 
 const SELECT_ORDER = `
-  SELECT o.id as id, o.created_at as "createdAt", o.delivery_slot as "deliverySlot", o.payment_method as "paymentMethod",
+  SELECT o.id as id, o.order_number as "orderNumber", o.created_at as "createdAt", o.delivery_slot as "deliverySlot", o.payment_method as "paymentMethod",
          o.customer_full_name as "customerFullName", o.customer_mobile as "customerMobile", o.customer_governorate as "customerGovernorate", o.customer_address as "customerAddress",
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
@@ -70,9 +68,57 @@ const SELECT_ORDER = `
        LEFT JOIN riders r ON r.id = o.rider_id
 `
 
-adminOrdersRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<OrderRow>(`${SELECT_ORDER} ORDER BY o.created_at DESC`)
-  res.json({ orders: await Promise.all(rows.map(serializeOrder)) })
+adminOrdersRouter.get('/', async (req, res) => {
+  // الترقيم اختياري (opt-in): لو مفيش page/limit في الطلب أصلاً، بيرجع كل الطلبات المطابقة
+  // للفلاتر زي ما كان الحال دايماً — عشان صفحات زي التحليلات/المحفظة/الرئيسية بتحسب
+  // إجماليات من كل الطلبات التاريخية، ومينفعش تتقطع بصمت لو حد ضاف ترقيم افتراضي هنا.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20))
+  const offset = (page - 1) * limit
+
+  const conditions: string[] = []
+  const params: unknown[] = []
+
+  if (typeof req.query.status === 'string' && isValidOrderStatus(req.query.status)) {
+    params.push(req.query.status)
+    conditions.push(`o.status = $${params.length}`)
+  }
+  if (typeof req.query.riderId === 'string' && req.query.riderId) {
+    params.push(req.query.riderId)
+    conditions.push(`o.rider_id = $${params.length}`)
+  }
+  if (typeof req.query.from === 'string' && req.query.from) {
+    params.push(req.query.from)
+    conditions.push(`o.created_at >= $${params.length}::timestamptz`)
+  }
+  if (typeof req.query.to === 'string' && req.query.to) {
+    params.push(req.query.to)
+    conditions.push(`o.created_at <= $${params.length}::timestamptz`)
+  }
+  if (typeof req.query.search === 'string' && req.query.search.trim()) {
+    params.push(`%${req.query.search.trim()}%`)
+    conditions.push(`(o.customer_mobile ILIKE $${params.length} OR o.customer_full_name ILIKE $${params.length} OR o.order_number ILIKE $${params.length})`)
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const { rows: countRows } = await pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM orders o ${whereClause}`, params)
+  const total = Number(countRows[0].n)
+
+  const limitClause = paginationRequested ? `LIMIT $${params.length + 1} OFFSET $${params.length + 2}` : ''
+  const { rows } = await pool.query<OrderRow>(
+    `${SELECT_ORDER} ${whereClause} ORDER BY o.created_at DESC ${limitClause}`,
+    paginationRequested ? [...params, limit, offset] : params
+  )
+
+  const itemsByOrder = await fetchItemsForOrders(rows.map(r => r.id))
+  res.json({
+    orders: rows.map(row => serializeOrderRow(row, itemsByOrder.get(row.id) ?? [])),
+    pagination: paginationRequested
+      ? { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) }
+      : { page: 1, limit: total, total, pages: 1 }
+  })
 })
 
 adminOrdersRouter.get('/:id', async (req, res) => {
@@ -82,21 +128,40 @@ adminOrdersRouter.get('/:id', async (req, res) => {
     res.status(404).json({ error: 'order_not_found' })
     return
   }
-  res.json({ order: await serializeOrder(row) })
+  const itemsByOrder = await fetchItemsForOrders([row.id])
+  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []) })
 })
 
 adminOrdersRouter.patch('/:id/status', async (req, res) => {
   const { status } = req.body ?? {}
-  if (typeof status !== 'string' || !STATUSES.includes(status)) {
+  if (!isValidOrderStatus(status)) {
     res.status(400).json({ error: 'invalid_status' })
     return
   }
 
-  const result = await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
-  if (result.rowCount === 0) {
+  // إلغاء الطلب مسار خاص: بيرجّع المخزون idempotent وبيتحقق من صحة الانتقال جوه نفس المعاملة.
+  if (status === 'cancelled') {
+    const result = await cancelOrder(String(req.params.id))
+    if (!result.ok) {
+      res.status(result.error === 'order_not_found' ? 404 : 409).json({ error: result.error })
+      return
+    }
+    res.status(204).end()
+    return
+  }
+
+  const { rows: currentRows } = await pool.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id = $1', [req.params.id])
+  const current = currentRows[0]
+  if (!current) {
     res.status(404).json({ error: 'order_not_found' })
     return
   }
+  if (!canTransitionOrderStatus(current.status, status)) {
+    res.status(409).json({ error: 'invalid_status_transition' })
+    return
+  }
+
+  await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
   res.status(204).end()
 })
 

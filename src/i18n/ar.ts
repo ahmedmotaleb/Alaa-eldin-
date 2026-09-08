@@ -245,7 +245,18 @@ export const ar = {
       discount_max_uses: 'تم استنفاد عدد مرات استخدام هذا الكود',
       discount_min_order: 'الطلب لم يصل الحد الأدنى المطلوب لهذا الكود',
       cod_disabled: 'الدفع عند الاستلام متوقف مؤقتاً، برجاء المحاولة لاحقاً',
-      invalid_or_expired_token: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد'
+      invalid_or_expired_token: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد',
+      invalid_request: 'يرجى إدخال جميع بيانات الطلب المطلوبة',
+      invalid_delivery_slot: 'يرجى اختيار موعد توصيل صحيح',
+      payment_method_not_supported: 'طريقة الدفع غير مدعومة حالياً',
+      invalid_items: 'السلة غير صالحة، يرجى إعادة المحاولة',
+      invalid_discount_code: 'كود الخصم غير صحيح',
+      product_not_found: 'أحد المنتجات في طلبك لم يعد متوفراً',
+      product_unavailable: 'أحد المنتجات في طلبك غير متاح حالياً',
+      invalid_quantity: 'الكمية المطلوبة غير صحيحة لأحد المنتجات',
+      insufficient_stock: 'الكمية المطلوبة من أحد المنتجات غير متوفرة في المخزون حالياً',
+      minimum_order_not_met: 'الطلب لم يصل الحد الأدنى المسموح به',
+      idempotency_conflict: 'تم تعديل السلة أثناء إرسال الطلب — يرجى إعادة المحاولة'
     } as Record<string, string>,
     forCode(code: string) {
       return this.codes[code] ?? this.generic
@@ -256,7 +267,6 @@ export const ar = {
   },
 
   order: {
-    idPrefix: 'ع',
     // مطابقة لأنواع OrderStatus الفعلية في types/models.ts
     orderStatusLabels: {
       placed: 'قيد المراجعة',

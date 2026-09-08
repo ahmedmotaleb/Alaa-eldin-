@@ -3,7 +3,8 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { initDb } from './db.js'
+import { pool } from './db.js'
+import { assertMigrationsUpToDate } from './checkMigrations.js'
 import { attachUser } from './auth.js'
 import { authRouter } from './routes/auth.js'
 import { ordersRouter } from './routes/orders.js'
@@ -29,7 +30,10 @@ const PORT = Number(process.env.PORT ?? 8787)
 const DEV_ORIGIN = process.env.DEV_ORIGIN ?? 'http://localhost:5183'
 const isProduction = process.env.NODE_ENV === 'production'
 
-await initDb()
+// السيرفر نفسه ما بينشئش/يعدّلش أي مخطط قاعدة بيانات — ده مسؤولية "npm run db:migrate"
+// كخطوة نشر منفصلة وصريحة. هنا بس نتأكد إن الترحيلات المطلوبة اتطبقت فعلاً، ونرفض نقلع
+// لو في نقص بدل ما نشتغل بصمت على مخطط قديم/ناقص.
+await assertMigrationsUpToDate()
 
 const app = express()
 app.disable('x-powered-by')
@@ -37,6 +41,16 @@ app.disable('x-powered-by')
 if (!isProduction) {
   app.use(cors({ origin: DEV_ORIGIN, credentials: true }))
 }
+
+// بدون مصادقة، بدون أي اعتماد تاني غير قاعدة البيانات — يُستخدم كـ Railway healthcheck.
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1')
+    res.status(200).json({ status: 'ok' })
+  } catch {
+    res.status(503).json({ status: 'error' })
+  }
+})
 
 app.use(express.json())
 app.use(cookieParser())

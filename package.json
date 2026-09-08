@@ -15,7 +15,10 @@
     "build:server": "npm run build --prefix server",
     "build:admin": "npm run build --prefix admin",
     "preview": "vite preview",
-    "start": "cross-env NODE_ENV=production node server/dist/index.js"
+    "db:migrate": "npm run db:migrate --prefix server",
+    "db:seed": "npm run db:seed --prefix server",
+    "db:status": "npm run db:status --prefix server",
+    "start": "npm run db:migrate --prefix server && cross-env NODE_ENV=production node server/dist/index.js"
   },
   "dependencies": {
     "react": "^19.1.1",

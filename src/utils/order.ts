@@ -4,11 +4,6 @@ import type { Order } from '../types/models'
 import { formatMoney } from './money'
 import { ar } from '../i18n/ar'
 
-export function createOrderId() {
-  const stamp = Date.now().toString().slice(-7)
-  return `${ar.order.idPrefix}-${stamp}`
-}
-
 function slotLabel(slotId: Order['deliverySlot']) {
   return deliverySlots.find(s => s.id === slotId)?.label ?? slotId
 }
@@ -23,7 +18,7 @@ export function buildWhatsAppOrderMessage(order: Order) {
 
   return [
     msg.newOrderFrom(getSettings().name),
-    msg.orderNumber(order.id),
+    msg.orderNumber(order.orderNumber),
     '',
     msg.productsHeading,
     items,

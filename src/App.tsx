@@ -71,8 +71,8 @@ export default function App() {
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/cart" element={<CartPage />} />
                     <Route path="/checkout" element={<CheckoutPage />} />
-                    <Route path="/confirmation/:orderId" element={<ConfirmationPage />} />
-                    <Route path="/track/:orderId" element={<TrackingPage />} />
+                    <Route path="/confirmation/:orderNumber" element={<ConfirmationPage />} />
+                    <Route path="/track/:orderNumber" element={<TrackingPage />} />
                     <Route path="/orders" element={<OrdersPage />} />
                     <Route path="/account" element={<AccountPage />} />
                     <Route path="/login" element={<LoginPage />} />

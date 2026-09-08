@@ -50,6 +50,7 @@ export type AdminOrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | '
 
 export interface AdminOrder {
   id: string
+  orderNumber: string
   createdAt: string
   deliverySlot: string
   paymentMethod: string
@@ -158,7 +159,9 @@ export interface AdminDiscount {
 
 export type AdminDiscountInput = Omit<AdminDiscount, 'usedCount' | 'createdAt'>
 
-export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment'
+// 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
+// مش قيم قابلة للإنشاء اليدوي من نموذج "تسجيل حركة" في هذه اللوحة (راجع StockMovesPage).
+export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment' | 'sale' | 'cancel_restore'
 
 export interface AdminStockMovement {
   id: number

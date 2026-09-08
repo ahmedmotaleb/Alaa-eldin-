@@ -6,7 +6,7 @@ import { governorates } from '../data/governorates'
 import { useCart } from '../store/CartContext'
 import type { CustomerDetails, DeliverySlotId, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
-import { buildWhatsAppUrl, createOrderId } from '../utils/order'
+import { buildWhatsAppUrl } from '../utils/order'
 import { api, ApiError } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { ar } from '../i18n/ar'
@@ -23,6 +23,9 @@ export function CheckoutPage() {
   const [apiError, setApiError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [cartWasEmptyOnEntry] = useState(() => detailedItems.length === 0)
+  // ثابت طول محاولة الدفع دي (حتى لو submit() اتنادت أكتر من مرة بسبب retry/timeout) —
+  // عشان لو نفس الطلب وصل السيرفر فعلاً قبل كده، يرجع نفس الطلب بدل ما يتكرر (idempotency).
+  const [idempotencyKey] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
     if (cartWasEmptyOnEntry) navigate('/cart', { replace: true })
@@ -43,32 +46,26 @@ export function CheckoutPage() {
     setApiError('')
     setSubmitting(true)
 
+    // السيرفر هو اللي بيحسب سعر الوحدة/الإجمالي الفرعي/الخصم/التوصيل/الإجمالي النهائي فعلياً —
+    // بيبعت هنا بس المنتج والكمية، ومفيش أي قيمة فلوس بنثق فيها من الطرف ده.
     const items = detailedItems.map(item => ({
       productId: item.product.id,
-      name: item.product.name,
-      unit: item.product.unit,
-      unitPrice: item.product.price,
-      quantity: item.quantity,
-      lineTotal: item.product.price * item.quantity
+      quantity: item.quantity
     }))
 
     try {
       const { order: created } = await api.createOrder({
-        id: createOrderId(),
         deliverySlot: slot,
-        paymentMethod: ar.checkout.cashOnDelivery,
+        paymentMethod: 'COD',
         customer,
         items,
-        subtotal,
-        deliveryFee,
-        total,
         discountCode: discount?.code
-      })
+      }, idempotencyKey)
 
       const order = created as unknown as Order
       window.open(buildWhatsAppUrl(order), '_blank', 'noopener,noreferrer')
       clearCart()
-      navigate(`/confirmation/${order.id}`, { state: { order } })
+      navigate(`/confirmation/${order.orderNumber}`, { state: { order } })
     } catch (err) {
       setApiError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
       setSubmitting(false)

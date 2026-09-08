@@ -9,7 +9,9 @@ const TYPE_LABEL: Record<StockMovementType, string> = {
   return: 'مرتجع',
   damage: 'تلف',
   loss: 'فقد',
-  adjustment: 'تعديل يدوي'
+  adjustment: 'تعديل يدوي',
+  sale: 'بيع (طلب عميل)',
+  cancel_restore: 'استرجاع (إلغاء طلب)'
 }
 
 const TYPE_OPTIONS: StockMovementType[] = ['restock', 'return', 'damage', 'loss', 'adjustment']

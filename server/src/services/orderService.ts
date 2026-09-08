@@ -1,0 +1,325 @@
+import crypto from 'node:crypto'
+import type { PoolClient } from 'pg'
+import { pool, withTransaction } from '../db.js'
+import type { CheckoutInput } from '../checkoutValidation.js'
+import { computeSubtotal, computeLineTotal, calculateDeliveryFee, computeTotal } from './pricingService.js'
+import { findDiscountForUpdate, validateDiscountAgainstSubtotal, incrementDiscountUsageAtomic } from '../discounts.js'
+import {
+  lockProductsForOrder, validateItemAgainstProduct, deductStockForOrder,
+  restoreStockForCancelledOrder
+} from './inventoryService.js'
+import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
+import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
+
+export class OrderError extends Error {
+  status: number
+  code: string
+  details?: Record<string, unknown>
+  constructor(status: number, code: string, details?: Record<string, unknown>) {
+    super(code)
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
+class IdempotencyRaceError extends Error {}
+
+interface OrderRow {
+  id: string
+  orderNumber: string
+  createdAt: string
+  deliverySlot: string
+  paymentMethod: string
+  customerFullName: string
+  customerMobile: string
+  customerGovernorate: string
+  customerAddress: string
+  subtotal: number
+  deliveryFee: number
+  total: number
+  status: string
+  discountCode: string | null
+  discountAmount: number
+  requestFingerprint: string | null
+}
+
+export interface SerializedOrder {
+  id: string
+  orderNumber: string
+  createdAt: string
+  deliverySlot: string
+  paymentMethod: string
+  customer: { fullName: string, mobile: string, governorate: string, address: string }
+  items: OrderItemDTO[]
+  subtotal: number
+  deliveryFee: number
+  total: number
+  status: string
+  discountCode?: string
+  discountAmount: number
+}
+
+const SELECT_ORDER_FIELDS = `
+  id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", payment_method as "paymentMethod",
+  customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
+  subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
+  request_fingerprint as "requestFingerprint"
+`
+
+async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
+  const itemsByOrder = await fetchItemsForOrders([row.id])
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    createdAt: row.createdAt,
+    deliverySlot: row.deliverySlot,
+    paymentMethod: row.paymentMethod,
+    customer: {
+      fullName: row.customerFullName,
+      mobile: row.customerMobile,
+      governorate: row.customerGovernorate,
+      address: row.customerAddress
+    },
+    items: itemsByOrder.get(row.id) ?? [],
+    subtotal: row.subtotal,
+    deliveryFee: row.deliveryFee,
+    total: row.total,
+    status: row.status,
+    discountCode: row.discountCode ?? undefined,
+    discountAmount: row.discountAmount
+  }
+}
+
+function computeFingerprint(userId: string | null, input: CheckoutInput): string {
+  const normalized = JSON.stringify({
+    userId,
+    deliverySlot: input.deliverySlot,
+    customer: input.customer,
+    items: [...input.items].sort((a, b) => a.productId.localeCompare(b.productId)),
+    discountCode: input.discountCode ?? null
+  })
+  return crypto.createHash('sha256').update(normalized).digest('hex')
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: string }).code === '23505'
+}
+
+async function findOrderByIdempotencyKey(idempotencyKey: string): Promise<OrderRow | undefined> {
+  const { rows } = await pool.query<OrderRow>(`SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE idempotency_key = $1`, [idempotencyKey])
+  return rows[0]
+}
+
+async function loadStoreSettingsForUpdate(client: PoolClient) {
+  const { rows } = await client.query<{ minimumOrder: number, freeShippingThreshold: number, deliveryFee: number, codEnabled: number }>(`
+    SELECT minimum_order as "minimumOrder", free_shipping_threshold as "freeShippingThreshold",
+           delivery_fee as "deliveryFee", cod_enabled as "codEnabled"
+    FROM store_settings WHERE id = 1
+  `)
+  const row = rows[0]
+  return { minimumOrder: row.minimumOrder, freeShippingThreshold: row.freeShippingThreshold, deliveryFee: row.deliveryFee, codEnabled: !!row.codEnabled }
+}
+
+async function nextOrderNumber(client: PoolClient): Promise<string> {
+  const { rows } = await client.query<{ n: string }>(`SELECT nextval('order_number_seq') as n`)
+  return `ALA-${rows[0].n}`
+}
+
+export interface CreateOrderResult {
+  order: SerializedOrder
+  replay: boolean
+}
+
+// راجع migrations/... وdiscounts.ts/inventoryService.ts للتفاصيل. ترتيب العملية جوه المعاملة:
+// إعدادات المتجر -> قفل الخصم (لو فيه) -> قفل المنتجات (بترتيب ثابت) -> تحقق كل صنف ->
+// حساب الإجمالي الفرعي -> تحقق الحد الأدنى -> تحقق/حساب الخصم -> حساب التوصيل والإجمالي ->
+// إدراج الطلب وعناصره -> خصم المخزون + تسجيل حركة 'sale' -> زيادة عداد استخدام الخصم ذرّياً.
+export async function createOrder(input: CheckoutInput, userId: string | null, idempotencyKey: string | null): Promise<CreateOrderResult> {
+  if (idempotencyKey) {
+    const existing = await findOrderByIdempotencyKey(idempotencyKey)
+    if (existing) {
+      const fingerprint = computeFingerprint(userId, input)
+      if (existing.requestFingerprint && existing.requestFingerprint !== fingerprint) {
+        throw new OrderError(409, 'idempotency_conflict')
+      }
+      return { order: await serializeOrderRow(existing), replay: true }
+    }
+  }
+
+  const fingerprint = idempotencyKey ? computeFingerprint(userId, input) : null
+
+  try {
+    const orderId = await withTransaction(async client => {
+      const settings = await loadStoreSettingsForUpdate(client)
+      if (!settings.codEnabled) throw new OrderError(400, 'cod_disabled')
+
+      const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined
+
+      const productIds = input.items.map(i => i.productId)
+      const products = await lockProductsForOrder(client, productIds)
+
+      for (const item of input.items) {
+        const error = validateItemAgainstProduct(item.productId, item.quantity, products.get(item.productId))
+        if (error) {
+          throw new OrderError(error.code === 'insufficient_stock' ? 409 : 400, error.code, {
+            productId: error.productId,
+            ...(error.available !== undefined ? { available: error.available } : {}),
+            ...(error.requested !== undefined ? { requested: error.requested } : {})
+          })
+        }
+      }
+
+      const lineItems = input.items.map(item => {
+        const product = products.get(item.productId)!
+        return {
+          productId: item.productId,
+          name: product.name,
+          unit: product.unit,
+          unitPrice: product.price,
+          quantity: item.quantity,
+          lineTotal: computeLineTotal(product.price, item.quantity)
+        }
+      })
+
+      const subtotal = computeSubtotal(lineItems)
+
+      if (subtotal < settings.minimumOrder) {
+        throw new OrderError(400, 'minimum_order_not_met', { minimumOrder: settings.minimumOrder, currentAmount: subtotal })
+      }
+
+      let discountAmount = 0
+      let appliedDiscountCode: string | null = null
+      if (input.discountCode) {
+        const evaluation = validateDiscountAgainstSubtotal(discount, subtotal)
+        if (!evaluation.ok) {
+          throw new OrderError(400, evaluation.error, evaluation.minOrder !== undefined ? { minOrder: evaluation.minOrder } : undefined)
+        }
+        discountAmount = evaluation.amount
+        appliedDiscountCode = evaluation.discount.code
+      }
+
+      const deliveryFee = calculateDeliveryFee(subtotal, settings)
+      const total = computeTotal(subtotal, discountAmount, deliveryFee)
+
+      const id = crypto.randomUUID()
+      const orderNumber = await nextOrderNumber(client)
+      const createdAt = new Date().toISOString()
+
+      try {
+        await client.query(
+          `INSERT INTO orders (
+             id, order_number, user_id, created_at, delivery_slot, payment_method,
+             customer_full_name, customer_mobile, customer_governorate, customer_address,
+             subtotal, delivery_fee, total, status, discount_code, discount_amount,
+             idempotency_key, request_fingerprint
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17)`,
+          [
+            id, orderNumber, userId, createdAt, input.deliverySlot, input.paymentMethod,
+            input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
+            subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
+            idempotencyKey, fingerprint
+          ]
+        )
+      } catch (err) {
+        if (isUniqueViolation(err)) throw new IdempotencyRaceError()
+        throw err
+      }
+
+      for (const item of lineItems) {
+        await client.query(
+          'INSERT INTO order_items (order_id, product_id, name, unit, unit_price, quantity, line_total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [id, item.productId, item.name, item.unit, item.unitPrice, item.quantity, item.lineTotal]
+        )
+      }
+
+      for (const item of input.items) {
+        await deductStockForOrder(client, item.productId, item.quantity, id)
+      }
+
+      if (appliedDiscountCode) {
+        const incremented = await incrementDiscountUsageAtomic(client, appliedDiscountCode)
+        if (!incremented) throw new OrderError(409, 'discount_max_uses')
+      }
+
+      return id
+    })
+
+    const { rows } = await pool.query<OrderRow>(`SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE id = $1`, [orderId])
+    return { order: await serializeOrderRow(rows[0]), replay: false }
+  } catch (err) {
+    if (err instanceof IdempotencyRaceError && idempotencyKey) {
+      const existing = await findOrderByIdempotencyKey(idempotencyKey)
+      if (existing) return { order: await serializeOrderRow(existing), replay: true }
+    }
+    throw err
+  }
+}
+
+export async function getOrderByNumberForUser(orderNumber: string, userId: string): Promise<SerializedOrder | null> {
+  const { rows } = await pool.query<OrderRow>(
+    `SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE order_number = $1 AND user_id = $2`,
+    [orderNumber, userId]
+  )
+  return rows[0] ? serializeOrderRow(rows[0]) : null
+}
+
+export interface Pagination {
+  page: number
+  limit: number
+  total: number
+  pages: number
+}
+
+export async function listOrdersForUser(userId: string, page: number, limit: number): Promise<{ orders: SerializedOrder[], pagination: Pagination }> {
+  const offset = (page - 1) * limit
+  const { rows: countRows } = await pool.query<{ n: string }>('SELECT COUNT(*) as n FROM orders WHERE user_id = $1', [userId])
+  const total = Number(countRows[0].n)
+
+  const { rows } = await pool.query<OrderRow>(
+    `SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
+  )
+
+  const itemsByOrder = await fetchItemsForOrders(rows.map(r => r.id))
+  const orders = rows.map(row => ({
+    id: row.id,
+    orderNumber: row.orderNumber,
+    createdAt: row.createdAt,
+    deliverySlot: row.deliverySlot,
+    paymentMethod: row.paymentMethod,
+    customer: {
+      fullName: row.customerFullName,
+      mobile: row.customerMobile,
+      governorate: row.customerGovernorate,
+      address: row.customerAddress
+    },
+    items: itemsByOrder.get(row.id) ?? [],
+    subtotal: row.subtotal,
+    deliveryFee: row.deliveryFee,
+    total: row.total,
+    status: row.status,
+    discountCode: row.discountCode ?? undefined,
+    discountAmount: row.discountAmount
+  }))
+
+  return { orders, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } }
+}
+
+// إلغاء طلب من لوحة التحكم: بيرجّع المخزون (idempotent، مش هيتكرر لو الطلب ملغى بالفعل)
+// وبيتحقق إن الانتقال مسموح (مش هيسمح مثلاً بإلغاء طلب "تم التسليم" بالفعل).
+export async function cancelOrder(orderId: string): Promise<{ ok: true } | { ok: false, error: 'order_not_found' | 'invalid_status_transition' }> {
+  return withTransaction(async client => {
+    const { rows } = await client.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id = $1 FOR UPDATE', [orderId])
+    const current = rows[0]
+    if (!current) return { ok: false, error: 'order_not_found' }
+
+    if (!canTransitionOrderStatus(current.status, 'cancelled')) {
+      return { ok: false, error: 'invalid_status_transition' }
+    }
+
+    await client.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId])
+    await restoreStockForCancelledOrder(client, orderId)
+    return { ok: true }
+  })
+}

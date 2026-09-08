@@ -17,8 +17,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     res = await fetch(BASE + path, {
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
-      ...options
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) }
     })
   } catch {
     throw new ApiError('network_error', 0)
@@ -50,6 +50,7 @@ export interface ApiOrderItem {
 
 export interface ApiOrder {
   id: string
+  orderNumber: string
   createdAt: string
   deliverySlot: string
   paymentMethod: string
@@ -129,10 +130,24 @@ export const api = {
   listProducts: () => request<{ products: ApiProduct[] }>('/products'),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),
-  listOrders: () => request<{ orders: ApiOrder[] }>('/orders'),
-  getOrder: (id: string) => request<{ order: ApiOrder }>(`/orders/${encodeURIComponent(id)}`),
-  createOrder: (body: Omit<ApiOrder, 'createdAt' | 'status' | 'discountAmount'>) =>
-    request<{ order: ApiOrder }>('/orders', { method: 'POST', body: JSON.stringify(body) }),
+  listOrders: () => request<{ orders: ApiOrder[], pagination: { page: number, limit: number, total: number, pages: number } }>('/orders'),
+  getOrder: (orderNumber: string) => request<{ order: ApiOrder }>(`/orders/${encodeURIComponent(orderNumber)}`),
+  // السيرفر هو اللي بيحسب كل حاجة (سعر الوحدة، الإجمالي الفرعي، الخصم، التوصيل، الإجمالي
+  // النهائي) وبيولّد id ورقم الطلب — العميل بيبعت بس المعلومات الأساسية المطلوبة فعلاً.
+  // idempotencyKey ثابت لكل محاولة دفع (مش بيتغيّر لو نفس الطلب اتبعت تاني بسبب retry/timeout)
+  // عشان لو نفس الطلب اتنفذ فعلياً على السيرفر قبل كده، يرجعله نفس الطلب بدل ما يتكرر.
+  createOrder: (body: {
+    deliverySlot: string
+    paymentMethod: string
+    customer: { fullName: string, mobile: string, governorate: string, address: string }
+    items: { productId: string, quantity: number }[]
+    discountCode?: string
+  }, idempotencyKey: string) =>
+    request<{ order: ApiOrder }>('/orders', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(body)
+    }),
   validateDiscount: (code: string, subtotal: number) =>
     request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal }) })
 }

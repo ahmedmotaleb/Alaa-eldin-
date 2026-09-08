@@ -56,6 +56,7 @@ export type OrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | 'out_f
 
 export interface Order {
   id: string
+  orderNumber: string
   createdAt: string
   customer: CustomerDetails
   deliverySlot: DeliverySlotId
