@@ -75,7 +75,8 @@ export const NAV: NavGroup[] = [
       { id: 'store', label: 'المتجر' },
       { id: 'delivery', label: 'التوصيل' },
       { id: 'payment', label: 'الدفع' },
-      { id: 'users', label: 'المستخدمون والصلاحيات' }
+      { id: 'users', label: 'المستخدمون والصلاحيات' },
+      { id: 'audit', label: 'سجل النشاط' }
     ]
   }
 ]

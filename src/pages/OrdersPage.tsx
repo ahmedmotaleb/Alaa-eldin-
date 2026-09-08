@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { formatDate } from '../utils/format'
 import { ar } from '../i18n/ar'
 
 export function OrdersPage() {
@@ -45,7 +46,7 @@ export function OrdersPage() {
             <span className="order-row-icon">{order.status === 'delivered' ? '📦' : order.status === 'cancelled' ? '⛔' : '🛵'}</span>
             <span className="order-row-info">
               <span className="order-row-id">{order.orderNumber}</span>
-              <span className="order-row-date">{new Date(order.createdAt).toLocaleDateString('ar-EG')} · {ar.account.productsCount(order.items.length)}</span>
+              <span className="order-row-date">{formatDate(order.createdAt)} · {ar.account.productsCount(order.items.length)}</span>
             </span>
             <span className="order-row-end">
               <span className="order-row-total">{formatMoney(order.total)}</span>

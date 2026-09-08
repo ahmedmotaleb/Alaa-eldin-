@@ -308,7 +308,7 @@ export function AnalyticsPage() {
               </div>
             </div>
             <div className="admin-table-footer">
-              <span>أعلى ١٠ منتجات إيراداً</span>
+              <span>أعلى 10 منتجات إيراداً</span>
               <span>من كل الطلبات</span>
             </div>
           </div>
@@ -347,7 +347,7 @@ export function AnalyticsPage() {
             </div>
           </div>
           <div className="admin-table-footer">
-            <span>أعلى ١٠ عملاء إنفاقاً</span>
+            <span>أعلى 10 عملاء إنفاقاً</span>
             <span>من صفحة العملاء لعرض التفاصيل الكاملة</span>
           </div>
         </div>

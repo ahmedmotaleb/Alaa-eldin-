@@ -8,6 +8,7 @@ import {
   type AdminOrder, type AdminOrderStatus, type AdminRider, type AdminSettlement, type AdminExpense
 } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { formatDateTime } from '../utils/format'
 import { NAV } from '../nav'
 import type { LayoutContext } from '../components/AdminLayout'
 
@@ -481,7 +482,7 @@ function SettlementsTab({
             </div>
             {settlements.map(s => (
               <div key={s.id} className="admin-table-row" style={{ gridTemplateColumns: '1fr 1.3fr .8fr 1fr' }}>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(s.createdAt).toLocaleString('ar-EG')}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDateTime(s.createdAt)}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800 }}>{s.riderName}</div>
                 <div className="admin-cell-plain">{s.orderCount}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800, color: '#12813C' }}>{formatMoney(s.amount)}</div>

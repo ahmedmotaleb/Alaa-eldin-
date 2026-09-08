@@ -4,6 +4,8 @@ import { requireAdmin } from '../auth.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { isValidOrderStatus, canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { cancelOrder } from '../services/orderService.js'
+import { recordAuditLog } from '../services/auditLogService.js'
+import { logEvent } from '../logger.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
@@ -146,6 +148,12 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
       res.status(result.error === 'order_not_found' ? 404 : 409).json({ error: result.error })
       return
     }
+    await recordAuditLog({
+      adminUserId: req.user!.id,
+      action: 'order_cancelled',
+      entityType: 'order',
+      entityId: String(req.params.id)
+    })
     res.status(204).end()
     return
   }
@@ -162,6 +170,7 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
   }
 
   await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
+  if (status === 'delivered') logEvent('order_delivered', { orderId: String(req.params.id) })
   res.status(204).end()
 })
 

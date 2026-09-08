@@ -43,7 +43,7 @@ export const ar = {
     searchPlaceholder: 'ابحث عن منتج... لبن، أرز، طماطم',
     sectionsTitle: 'الأقسام',
     todaysOffersTitle: 'عروض اليوم',
-    offersEndIn: 'تنتهي بعد ٤ ساعات',
+    offersEndIn: 'تنتهي بعد 4 ساعات',
     allOffers: 'كل العروض',
     bestSellersTitle: 'الأكثر مبيعاً',
     orderBeforeTitle: 'اطلب قبل 6 مساءً',

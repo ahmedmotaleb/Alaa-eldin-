@@ -86,7 +86,7 @@ export function HomePage() {
         <div className="admin-chart-head">
           <div>
             <div className="admin-chart-title">المبيعات</div>
-            <div className="admin-chart-sub">آخر ٧ أيام</div>
+            <div className="admin-chart-sub">آخر 7 أيام</div>
           </div>
         </div>
         <div className="admin-chart-bars">
@@ -106,7 +106,7 @@ export function HomePage() {
         <OrderTable
           orders={orders.slice(0, 5)}
           onRowClick={() => navigate('/orders/all')}
-          footer="أحدث ٥ طلبات — من صفحة الطلبات لعرض التفاصيل"
+          footer="أحدث 5 طلبات — من صفحة الطلبات لعرض التفاصيل"
         />
         <div className="admin-side-panels">
           <div className="admin-side-card">

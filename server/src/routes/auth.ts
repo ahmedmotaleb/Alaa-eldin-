@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { pool } from '../db.js'
 import { hashPassword, verifyPassword, createSession, destroySession, createPasswordResetToken, consumePasswordResetToken, SESSION_COOKIE } from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
+import { logEvent, logWarn } from '../logger.js'
 
 export const authRouter = Router()
 
@@ -67,12 +68,14 @@ authRouter.post('/login', async (req, res) => {
   const row = rows[0]
 
   if (!row || !verifyPassword(password, row.passwordHash)) {
+    logWarn('login_failed', { email: email.toLowerCase() })
     res.status(401).json({ error: 'invalid_credentials' })
     return
   }
 
   const { token, expires } = await createSession(row.id)
   setSessionCookie(res, token, expires)
+  logEvent('login_success', { userId: row.id })
   res.json({ user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin } })
 })
 
@@ -122,6 +125,7 @@ authRouter.post('/logout', async (req, res) => {
   const token = req.cookies?.[SESSION_COOKIE]
   if (token) await destroySession(token)
   res.clearCookie(SESSION_COOKIE, { path: '/' })
+  if (req.user) logEvent('logout', { userId: req.user.id })
   res.status(204).end()
 })
 

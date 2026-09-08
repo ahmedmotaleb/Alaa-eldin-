@@ -21,6 +21,8 @@ export interface Product {
   bestseller?: boolean
   offer?: boolean
   orderCount?: number
+  primaryImage?: string
+  primaryImageAlt?: string
 }
 
 export interface CartItem {

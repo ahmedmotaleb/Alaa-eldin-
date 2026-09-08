@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminCustomer } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
+import { formatDate } from '../../utils/format'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const COLS = '2fr 1fr .8fr 1fr 1fr'
@@ -45,7 +46,7 @@ export function CustomersListPage() {
     <>
       <StatsGrid stats={[
         { label: 'عدد العملاء', value: String(customers.length), note: 'حساب مسجّل', icon: '👥', tint: '#EAF2FF' },
-        { label: 'عملاء جدد', value: String(newThisWeek), note: 'آخر ٧ أيام', icon: '🆕', tint: '#EAF8EF' },
+        { label: 'عملاء جدد', value: String(newThisWeek), note: 'آخر 7 أيام', icon: '🆕', tint: '#EAF8EF' },
         { label: 'متوسط قيمة الطلب', value: formatMoney(avgOrderValue), note: 'لعملاء لديهم طلبات', icon: '🛒', tint: '#FFF3E3' },
         { label: 'لم يطلبوا بعد', value: String(customers.length - withOrders.length), note: 'مسجلين بدون طلبات', icon: '💤', tint: '#F1F4F2', noteColor: '#68746B' }
       ]} />
@@ -70,10 +71,10 @@ export function CustomersListPage() {
                     <span className="admin-cell-product-sub">{c.email}</span>
                   </span>
                 </div>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(c.createdAt).toLocaleDateString('ar-EG')}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDate(c.createdAt)}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800 }}>{c.orderCount}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800, color: '#12813C' }}>{formatMoney(c.totalSpent)}</div>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('ar-EG') : '—'}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{c.lastOrderAt ? formatDate(c.lastOrderAt) : '—'}</div>
               </div>
             ))}
             {filtered.length === 0 && <div className="admin-table-empty">مفيش بيانات في هذا العرض</div>}

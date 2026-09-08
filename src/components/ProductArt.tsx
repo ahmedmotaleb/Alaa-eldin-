@@ -30,9 +30,18 @@ export function ProductArt({
   return (
     <div
       className="product-art"
-      style={{ height, width, flex: typeof width === 'number' ? 'none' : undefined, fontSize, background: tint, borderRadius: radius }}
+      style={{ height, width, flex: typeof width === 'number' ? 'none' : undefined, fontSize, background: product.primaryImage ? '#fff' : tint, borderRadius: radius, position: 'relative', overflow: 'hidden' }}
     >
-      {product.emoji}
+      {product.primaryImage ? (
+        <img
+          src={product.primaryImage}
+          alt={product.primaryImageAlt || `صورة منتج ${product.name}`}
+          loading="lazy"
+          style={{ width: '100%', height: '100%', objectFit: 'contain', aspectRatio: '1 / 1' }}
+        />
+      ) : (
+        product.emoji
+      )}
       {showBadge && discount > 0 && <span className="discount-badge">−{discount}%</span>}
       {showUnavailable && !product.available && <span className="unavailable-overlay">{ar.product.unavailableNow}</span>}
     </div>

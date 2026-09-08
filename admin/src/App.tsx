@@ -21,6 +21,7 @@ import { UsersPage } from './pages/settings/UsersPage'
 import { StoreSettingsPage } from './pages/settings/StoreSettingsPage'
 import { DeliverySettingsPage } from './pages/settings/DeliverySettingsPage'
 import { PaymentSettingsPage } from './pages/settings/PaymentSettingsPage'
+import { AuditLogPage } from './pages/settings/AuditLogPage'
 import { BannersListPage } from './pages/marketing/BannersListPage'
 import { BannerFormPage } from './pages/marketing/BannerFormPage'
 import { HomeSectionsPage } from './pages/marketing/HomeSectionsPage'
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/settings/store" element={<StoreSettingsPage />} />
             <Route path="/settings/delivery" element={<DeliverySettingsPage />} />
             <Route path="/settings/payment" element={<PaymentSettingsPage />} />
+            <Route path="/settings/audit" element={<AuditLogPage />} />
             <Route path="/marketing/home" element={<HomeSectionsPage />} />
             <Route path="/marketing/banners" element={<BannersListPage />} />
             <Route path="/marketing/banners/add" element={<BannerFormPage />} />

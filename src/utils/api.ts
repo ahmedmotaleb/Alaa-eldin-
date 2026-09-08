@@ -92,6 +92,8 @@ export interface ApiProduct {
   bestseller: boolean
   offer: boolean
   orderCount: number
+  primaryImage?: string
+  primaryImageAlt?: string
 }
 
 export interface ApiBanner {

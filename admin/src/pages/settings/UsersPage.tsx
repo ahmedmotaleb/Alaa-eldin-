@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminUser } from '../../utils/api'
 import { useAuth } from '../../store/AuthContext'
+import { formatDate } from '../../utils/format'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const COLS = '2fr 1fr .8fr 1fr'
@@ -87,7 +88,7 @@ export function UsersPage() {
                       <span className="admin-cell-product-sub">{u.email}</span>
                     </span>
                   </div>
-                  <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(u.createdAt).toLocaleDateString('ar-EG')}</div>
+                  <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDate(u.createdAt)}</div>
                   <div>
                     <span className="admin-pill" style={{ background: u.isAdmin ? '#EAF8EF' : '#F1F4F2', color: u.isAdmin ? '#12813C' : '#68746B' }}>
                       {u.isAdmin ? 'مدير' : 'عميل'}

@@ -123,9 +123,31 @@ export interface AdminProduct {
   alertThreshold: number
   barcode: string
   brand: string
+  primaryImage?: string
 }
 
 export type AdminProductInput = Omit<AdminProduct, 'orderCount'>
+
+export interface AdminProductImage {
+  id: string
+  productId: string
+  imageUrl: string
+  altText: string
+  sortOrder: number
+  isPrimary: boolean
+}
+
+export interface AdminAuditLog {
+  id: number
+  adminUserId: string | null
+  adminEmail: string | null
+  action: string
+  entityType: string
+  entityId: string
+  oldValues: unknown
+  newValues: unknown
+  createdAt: string
+}
 
 export interface AdminCustomer {
   id: string
@@ -217,6 +239,44 @@ export const api = {
     request<{ product: AdminProduct }>('/admin/products', { method: 'POST', body: JSON.stringify(body) }),
   updateProduct: (id: string, body: Partial<AdminProductInput>) =>
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  listProductImages: (productId: string) =>
+    request<{ images: AdminProductImage[] }>(`/admin/products/${encodeURIComponent(productId)}/images`),
+  uploadProductImage: async (productId: string, file: File, altText?: string) => {
+    const form = new FormData()
+    form.append('image', file)
+    if (altText) form.append('altText', altText)
+    let res: Response
+    try {
+      res = await fetch(`${BASE}/admin/products/${encodeURIComponent(productId)}/images`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form
+      })
+    } catch {
+      throw new ApiError('network_error', 0)
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new ApiError(data?.error ?? 'server_error', res.status)
+    return data as { image: AdminProductImage }
+  },
+  setPrimaryProductImage: (productId: string, imageId: string) =>
+    request<{ image: AdminProductImage }>(`/admin/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, {
+      method: 'PATCH', body: JSON.stringify({ isPrimary: true })
+    }),
+  updateProductImageAlt: (productId: string, imageId: string, altText: string) =>
+    request<{ image: AdminProductImage }>(`/admin/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, {
+      method: 'PATCH', body: JSON.stringify({ altText })
+    }),
+  reorderProductImages: (productId: string, order: string[]) =>
+    request<{ images: AdminProductImage[] }>(`/admin/products/${encodeURIComponent(productId)}/images/reorder`, {
+      method: 'PUT', body: JSON.stringify({ order })
+    }),
+  deleteProductImage: (productId: string, imageId: string) =>
+    request<void>(`/admin/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE' }),
+  listAuditLogs: (page = 1, limit = 20) =>
+    request<{ logs: AdminAuditLog[], page: number, limit: number, total: number, totalPages: number }>(
+      `/admin/audit-logs?page=${page}&limit=${limit}`
+    ),
   listCategories: () => request<{ categories: AdminCategory[] }>('/admin/categories'),
   createCategory: (body: { id: string, name: string, emoji: string, tint: string }) =>
     request<{ category: AdminCategory }>('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),

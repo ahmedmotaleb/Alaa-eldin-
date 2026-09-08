@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, ApiError, type AdminCustomer } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
+import { formatDate } from '../../utils/format'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const COLS = '2fr 1fr .8fr 1fr 1fr'
@@ -20,7 +21,7 @@ interface Segment {
 const SEGMENTS: Segment[] = [
   {
     id: 'new', label: 'عملاء جدد', icon: '🆕', tint: '#EAF2FF',
-    note: 'سجّلوا خلال آخر ٧ أيام',
+    note: 'سجّلوا خلال آخر 7 أيام',
     match: c => Date.now() - new Date(c.createdAt).getTime() <= WEEK_MS
   },
   {
@@ -30,12 +31,12 @@ const SEGMENTS: Segment[] = [
   },
   {
     id: 'vip', label: 'كبار العملاء (VIP)', icon: '👑', tint: '#FFF3E3',
-    note: 'أعلى ٢٠٪ إنفاقاً',
+    note: 'أعلى 20% إنفاقاً',
     match: (c, vipThreshold) => c.orderCount > 0 && c.totalSpent >= vipThreshold
   },
   {
     id: 'at_risk', label: 'عملاء في خطر', icon: '⚠️', tint: '#FFECEC',
-    note: 'طلبوا من قبل لكن مش من ٣٠ يوم',
+    note: 'طلبوا من قبل لكن مش من 30 يوم',
     match: c => c.orderCount > 0 && !!c.lastOrderAt && Date.now() - new Date(c.lastOrderAt).getTime() > INACTIVE_MS
   },
   {
@@ -119,10 +120,10 @@ export function SegmentsPage() {
                     <span className="admin-cell-product-sub">{c.email}</span>
                   </span>
                 </div>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(c.createdAt).toLocaleDateString('ar-EG')}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDate(c.createdAt)}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800 }}>{c.orderCount}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 800, color: '#12813C' }}>{formatMoney(c.totalSpent)}</div>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('ar-EG') : '—'}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{c.lastOrderAt ? formatDate(c.lastOrderAt) : '—'}</div>
               </div>
             ))}
             {activeList.length === 0 && <div className="admin-table-empty">مفيش عملاء في هذه الشريحة حالياً</div>}

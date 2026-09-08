@@ -10,6 +10,7 @@ import {
 } from './inventoryService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
+import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
   status: number
@@ -143,6 +144,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       if (existing.requestFingerprint && existing.requestFingerprint !== fingerprint) {
         throw new OrderError(409, 'idempotency_conflict')
       }
+      logEvent('order_replayed_idempotency', { orderId: existing.id, orderNumber: existing.orderNumber })
       return { order: await serializeOrderRow(existing), replay: true }
     }
   }
@@ -162,6 +164,9 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       for (const item of input.items) {
         const error = validateItemAgainstProduct(item.productId, item.quantity, products.get(item.productId))
         if (error) {
+          if (error.code === 'insufficient_stock') {
+            logWarn('stock_insufficient', { productId: error.productId, available: error.available, requested: error.requested })
+          }
           throw new OrderError(error.code === 'insufficient_stock' ? 409 : 400, error.code, {
             productId: error.productId,
             ...(error.available !== undefined ? { available: error.available } : {}),
@@ -193,10 +198,12 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       if (input.discountCode) {
         const evaluation = validateDiscountAgainstSubtotal(discount, subtotal)
         if (!evaluation.ok) {
+          logWarn('discount_rejected', { discountCode: input.discountCode, errorCode: evaluation.error })
           throw new OrderError(400, evaluation.error, evaluation.minOrder !== undefined ? { minOrder: evaluation.minOrder } : undefined)
         }
         discountAmount = evaluation.amount
         appliedDiscountCode = evaluation.discount.code
+        logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount })
       }
 
       const deliveryFee = calculateDeliveryFee(subtotal, settings)
@@ -235,6 +242,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
 
       for (const item of input.items) {
         await deductStockForOrder(client, item.productId, item.quantity, id)
+        logEvent('stock_deducted', { orderId: id, productId: item.productId, quantity: item.quantity })
       }
 
       if (appliedDiscountCode) {
@@ -246,12 +254,21 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
     })
 
     const { rows } = await pool.query<OrderRow>(`SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE id = $1`, [orderId])
-    return { order: await serializeOrderRow(rows[0]), replay: false }
+    const order = await serializeOrderRow(rows[0])
+    logEvent('order_created', { orderId: order.id, orderNumber: order.orderNumber, itemCount: order.items.length, total: order.total })
+    return { order, replay: false }
   } catch (err) {
     if (err instanceof IdempotencyRaceError && idempotencyKey) {
       const existing = await findOrderByIdempotencyKey(idempotencyKey)
-      if (existing) return { order: await serializeOrderRow(existing), replay: true }
+      if (existing) {
+        logEvent('order_replayed_idempotency', { orderId: existing.id, orderNumber: existing.orderNumber })
+        return { order: await serializeOrderRow(existing), replay: true }
+      }
     }
+    logWarn('order_failed', {
+      errorCode: err instanceof OrderError ? err.code : 'unexpected_error',
+      ...(err instanceof OrderError && err.details?.productId ? { productId: err.details.productId } : {})
+    })
     throw err
   }
 }
@@ -319,7 +336,9 @@ export async function cancelOrder(orderId: string): Promise<{ ok: true } | { ok:
     }
 
     await client.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId])
-    await restoreStockForCancelledOrder(client, orderId)
+    const restoreResult = await restoreStockForCancelledOrder(client, orderId)
+    logEvent('order_cancelled', { orderId })
+    if (restoreResult === 'restored') logEvent('stock_restored', { orderId })
     return { ok: true }
   })
 }

@@ -1,5 +1,6 @@
 import type { AdminOrder, AdminOrderStatus, AdminRider } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { formatDateTime } from '../utils/format'
 import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from '../orderStatus'
 
 export function OrderDrawer({
@@ -23,7 +24,7 @@ export function OrderDrawer({
         <div className="admin-drawer-head">
           <div>
             <div className="admin-drawer-title">{order.orderNumber}</div>
-            <div className="admin-drawer-sub">{new Date(order.createdAt).toLocaleString('ar-EG')}</div>
+            <div className="admin-drawer-sub">{formatDateTime(order.createdAt)}</div>
           </div>
           <div className="admin-drawer-head-actions">
             <span className="admin-pill" style={{ background: bg, color: fg }}>{ORDER_STATUS_LABEL[order.status]}</span>

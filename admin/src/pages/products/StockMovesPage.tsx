@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminProduct, type AdminStockMovement, type StockMovementType } from '../../utils/api'
+import { formatDateTime } from '../../utils/format'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const TYPE_LABEL: Record<StockMovementType, string> = {
@@ -135,7 +136,7 @@ export function StockMovesPage() {
             </div>
             {movements.map(m => (
               <div key={m.id} className="admin-table-row" style={{ gridTemplateColumns: '1fr 2fr 1fr .8fr 1.4fr' }}>
-                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(m.createdAt).toLocaleString('ar-EG')}</div>
+                <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDateTime(m.createdAt)}</div>
                 <div className="admin-cell-product">
                   <span className="admin-cell-product-icon" style={{ background: '#F1F4F2' }}>{m.productEmoji}</span>
                   <span className="admin-cell-product-text">{m.productName}</span>

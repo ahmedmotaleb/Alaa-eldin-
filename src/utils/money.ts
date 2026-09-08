@@ -1,5 +1,6 @@
 import { getSettings } from '../store/settingsStore'
+import { formatCurrency } from './format'
 
 export function formatMoney(value: number) {
-  return `${Math.round(value).toLocaleString('ar-EG')} ${getSettings().currency}`
+  return formatCurrency(value, getSettings().currency)
 }

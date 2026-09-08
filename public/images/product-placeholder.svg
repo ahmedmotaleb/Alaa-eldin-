@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="صورة منتج غير متوفرة">
+  <rect width="400" height="400" fill="#F1F4F2"/>
+  <g fill="none" stroke="#B9C4BC" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M120 150 L280 150 L265 320 L135 320 Z"/>
+    <path d="M155 150 C155 110 175 85 200 85 C225 85 245 110 245 150"/>
+  </g>
+</svg>

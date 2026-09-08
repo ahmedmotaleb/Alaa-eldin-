@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { AdminOrder } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { formatDate } from '../utils/format'
 import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '../orderStatus'
 
 const COLS = '.85fr 1.1fr 1.3fr .8fr .9fr .9fr 1fr'
@@ -12,7 +13,7 @@ function relativeTime(iso: string) {
   if (mins < 60) return `من ${mins} دقيقة`
   const hours = Math.round(mins / 60)
   if (hours < 24) return `من ${hours} ساعة`
-  return new Date(iso).toLocaleDateString('ar-EG')
+  return formatDate(iso)
 }
 
 export function OrderTable({

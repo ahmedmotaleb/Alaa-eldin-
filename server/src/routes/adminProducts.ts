@@ -2,6 +2,8 @@ import { Router } from 'express'
 import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { recordAuditLog } from '../services/auditLogService.js'
+import { logEvent } from '../logger.js'
 
 export const adminProductsRouter = Router()
 adminProductsRouter.use(requireAdmin)
@@ -25,6 +27,7 @@ interface ProductRow {
   alertThreshold: number
   barcode: string
   brand: string
+  primaryImage: string | null
 }
 
 const SELECT_PRODUCT = `
@@ -34,18 +37,32 @@ const SELECT_PRODUCT = `
   FROM products
 `
 
+const SELECT_PRODUCT_WITH_IMAGE = `
+  SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice", p.cost,
+         p.unit, p.emoji, p.available, p.bestseller, p.offer, p.order_count as "orderCount", p.stock, p.alert_threshold as "alertThreshold",
+         p.barcode, p.brand, img.image_url as "primaryImage"
+  FROM products p
+  LEFT JOIN LATERAL (
+    SELECT image_url FROM product_images pi
+    WHERE pi.product_id = p.id
+    ORDER BY pi.is_primary DESC, pi.sort_order ASC
+    LIMIT 1
+  ) img ON true
+`
+
 function serialize(row: ProductRow) {
   return {
     ...row,
     oldPrice: row.oldPrice ?? undefined,
     available: !!row.available,
     bestseller: !!row.bestseller,
-    offer: !!row.offer
+    offer: !!row.offer,
+    primaryImage: row.primaryImage ?? undefined
   }
 }
 
 adminProductsRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} ORDER BY name`)
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT_WITH_IMAGE} ORDER BY p.name`)
   res.json({ products: rows.map(serialize) })
 })
 
@@ -123,6 +140,14 @@ adminProductsRouter.post('/', async (req, res) => {
   )
 
   const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  logEvent('admin_product_created', { productId: id })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_created',
+    entityType: 'product',
+    entityId: id,
+    newValues: serialize(rows[0])
+  })
   res.status(201).json({ product: serialize(rows[0]) })
 })
 
@@ -173,5 +198,19 @@ adminProductsRouter.patch('/:id', async (req, res) => {
   })
 
   const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
-  res.json({ product: serialize(rows[0]) })
+  const before = serialize(existing)
+  const after = serialize(rows[0])
+
+  logEvent('admin_product_updated', { productId: req.params.id })
+  if (stockDiff !== 0) logEvent('admin_stock_adjusted', { productId: req.params.id, quantityChange: stockDiff })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: before.available !== after.available && !after.available ? 'product_archived' : 'product_updated',
+    entityType: 'product',
+    entityId: req.params.id,
+    oldValues: before,
+    newValues: after
+  })
+
+  res.json({ product: after })
 })

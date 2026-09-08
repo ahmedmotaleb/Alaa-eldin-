@@ -3,6 +3,7 @@ import { useOutletContext, useParams } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminCustomer, type AdminCustomerOrder } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
+import { formatDate } from '../../utils/format'
 import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '../../orderStatus'
 import type { LayoutContext } from '../../components/AdminLayout'
 
@@ -39,7 +40,7 @@ export function CustomerDetailPage() {
         <div className="admin-form-card-title">{customer.fullName}</div>
         <div className="admin-form-card-sub">{customer.email}{customer.lastMobile ? ` · ${customer.lastMobile}` : ''}</div>
         <div className="admin-cell-plain" style={{ color: '#68746B' }}>
-          عضو منذ {new Date(customer.createdAt).toLocaleDateString('ar-EG')}
+          عضو منذ {formatDate(customer.createdAt)}
         </div>
       </div>
 
@@ -60,7 +61,7 @@ export function CustomerDetailPage() {
               return (
                 <div key={o.id} className="admin-table-row" style={{ gridTemplateColumns: COLS }}>
                   <div className="admin-cell-plain" style={{ fontWeight: 900 }}>{o.id}</div>
-                  <div className="admin-cell-plain" style={{ color: '#68746B' }}>{new Date(o.createdAt).toLocaleDateString('ar-EG')}</div>
+                  <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDate(o.createdAt)}</div>
                   <div className="admin-cell-plain" style={{ fontWeight: 800, color: '#12813C' }}>{formatMoney(o.total)}</div>
                   <div><span className="admin-pill" style={{ background: bg, color: fg }}>{ORDER_STATUS_LABEL[o.status]}</span></div>
                 </div>
