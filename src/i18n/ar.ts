@@ -192,7 +192,18 @@ export const ar = {
     loginLink: 'تسجيل الدخول',
     passwordsDontMatch: 'كلمتا المرور غير متطابقتين',
     loginCta: 'تسجيل الدخول',
-    registerCta: 'إنشاء حساب'
+    registerCta: 'إنشاء حساب',
+    forgotPasswordLink: 'نسيت كلمة المرور؟',
+    forgotPasswordTitle: 'استعادة كلمة المرور',
+    forgotPasswordNote: 'أدخل بريدك الإلكتروني وهنبعتلك رابط لإعادة تعيين كلمة المرور.',
+    forgotPasswordSubmit: 'إرسال رابط الاستعادة',
+    forgotPasswordSent: 'لو الإيميل ده مسجّل عندنا، هتوصلك رسالة فيها رابط استعادة كلمة المرور خلال دقائق.',
+    backToLogin: 'العودة لتسجيل الدخول',
+    resetPasswordTitle: 'كلمة مرور جديدة',
+    newPasswordLabel: 'كلمة المرور الجديدة',
+    resetPasswordSubmit: 'حفظ كلمة المرور الجديدة',
+    resetPasswordSuccess: 'تم تغيير كلمة المرور بنجاح، تقدر تسجّل دخولك دلوقتي.',
+    resetPasswordInvalidLink: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد.'
   },
 
   onboarding: {
@@ -233,7 +244,8 @@ export const ar = {
       discount_expired: 'انتهت صلاحية كود الخصم',
       discount_max_uses: 'تم استنفاد عدد مرات استخدام هذا الكود',
       discount_min_order: 'الطلب لم يصل الحد الأدنى المطلوب لهذا الكود',
-      cod_disabled: 'الدفع عند الاستلام متوقف مؤقتاً، برجاء المحاولة لاحقاً'
+      cod_disabled: 'الدفع عند الاستلام متوقف مؤقتاً، برجاء المحاولة لاحقاً',
+      invalid_or_expired_token: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد'
     } as Record<string, string>,
     forCode(code: string) {
       return this.codes[code] ?? this.generic

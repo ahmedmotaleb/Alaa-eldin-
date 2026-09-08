@@ -122,6 +122,9 @@ export const api = {
     request<{ user: ApiUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: ApiUser }>('/auth/me'),
+  forgotPassword: (email: string) => request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (token: string, password: string) =>
+    request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
   listCategories: () => request<{ categories: ApiCategory[] }>('/categories'),
   listProducts: () => request<{ products: ApiProduct[] }>('/products'),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),

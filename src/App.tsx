@@ -13,6 +13,7 @@ import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoryPage } from './pages/CategoryPage'
 import { CheckoutPage } from './pages/CheckoutPage'
 import { ConfirmationPage } from './pages/ConfirmationPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -21,6 +22,7 @@ import { OnboardingPage } from './pages/OnboardingPage'
 import { OrdersPage } from './pages/OrdersPage'
 import { ProductPage } from './pages/ProductPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { SearchPage } from './pages/SearchPage'
 import { TrackingPage } from './pages/TrackingPage'
 import { ar } from './i18n/ar'
@@ -75,6 +77,8 @@ export default function App() {
                     <Route path="/account" element={<AccountPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
+                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                    <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>

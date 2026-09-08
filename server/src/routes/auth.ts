@@ -1,11 +1,13 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
-import { hashPassword, verifyPassword, createSession, destroySession, SESSION_COOKIE } from '../auth.js'
+import { hashPassword, verifyPassword, createSession, destroySession, createPasswordResetToken, consumePasswordResetToken, SESSION_COOKIE } from '../auth.js'
+import { sendPasswordResetEmail } from '../email.js'
 
 export const authRouter = Router()
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'http://localhost:5173'
 
 function setSessionCookie(res: import('express').Response, token: string, expires: Date) {
   res.cookie(SESSION_COOKIE, token, {
@@ -72,6 +74,48 @@ authRouter.post('/login', async (req, res) => {
   const { token, expires } = await createSession(row.id)
   setSessionCookie(res, token, expires)
   res.json({ user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin } })
+})
+
+// نفس الرد بالظبط سواء كان الإيميل مسجّل أو لأ، عشان محدش يقدر يكتشف إيميلات عملاء حقيقيين
+// عن طريق تجربة إيميلات عشوائية على الـ endpoint ده (user enumeration).
+authRouter.post('/forgot-password', async (req, res) => {
+  const { email } = req.body ?? {}
+  if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
+    res.status(400).json({ error: 'invalid_email' })
+    return
+  }
+
+  const { rows } = await pool.query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email.toLowerCase()])
+  const user = rows[0]
+  if (user) {
+    const token = await createPasswordResetToken(user.id)
+    const resetUrl = `${PUBLIC_APP_URL}/reset-password?token=${token}`
+    await sendPasswordResetEmail(email.toLowerCase(), resetUrl)
+  }
+  res.status(204).end()
+})
+
+authRouter.post('/reset-password', async (req, res) => {
+  const { token, password } = req.body ?? {}
+  if (typeof token !== 'string' || typeof password !== 'string') {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: 'weak_password' })
+    return
+  }
+
+  const userId = await consumePasswordResetToken(token)
+  if (!userId) {
+    res.status(400).json({ error: 'invalid_or_expired_token' })
+    return
+  }
+
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(password), userId])
+  // إبطال كل الجلسات القديمة بعد تغيير كلمة المرور — لو الحساب كان مخترق، الجلسة القديمة تتقفل فورًا
+  await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId])
+  res.status(204).end()
 })
 
 authRouter.post('/logout', async (req, res) => {

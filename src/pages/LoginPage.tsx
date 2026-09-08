@@ -39,6 +39,7 @@ export function LoginPage() {
         </label>
         {error && <div className="form-error-banner">{error}</div>}
         <button className="primary-button" disabled={submitting} onClick={submit}>{ar.auth.loginSubmit}</button>
+        <Link to="/forgot-password" className="auth-forgot-link">{ar.auth.forgotPasswordLink}</Link>
       </div>
       <div className="auth-switch">
         <span>{ar.auth.noAccountYet}</span>

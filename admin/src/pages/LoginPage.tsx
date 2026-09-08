@@ -44,6 +44,7 @@ export function LoginPage() {
         </label>
         {error && <div className="admin-login-error">{error}</div>}
         <button className="admin-login-submit" disabled={submitting} onClick={submit}>تسجيل الدخول</button>
+        <a className="admin-login-forgot" href="/forgot-password">نسيت كلمة المرور؟</a>
         <p className="admin-login-note">هذا الحساب يجب أن يكون مسجّلاً كعميل أولاً ثم مرقّى لصلاحية مدير عبر: npm run make-admin --prefix server -- email</p>
       </div>
     </div>

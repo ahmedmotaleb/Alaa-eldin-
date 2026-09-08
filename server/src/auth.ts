@@ -5,6 +5,7 @@ import { pool } from './db.js'
 
 export const SESSION_COOKIE = 'session_token'
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const RESET_TTL_MS = 60 * 60 * 1000 // ساعة واحدة
 
 export function hashPassword(password: string) {
   return bcrypt.hashSync(password, 10)
@@ -27,6 +28,30 @@ export async function createSession(userId: string) {
 
 export async function destroySession(token: string) {
   await pool.query('DELETE FROM sessions WHERE token = $1', [token])
+}
+
+export async function createPasswordResetToken(userId: string) {
+  const token = crypto.randomBytes(32).toString('hex')
+  const now = new Date()
+  const expires = new Date(now.getTime() + RESET_TTL_MS)
+  // رمز واحد فعّال بحد أقصى لكل مستخدم — طلب استعادة جديد يلغي أي رمز سابق لسه شغال
+  await pool.query('DELETE FROM password_resets WHERE user_id = $1', [userId])
+  await pool.query(
+    'INSERT INTO password_resets (token, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)',
+    [token, userId, now.toISOString(), expires.toISOString()]
+  )
+  return token
+}
+
+export async function consumePasswordResetToken(token: string) {
+  const { rows } = await pool.query<{ userId: string }>(
+    'SELECT user_id as "userId" FROM password_resets WHERE token = $1 AND expires_at > $2',
+    [token, new Date().toISOString()]
+  )
+  const row = rows[0]
+  if (!row) return null
+  await pool.query('DELETE FROM password_resets WHERE token = $1', [token])
+  return row.userId
 }
 
 export interface AuthedUser {
