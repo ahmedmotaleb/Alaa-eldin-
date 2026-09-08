@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminExpensesRouter = Router()
@@ -15,12 +15,12 @@ interface ExpenseRow {
 }
 
 const SELECT_EXPENSE = `
-  SELECT id, category, amount, note, expense_date as expenseDate, created_at as createdAt
+  SELECT id, category, amount, note, expense_date as "expenseDate", created_at as "createdAt"
   FROM expenses
 `
 
-adminExpensesRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_EXPENSE} ORDER BY expense_date DESC, id DESC`).all() as ExpenseRow[]
+adminExpensesRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<ExpenseRow>(`${SELECT_EXPENSE} ORDER BY expense_date DESC, id DESC`)
   res.json({ expenses: rows })
 })
 
@@ -33,25 +33,26 @@ function validate(b: Record<string, unknown>) {
   )
 }
 
-adminExpensesRouter.post('/', (req, res) => {
+adminExpensesRouter.post('/', async (req, res) => {
   const b = req.body ?? {}
   if (!validate(b)) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  const insert = db.prepare(`
-    INSERT INTO expenses (category, amount, note, expense_date)
-    VALUES (?, ?, ?, ?)
-  `)
-  const result = insert.run(b.category.trim(), b.amount, typeof b.note === 'string' ? b.note.trim() : '', b.expenseDate)
+  const { rows: insertedRows } = await pool.query<{ id: number }>(
+    `INSERT INTO expenses (category, amount, note, expense_date, created_at)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [b.category.trim(), b.amount, typeof b.note === 'string' ? b.note.trim() : '', b.expenseDate, new Date().toISOString()]
+  )
 
-  const row = db.prepare(`${SELECT_EXPENSE} WHERE id = ?`).get(result.lastInsertRowid) as ExpenseRow
-  res.status(201).json({ expense: row })
+  const { rows } = await pool.query<ExpenseRow>(`${SELECT_EXPENSE} WHERE id = $1`, [insertedRows[0].id])
+  res.status(201).json({ expense: rows[0] })
 })
 
-adminExpensesRouter.patch('/:id', (req, res) => {
-  const existing = db.prepare(`${SELECT_EXPENSE} WHERE id = ?`).get(req.params.id) as ExpenseRow | undefined
+adminExpensesRouter.patch('/:id', async (req, res) => {
+  const { rows: existingRows } = await pool.query<ExpenseRow>(`${SELECT_EXPENSE} WHERE id = $1`, [req.params.id])
+  const existing = existingRows[0]
   if (!existing) {
     res.status(404).json({ error: 'expense_not_found' })
     return
@@ -63,18 +64,18 @@ adminExpensesRouter.patch('/:id', (req, res) => {
     return
   }
 
-  db.prepare(`
-    UPDATE expenses SET category = ?, amount = ?, note = ?, expense_date = ?
-    WHERE id = ?
-  `).run(b.category, b.amount, b.note ?? '', b.expenseDate, req.params.id)
+  await pool.query(
+    'UPDATE expenses SET category = $1, amount = $2, note = $3, expense_date = $4 WHERE id = $5',
+    [b.category, b.amount, b.note ?? '', b.expenseDate, req.params.id]
+  )
 
-  const row = db.prepare(`${SELECT_EXPENSE} WHERE id = ?`).get(req.params.id) as ExpenseRow
-  res.json({ expense: row })
+  const { rows } = await pool.query<ExpenseRow>(`${SELECT_EXPENSE} WHERE id = $1`, [req.params.id])
+  res.json({ expense: rows[0] })
 })
 
-adminExpensesRouter.delete('/:id', (req, res) => {
-  const result = db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id)
-  if (result.changes === 0) {
+adminExpensesRouter.delete('/:id', async (req, res) => {
+  const result = await pool.query('DELETE FROM expenses WHERE id = $1', [req.params.id])
+  if (result.rowCount === 0) {
     res.status(404).json({ error: 'expense_not_found' })
     return
   }

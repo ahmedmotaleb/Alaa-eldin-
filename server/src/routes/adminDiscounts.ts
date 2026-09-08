@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { findDiscount, type DiscountRow } from '../discounts.js'
 
@@ -7,8 +7,8 @@ export const adminDiscountsRouter = Router()
 adminDiscountsRouter.use(requireAdmin)
 
 const SELECT_DISCOUNT = `
-  SELECT code, type, value, min_order as minOrder, max_uses as maxUses, used_count as usedCount,
-         active, expires_at as expiresAt, created_at as createdAt
+  SELECT code, type, value, min_order as "minOrder", max_uses as "maxUses", used_count as "usedCount",
+         active, expires_at as "expiresAt", created_at as "createdAt"
   FROM discounts
 `
 
@@ -16,8 +16,8 @@ function serialize(row: DiscountRow) {
   return { ...row, active: !!row.active }
 }
 
-adminDiscountsRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_DISCOUNT} ORDER BY created_at DESC`).all() as DiscountRow[]
+adminDiscountsRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} ORDER BY created_at DESC`)
   res.json({ discounts: rows.map(serialize) })
 })
 
@@ -46,46 +46,48 @@ function validateBody(body: unknown) {
   }
 }
 
-adminDiscountsRouter.post('/', (req, res) => {
+adminDiscountsRouter.post('/', async (req, res) => {
   const data = validateBody(req.body)
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  if (findDiscount(data.code)) {
+  if (await findDiscount(data.code)) {
     res.status(409).json({ error: 'code_taken' })
     return
   }
 
-  db.prepare(`
-    INSERT INTO discounts (code, type, value, min_order, max_uses, used_count, active, expires_at)
-    VALUES (@code, @type, @value, @minOrder, @maxUses, 0, @active, @expiresAt)
-  `).run({ ...data, active: data.active ? 1 : 0 })
+  await pool.query(
+    `INSERT INTO discounts (code, type, value, min_order, max_uses, used_count, active, expires_at, created_at)
+     VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)`,
+    [data.code, data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, new Date().toISOString()]
+  )
 
-  const row = db.prepare(`${SELECT_DISCOUNT} WHERE code = ?`).get(data.code) as DiscountRow
-  res.status(201).json({ discount: serialize(row) })
+  const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} WHERE code = $1`, [data.code])
+  res.status(201).json({ discount: serialize(rows[0]) })
 })
 
-adminDiscountsRouter.patch('/:code', (req, res) => {
-  const existing = findDiscount(req.params.code)
+adminDiscountsRouter.patch('/:code', async (req, res) => {
+  const existing = await findDiscount(req.params.code)
   if (!existing) {
     res.status(404).json({ error: 'discount_not_found' })
     return
   }
 
-  const data = validateBody({ ...existing, code: existing.code, ...(req.body ?? {}) })
+  const data = validateBody({ ...serialize(existing), code: existing.code, ...(req.body ?? {}) })
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
   // كود الخصم مفتاح أساسي ولا يمكن تغييره بعد الإنشاء — لتفادي كسر ربطه بالطلبات السابقة.
-  db.prepare(`
-    UPDATE discounts SET type=@type, value=@value, min_order=@minOrder, max_uses=@maxUses, active=@active, expires_at=@expiresAt
-    WHERE code=@code
-  `).run({ ...data, code: existing.code, active: data.active ? 1 : 0 })
+  await pool.query(
+    `UPDATE discounts SET type=$1, value=$2, min_order=$3, max_uses=$4, active=$5, expires_at=$6
+     WHERE code=$7`,
+    [data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, existing.code]
+  )
 
-  const row = db.prepare(`${SELECT_DISCOUNT} WHERE code = ?`).get(existing.code) as DiscountRow
-  res.json({ discount: serialize(row) })
+  const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} WHERE code = $1`, [existing.code])
+  res.json({ discount: serialize(rows[0]) })
 })

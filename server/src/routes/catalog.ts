@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 
 export const catalogRouter = Router()
 
@@ -44,16 +44,16 @@ function serializeProduct(row: ProductRow) {
   }
 }
 
-catalogRouter.get('/categories', (_req, res) => {
-  const rows = db.prepare('SELECT id, name, emoji, tint FROM categories ORDER BY sort_order').all() as CategoryRow[]
+catalogRouter.get('/categories', async (_req, res) => {
+  const { rows } = await pool.query<CategoryRow>('SELECT id, name, emoji, tint FROM categories ORDER BY sort_order')
   res.json({ categories: rows })
 })
 
-catalogRouter.get('/products', (_req, res) => {
-  const rows = db.prepare(`
-    SELECT id, slug, category_id as categoryId, name, description, price, old_price as oldPrice,
-           unit, emoji, available, bestseller, offer, order_count as orderCount
+catalogRouter.get('/products', async (_req, res) => {
+  const { rows } = await pool.query<ProductRow>(`
+    SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice",
+           unit, emoji, available, bestseller, offer, order_count as "orderCount"
     FROM products ORDER BY name
-  `).all() as ProductRow[]
+  `)
   res.json({ products: rows.map(serializeProduct) })
 })

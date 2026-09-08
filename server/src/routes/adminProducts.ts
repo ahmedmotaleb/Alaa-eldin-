@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
-import { db } from '../db.js'
+import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminProductsRouter = Router()
@@ -28,8 +28,8 @@ interface ProductRow {
 }
 
 const SELECT_PRODUCT = `
-  SELECT id, slug, category_id as categoryId, name, description, price, old_price as oldPrice, cost,
-         unit, emoji, available, bestseller, offer, order_count as orderCount, stock, alert_threshold as alertThreshold,
+  SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
+         unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
          barcode, brand
   FROM products
 `
@@ -44,13 +44,14 @@ function serialize(row: ProductRow) {
   }
 }
 
-adminProductsRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_PRODUCT} ORDER BY name`).all() as ProductRow[]
+adminProductsRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} ORDER BY name`)
   res.json({ products: rows.map(serialize) })
 })
 
-adminProductsRouter.get('/:id', (req, res) => {
-  const row = db.prepare(`${SELECT_PRODUCT} WHERE id = ?`).get(req.params.id) as ProductRow | undefined
+adminProductsRouter.get('/:id', async (req, res) => {
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
+  const row = rows[0]
   if (!row) {
     res.status(404).json({ error: 'product_not_found' })
     return
@@ -58,7 +59,7 @@ adminProductsRouter.get('/:id', (req, res) => {
   res.json({ product: serialize(row) })
 })
 
-function validateBody(body: unknown) {
+async function validateBody(body: unknown) {
   const b = body as Record<string, unknown>
   if (
     typeof b?.slug !== 'string' || !b.slug.trim() ||
@@ -74,8 +75,8 @@ function validateBody(body: unknown) {
     typeof b?.alertThreshold !== 'number' || b.alertThreshold < 0
   ) return null
 
-  const category = db.prepare('SELECT id FROM categories WHERE id = ?').get(b.categoryId)
-  if (!category) return null
+  const { rows: categoryRows } = await pool.query('SELECT id FROM categories WHERE id = $1', [b.categoryId])
+  if (!categoryRows[0]) return null
 
   return {
     slug: b.slug.trim(),
@@ -97,77 +98,80 @@ function validateBody(body: unknown) {
   }
 }
 
-adminProductsRouter.post('/', (req, res) => {
-  const data = validateBody(req.body)
+adminProductsRouter.post('/', async (req, res) => {
+  const data = await validateBody(req.body)
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  const existing = db.prepare('SELECT id FROM products WHERE slug = ?').get(data.slug)
-  if (existing) {
+  const { rows: existingRows } = await pool.query('SELECT id FROM products WHERE slug = $1', [data.slug])
+  if (existingRows[0]) {
     res.status(409).json({ error: 'slug_taken' })
     return
   }
 
   const id = 'p' + crypto.randomBytes(4).toString('hex')
-  db.prepare(`
-    INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand)
-    VALUES (@id, @slug, @categoryId, @name, @description, @price, @oldPrice, @cost, @unit, @emoji, @available, @bestseller, @offer, 0, @stock, @alertThreshold, @barcode, @brand)
-  `).run({
-    id, ...data,
-    available: data.available ? 1 : 0,
-    bestseller: data.bestseller ? 1 : 0,
-    offer: data.offer ? 1 : 0
-  })
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, $14, $15, $16, $17, $18)`,
+    [
+      id, data.slug, data.categoryId, data.name, data.description, data.price, data.oldPrice, data.cost, data.unit, data.emoji,
+      data.available ? 1 : 0, data.bestseller ? 1 : 0, data.offer ? 1 : 0, data.stock, data.alertThreshold, data.barcode, data.brand,
+      new Date().toISOString()
+    ]
+  )
 
-  const row = db.prepare(`${SELECT_PRODUCT} WHERE id = ?`).get(id) as ProductRow
-  res.status(201).json({ product: serialize(row) })
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  res.status(201).json({ product: serialize(rows[0]) })
 })
 
-adminProductsRouter.patch('/:id', (req, res) => {
-  const existing = db.prepare(`${SELECT_PRODUCT} WHERE id = ?`).get(req.params.id) as ProductRow | undefined
+adminProductsRouter.patch('/:id', async (req, res) => {
+  const { rows: existingRows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
+  const existing = existingRows[0]
   if (!existing) {
     res.status(404).json({ error: 'product_not_found' })
     return
   }
 
-  const data = validateBody({ ...serialize(existing), ...(req.body ?? {}) })
+  const data = await validateBody({ ...serialize(existing), ...(req.body ?? {}) })
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
   if (data.slug) {
-    const slugOwner = db.prepare('SELECT id FROM products WHERE slug = ? AND id != ?').get(data.slug, req.params.id)
-    if (slugOwner) {
+    const { rows: slugOwnerRows } = await pool.query('SELECT id FROM products WHERE slug = $1 AND id != $2', [data.slug, req.params.id])
+    if (slugOwnerRows[0]) {
       res.status(409).json({ error: 'slug_taken' })
       return
     }
   }
 
   const stockDiff = data.stock - existing.stock
-  const updateProduct = db.prepare(`
-    UPDATE products SET slug=@slug, category_id=@categoryId, name=@name, description=@description, price=@price,
-      old_price=@oldPrice, cost=@cost, unit=@unit, emoji=@emoji, available=@available, bestseller=@bestseller,
-      offer=@offer, stock=@stock, alert_threshold=@alertThreshold, barcode=@barcode, brand=@brand
-    WHERE id=@id
-  `)
-  const insertMovement = db.prepare(`
-    INSERT INTO stock_movements (product_id, type, quantity_change, note)
-    VALUES (?, 'adjustment', ?, 'تعديل من صفحة المنتج')
-  `)
 
-  db.transaction(() => {
-    updateProduct.run({
-      id: req.params.id, ...data,
-      available: data.available ? 1 : 0,
-      bestseller: data.bestseller ? 1 : 0,
-      offer: data.offer ? 1 : 0
-    })
-    if (stockDiff !== 0) insertMovement.run(req.params.id, stockDiff)
-  })()
+  await withTransaction(async client => {
+    await client.query(
+      `UPDATE products SET slug=$1, category_id=$2, name=$3, description=$4, price=$5,
+         old_price=$6, cost=$7, unit=$8, emoji=$9, available=$10, bestseller=$11,
+         offer=$12, stock=$13, alert_threshold=$14, barcode=$15, brand=$16
+       WHERE id=$17`,
+      [
+        data.slug, data.categoryId, data.name, data.description, data.price,
+        data.oldPrice, data.cost, data.unit, data.emoji, data.available ? 1 : 0, data.bestseller ? 1 : 0,
+        data.offer ? 1 : 0, data.stock, data.alertThreshold, data.barcode, data.brand,
+        req.params.id
+      ]
+    )
+    if (stockDiff !== 0) {
+      await client.query(
+        `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at)
+         VALUES ($1, 'adjustment', $2, 'تعديل من صفحة المنتج', $3)`,
+        [req.params.id, stockDiff, new Date().toISOString()]
+      )
+    }
+  })
 
-  const row = db.prepare(`${SELECT_PRODUCT} WHERE id = ?`).get(req.params.id) as ProductRow
-  res.json({ product: serialize(row) })
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
+  res.json({ product: serialize(rows[0]) })
 })

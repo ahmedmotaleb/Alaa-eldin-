@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminCategoriesRouter = Router()
@@ -12,14 +12,14 @@ interface CategoryRow {
   tint: string
 }
 
-adminCategoriesRouter.get('/', (_req, res) => {
-  const categories = db.prepare('SELECT id, name, emoji, tint FROM categories ORDER BY sort_order').all() as CategoryRow[]
-  const counts = db.prepare('SELECT category_id as categoryId, COUNT(*) as n FROM products GROUP BY category_id').all() as { categoryId: string, n: number }[]
-  const countMap = new Map(counts.map(c => [c.categoryId, c.n]))
+adminCategoriesRouter.get('/', async (_req, res) => {
+  const { rows: categories } = await pool.query<CategoryRow>('SELECT id, name, emoji, tint FROM categories ORDER BY sort_order')
+  const { rows: counts } = await pool.query<{ categoryId: string, n: string }>('SELECT category_id as "categoryId", COUNT(*) as n FROM products GROUP BY category_id')
+  const countMap = new Map(counts.map(c => [c.categoryId, Number(c.n)]))
   res.json({ categories: categories.map(c => ({ ...c, productCount: countMap.get(c.id) ?? 0 })) })
 })
 
-adminCategoriesRouter.post('/', (req, res) => {
+adminCategoriesRouter.post('/', async (req, res) => {
   const { id, name, emoji, tint } = req.body ?? {}
   if (
     typeof id !== 'string' || !id.trim() ||
@@ -31,15 +31,18 @@ adminCategoriesRouter.post('/', (req, res) => {
     return
   }
 
-  const existing = db.prepare('SELECT id FROM categories WHERE id = ?').get(id)
-  if (existing) {
+  const { rows: existingRows } = await pool.query('SELECT id FROM categories WHERE id = $1', [id])
+  if (existingRows[0]) {
     res.status(409).json({ error: 'category_id_taken' })
     return
   }
 
-  const maxOrder = (db.prepare('SELECT MAX(sort_order) as m FROM categories').get() as { m: number | null }).m ?? 0
-  db.prepare('INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES (?, ?, ?, ?, ?)')
-    .run(id.trim(), name.trim(), emoji.trim(), tint.trim(), maxOrder + 1)
+  const { rows: maxRows } = await pool.query<{ m: number | null }>('SELECT MAX(sort_order) as m FROM categories')
+  const maxOrder = maxRows[0].m ?? 0
+  await pool.query(
+    'INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, $2, $3, $4, $5)',
+    [id.trim(), name.trim(), emoji.trim(), tint.trim(), maxOrder + 1]
+  )
 
   res.status(201).json({ category: { id: id.trim(), name: name.trim(), emoji: emoji.trim(), tint: tint.trim(), productCount: 0 } })
 })

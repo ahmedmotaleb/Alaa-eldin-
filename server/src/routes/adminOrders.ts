@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminOrdersRouter = Router()
@@ -28,10 +28,11 @@ interface OrderRow {
   settlementId: number | null
 }
 
-function serializeOrder(row: OrderRow) {
-  const items = db.prepare(
-    'SELECT product_id as productId, name, unit, unit_price as unitPrice, quantity, line_total as lineTotal FROM order_items WHERE order_id = ?'
-  ).all(row.id)
+async function serializeOrder(row: OrderRow) {
+  const { rows: items } = await pool.query(
+    'SELECT product_id as "productId", name, unit, unit_price as "unitPrice", quantity, line_total as "lineTotal" FROM order_items WHERE order_id = $1',
+    [row.id]
+  )
 
   return {
     id: row.id,
@@ -59,46 +60,47 @@ function serializeOrder(row: OrderRow) {
 }
 
 const SELECT_ORDER = `
-  SELECT o.id as id, o.created_at as createdAt, o.delivery_slot as deliverySlot, o.payment_method as paymentMethod,
-         o.customer_full_name as customerFullName, o.customer_mobile as customerMobile, o.customer_governorate as customerGovernorate, o.customer_address as customerAddress,
-         o.subtotal as subtotal, o.delivery_fee as deliveryFee, o.total as total, o.status as status,
-         o.discount_code as discountCode, o.discount_amount as discountAmount,
-         o.rider_id as riderId, r.name as riderName, o.settlement_id as settlementId,
-         u.email as accountEmail
+  SELECT o.id as id, o.created_at as "createdAt", o.delivery_slot as "deliverySlot", o.payment_method as "paymentMethod",
+         o.customer_full_name as "customerFullName", o.customer_mobile as "customerMobile", o.customer_governorate as "customerGovernorate", o.customer_address as "customerAddress",
+         o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
+         o.discount_code as "discountCode", o.discount_amount as "discountAmount",
+         o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
+         u.email as "accountEmail"
   FROM orders o JOIN users u ON u.id = o.user_id
        LEFT JOIN riders r ON r.id = o.rider_id
 `
 
-adminOrdersRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_ORDER} ORDER BY o.created_at DESC`).all() as OrderRow[]
-  res.json({ orders: rows.map(serializeOrder) })
+adminOrdersRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<OrderRow>(`${SELECT_ORDER} ORDER BY o.created_at DESC`)
+  res.json({ orders: await Promise.all(rows.map(serializeOrder)) })
 })
 
-adminOrdersRouter.get('/:id', (req, res) => {
-  const row = db.prepare(`${SELECT_ORDER} WHERE o.id = ?`).get(req.params.id) as OrderRow | undefined
+adminOrdersRouter.get('/:id', async (req, res) => {
+  const { rows } = await pool.query<OrderRow>(`${SELECT_ORDER} WHERE o.id = $1`, [req.params.id])
+  const row = rows[0]
   if (!row) {
     res.status(404).json({ error: 'order_not_found' })
     return
   }
-  res.json({ order: serializeOrder(row) })
+  res.json({ order: await serializeOrder(row) })
 })
 
-adminOrdersRouter.patch('/:id/status', (req, res) => {
+adminOrdersRouter.patch('/:id/status', async (req, res) => {
   const { status } = req.body ?? {}
   if (typeof status !== 'string' || !STATUSES.includes(status)) {
     res.status(400).json({ error: 'invalid_status' })
     return
   }
 
-  const result = db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, req.params.id)
-  if (result.changes === 0) {
+  const result = await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
+  if (result.rowCount === 0) {
     res.status(404).json({ error: 'order_not_found' })
     return
   }
   res.status(204).end()
 })
 
-adminOrdersRouter.patch('/:id/rider', (req, res) => {
+adminOrdersRouter.patch('/:id/rider', async (req, res) => {
   let { riderId } = req.body ?? {}
   if (riderId !== null && typeof riderId !== 'string') {
     res.status(400).json({ error: 'invalid_rider' })
@@ -106,15 +108,15 @@ adminOrdersRouter.patch('/:id/rider', (req, res) => {
   }
   if (typeof riderId === 'string' && !riderId.trim()) riderId = null
   if (riderId) {
-    const rider = db.prepare('SELECT id FROM riders WHERE id = ?').get(riderId)
-    if (!rider) {
+    const { rows } = await pool.query('SELECT id FROM riders WHERE id = $1', [riderId])
+    if (!rows[0]) {
       res.status(404).json({ error: 'rider_not_found' })
       return
     }
   }
 
-  const result = db.prepare('UPDATE orders SET rider_id = ? WHERE id = ?').run(riderId, req.params.id)
-  if (result.changes === 0) {
+  const result = await pool.query('UPDATE orders SET rider_id = $1 WHERE id = $2', [riderId, req.params.id])
+  if (result.rowCount === 0) {
     res.status(404).json({ error: 'order_not_found' })
     return
   }

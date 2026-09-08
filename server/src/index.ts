@@ -3,7 +3,7 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import './db.js'
+import { initDb } from './db.js'
 import { attachUser } from './auth.js'
 import { authRouter } from './routes/auth.js'
 import { ordersRouter } from './routes/orders.js'
@@ -28,6 +28,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
 const DEV_ORIGIN = process.env.DEV_ORIGIN ?? 'http://localhost:5183'
 const isProduction = process.env.NODE_ENV === 'production'
+
+await initDb()
 
 const app = express()
 app.disable('x-powered-by')
@@ -75,6 +77,11 @@ if (isProduction) {
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'not_found' })
+})
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err)
+  res.status(500).json({ error: 'server_error' })
 })
 
 app.listen(PORT, () => {

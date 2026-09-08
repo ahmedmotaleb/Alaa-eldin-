@@ -5,12 +5,19 @@
 المشروع مكوّن من ثلاثة أجزاء:
 
 - الواجهة (هذا المجلد): تطبيق العميل، React + Vite.
-- الخادم (`server/`): Node.js + Express + SQLite — حسابات المستخدمين والطلبات فعلاً محفوظة على السيرفر، مش localStorage.
+- الخادم (`server/`): Node.js + Express + PostgreSQL — حسابات المستخدمين والطلبات فعلاً محفوظة على السيرفر، مش localStorage.
 - لوحة تحكم صاحب المتجر (`admin/`): تطبيق React + Vite منفصل، لإدارة كل جوانب المتجر (طلبات، منتجات، عملاء، خصومات، تحليلات، محفظة، تسويق، إعدادات) — راجع قسم "لوحة التحكم" بالأسفل للتفاصيل الكاملة.
 
 ## التشغيل (تطوير)
 
+يحتاج المشروع قاعدة بيانات PostgreSQL شغّالة قبل تشغيل الخادم — محلياً (`postgresql` مثبت ومُشغَّل) أو أي استضافة PostgreSQL جاهزة:
+
 ```bash
+# تشغيل PostgreSQL محلياً (Ubuntu/Debian) وإنشاء قاعدة البيانات مرة واحدة فقط
+sudo service postgresql start
+sudo -u postgres createdb alaa_eldin
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+
 npm install
 cd server && npm install && cd ..
 cd admin && npm install && cd ..
@@ -32,7 +39,7 @@ npm run start          # يشغّل خادم Express واحد يخدم كل شي
 
 في وضع الإنتاج (`NODE_ENV=production`) الخادم نفسه يقدّم ملفات `dist/` (تطبيق العميل على `/`) و`admin/dist/` (لوحة التحكم على `/admin`) بالإضافة إلى `/api`، فلا حاجة لإعداد CORS أو منافذ منفصلة.
 
-قاعدة البيانات ملف SQLite محلي في `server/data/app.sqlite` (يُنشأ تلقائياً، غير مرفوع بالـ git).
+قاعدة البيانات PostgreSQL — الاتصال عبر متغيّر البيئة `DATABASE_URL` (افتراضياً `postgresql://postgres:postgres@localhost:5432/alaa_eldin` لو مش موجود). الجداول تُنشأ تلقائياً عند أول تشغيل للخادم (`server/src/db.ts`, دالة `initDb()`)، والبذرة الأولى (الأقسام/المنتجات/بانر افتراضي/إعدادات المتجر) تُزرع تلقائياً لو الجداول فاضية — لا حاجة لأي هجرة (migration) يدوية.
 
 ## أهم الإعدادات
 

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { hashPassword, verifyPassword, createSession, destroySession, SESSION_COOKIE } from '../auth.js'
 
 export const authRouter = Router()
@@ -17,7 +17,7 @@ function setSessionCookie(res: import('express').Response, token: string, expire
   })
 }
 
-authRouter.post('/register', (req, res) => {
+authRouter.post('/register', async (req, res) => {
   const { email, password, fullName } = req.body ?? {}
 
   if (typeof email !== 'string' || typeof password !== 'string' || typeof fullName !== 'string' || !fullName.trim()) {
@@ -33,45 +33,50 @@ authRouter.post('/register', (req, res) => {
     return
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase())
-  if (existing) {
+  const { rows: existingRows } = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()])
+  if (existingRows[0]) {
     res.status(409).json({ error: 'email_taken' })
     return
   }
 
   const id = crypto.randomUUID()
   const createdAt = new Date().toISOString()
-  db.prepare('INSERT INTO users (id, email, password_hash, full_name, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, email.toLowerCase(), hashPassword(password), fullName.trim(), createdAt)
+  await pool.query(
+    'INSERT INTO users (id, email, password_hash, full_name, created_at) VALUES ($1, $2, $3, $4, $5)',
+    [id, email.toLowerCase(), hashPassword(password), fullName.trim(), createdAt]
+  )
 
-  const { token, expires } = createSession(id)
+  const { token, expires } = await createSession(id)
   setSessionCookie(res, token, expires)
   res.status(201).json({ user: { id, email: email.toLowerCase(), fullName: fullName.trim(), createdAt, isAdmin: false } })
 })
 
-authRouter.post('/login', (req, res) => {
+authRouter.post('/login', async (req, res) => {
   const { email, password } = req.body ?? {}
   if (typeof email !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  const row = db.prepare('SELECT id, email, password_hash as passwordHash, full_name as fullName, created_at as createdAt, is_admin as isAdmin FROM users WHERE email = ?')
-    .get(email.toLowerCase()) as { id: string, email: string, passwordHash: string, fullName: string, createdAt: string, isAdmin: number } | undefined
+  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, createdAt: string, isAdmin: number }>(
+    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", created_at as "createdAt", is_admin as "isAdmin" FROM users WHERE email = $1',
+    [email.toLowerCase()]
+  )
+  const row = rows[0]
 
   if (!row || !verifyPassword(password, row.passwordHash)) {
     res.status(401).json({ error: 'invalid_credentials' })
     return
   }
 
-  const { token, expires } = createSession(row.id)
+  const { token, expires } = await createSession(row.id)
   setSessionCookie(res, token, expires)
   res.json({ user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin } })
 })
 
-authRouter.post('/logout', (req, res) => {
+authRouter.post('/logout', async (req, res) => {
   const token = req.cookies?.[SESSION_COOKIE]
-  if (token) destroySession(token)
+  if (token) await destroySession(token)
   res.clearCookie(SESSION_COOKIE, { path: '/' })
   res.status(204).end()
 })

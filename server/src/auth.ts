@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import type { Request, Response, NextFunction } from 'express'
-import { db } from './db.js'
+import { pool } from './db.js'
 
 export const SESSION_COOKIE = 'session_token'
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -14,17 +14,19 @@ export function verifyPassword(password: string, hash: string) {
   return bcrypt.compareSync(password, hash)
 }
 
-export function createSession(userId: string) {
+export async function createSession(userId: string) {
   const token = crypto.randomBytes(32).toString('hex')
   const now = new Date()
   const expires = new Date(now.getTime() + SESSION_TTL_MS)
-  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
-    .run(token, userId, now.toISOString(), expires.toISOString())
+  await pool.query(
+    'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)',
+    [token, userId, now.toISOString(), expires.toISOString()]
+  )
   return { token, expires }
 }
 
-export function destroySession(token: string) {
-  db.prepare('DELETE FROM sessions WHERE token = ?').run(token)
+export async function destroySession(token: string) {
+  await pool.query('DELETE FROM sessions WHERE token = $1', [token])
 }
 
 export interface AuthedUser {
@@ -35,12 +37,13 @@ export interface AuthedUser {
   isAdmin: boolean
 }
 
-function getUserBySession(token: string): AuthedUser | null {
-  const row = db.prepare(`
-    SELECT u.id as id, u.email as email, u.full_name as fullName, u.created_at as createdAt, u.is_admin as isAdmin
+async function getUserBySession(token: string): Promise<AuthedUser | null> {
+  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin'> & { isAdmin: number }>(`
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.created_at as "createdAt", u.is_admin as "isAdmin"
     FROM sessions s JOIN users u ON u.id = s.user_id
-    WHERE s.token = ? AND s.expires_at > ?
-  `).get(token, new Date().toISOString()) as (Omit<AuthedUser, 'isAdmin'> & { isAdmin: number }) | undefined
+    WHERE s.token = $1 AND s.expires_at > $2
+  `, [token, new Date().toISOString()])
+  const row = rows[0]
   return row ? { ...row, isAdmin: !!row.isAdmin } : null
 }
 
@@ -53,10 +56,10 @@ declare global {
   }
 }
 
-export function attachUser(req: Request, _res: Response, next: NextFunction) {
+export async function attachUser(req: Request, _res: Response, next: NextFunction) {
   const token = req.cookies?.[SESSION_COOKIE]
   if (token) {
-    const user = getUserBySession(token)
+    const user = await getUserBySession(token)
     if (user) req.user = user
   }
   next()

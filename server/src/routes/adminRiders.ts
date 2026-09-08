@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminRidersRouter = Router()
@@ -15,7 +15,7 @@ interface RiderRow {
 }
 
 const SELECT_RIDER = `
-  SELECT id, name, phone, active, created_at as createdAt
+  SELECT id, name, phone, active, created_at as "createdAt"
   FROM riders
 `
 
@@ -23,12 +23,12 @@ function serialize(row: RiderRow) {
   return { ...row, active: !!row.active }
 }
 
-adminRidersRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_RIDER} ORDER BY created_at DESC`).all() as RiderRow[]
+adminRidersRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<RiderRow>(`${SELECT_RIDER} ORDER BY created_at DESC`)
   res.json({ riders: rows.map(serialize) })
 })
 
-adminRidersRouter.post('/', (req, res) => {
+adminRidersRouter.post('/', async (req, res) => {
   const { name, phone } = req.body ?? {}
   if (typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'missing_fields' })
@@ -36,15 +36,18 @@ adminRidersRouter.post('/', (req, res) => {
   }
 
   const id = crypto.randomUUID()
-  db.prepare('INSERT INTO riders (id, name, phone, active) VALUES (?, ?, ?, 1)')
-    .run(id, name.trim(), typeof phone === 'string' ? phone.trim() : '')
+  await pool.query(
+    'INSERT INTO riders (id, name, phone, active, created_at) VALUES ($1, $2, $3, 1, $4)',
+    [id, name.trim(), typeof phone === 'string' ? phone.trim() : '', new Date().toISOString()]
+  )
 
-  const row = db.prepare(`${SELECT_RIDER} WHERE id = ?`).get(id) as RiderRow
-  res.status(201).json({ rider: serialize(row) })
+  const { rows } = await pool.query<RiderRow>(`${SELECT_RIDER} WHERE id = $1`, [id])
+  res.status(201).json({ rider: serialize(rows[0]) })
 })
 
-adminRidersRouter.patch('/:id', (req, res) => {
-  const existingRow = db.prepare(`${SELECT_RIDER} WHERE id = ?`).get(req.params.id) as RiderRow | undefined
+adminRidersRouter.patch('/:id', async (req, res) => {
+  const { rows: existingRows } = await pool.query<RiderRow>(`${SELECT_RIDER} WHERE id = $1`, [req.params.id])
+  const existingRow = existingRows[0]
   if (!existingRow) {
     res.status(404).json({ error: 'rider_not_found' })
     return
@@ -56,9 +59,11 @@ adminRidersRouter.patch('/:id', (req, res) => {
     return
   }
 
-  db.prepare('UPDATE riders SET name = ?, phone = ?, active = ? WHERE id = ?')
-    .run(b.name.trim(), typeof b.phone === 'string' ? b.phone.trim() : '', b.active ? 1 : 0, req.params.id)
+  await pool.query(
+    'UPDATE riders SET name = $1, phone = $2, active = $3 WHERE id = $4',
+    [b.name.trim(), typeof b.phone === 'string' ? b.phone.trim() : '', b.active ? 1 : 0, req.params.id]
+  )
 
-  const row = db.prepare(`${SELECT_RIDER} WHERE id = ?`).get(req.params.id) as RiderRow
-  res.json({ rider: serialize(row) })
+  const { rows } = await pool.query<RiderRow>(`${SELECT_RIDER} WHERE id = $1`, [req.params.id])
+  res.json({ rider: serialize(rows[0]) })
 })

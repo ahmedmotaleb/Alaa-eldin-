@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 
 export const bannersRouter = Router()
 
@@ -16,11 +16,11 @@ interface BannerRow {
 }
 
 const SELECT_BANNER = `
-  SELECT id, kicker, title, note, emoji, cta_label as ctaLabel, link, active, sort_order as sortOrder
+  SELECT id, kicker, title, note, emoji, cta_label as "ctaLabel", link, active, sort_order as "sortOrder"
   FROM banners
 `
 
-bannersRouter.get('/banners', (_req, res) => {
-  const rows = db.prepare(`${SELECT_BANNER} WHERE active = 1 ORDER BY sort_order ASC, id ASC`).all() as BannerRow[]
+bannersRouter.get('/banners', async (_req, res) => {
+  const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE active = 1 ORDER BY sort_order ASC, id ASC`)
   res.json({ banners: rows.map(r => ({ ...r, active: !!r.active })) })
 })

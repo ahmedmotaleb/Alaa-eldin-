@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { db } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 
 export const adminBannersRouter = Router()
@@ -18,7 +18,7 @@ interface BannerRow {
 }
 
 const SELECT_BANNER = `
-  SELECT id, kicker, title, note, emoji, cta_label as ctaLabel, link, active, sort_order as sortOrder
+  SELECT id, kicker, title, note, emoji, cta_label as "ctaLabel", link, active, sort_order as "sortOrder"
   FROM banners
 `
 
@@ -26,13 +26,14 @@ function serialize(row: BannerRow) {
   return { ...row, active: !!row.active }
 }
 
-adminBannersRouter.get('/', (_req, res) => {
-  const rows = db.prepare(`${SELECT_BANNER} ORDER BY sort_order ASC, id ASC`).all() as BannerRow[]
+adminBannersRouter.get('/', async (_req, res) => {
+  const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} ORDER BY sort_order ASC, id ASC`)
   res.json({ banners: rows.map(serialize) })
 })
 
-adminBannersRouter.get('/:id', (req, res) => {
-  const row = db.prepare(`${SELECT_BANNER} WHERE id = ?`).get(req.params.id) as BannerRow | undefined
+adminBannersRouter.get('/:id', async (req, res) => {
+  const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [req.params.id])
+  const row = rows[0]
   if (!row) {
     res.status(404).json({ error: 'banner_not_found' })
     return
@@ -62,26 +63,29 @@ function validateBody(body: unknown) {
   }
 }
 
-adminBannersRouter.post('/', (req, res) => {
+adminBannersRouter.post('/', async (req, res) => {
   const data = validateBody(req.body)
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM banners').get() as { m: number }).m
+  const { rows: maxRows } = await pool.query<{ m: number }>('SELECT COALESCE(MAX(sort_order), -1) as m FROM banners')
+  const maxOrder = maxRows[0].m
 
-  const result = db.prepare(`
-    INSERT INTO banners (kicker, title, note, emoji, cta_label, link, active, sort_order)
-    VALUES (@kicker, @title, @note, @emoji, @ctaLabel, @link, @active, @sortOrder)
-  `).run({ ...data, active: data.active ? 1 : 0, sortOrder: maxOrder + 1 })
+  const { rows: insertedRows } = await pool.query<{ id: number }>(
+    `INSERT INTO banners (kicker, title, note, emoji, cta_label, link, active, sort_order, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [data.kicker, data.title, data.note, data.emoji, data.ctaLabel, data.link, data.active ? 1 : 0, maxOrder + 1, new Date().toISOString()]
+  )
 
-  const row = db.prepare(`${SELECT_BANNER} WHERE id = ?`).get(result.lastInsertRowid) as BannerRow
-  res.status(201).json({ banner: serialize(row) })
+  const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [insertedRows[0].id])
+  res.status(201).json({ banner: serialize(rows[0]) })
 })
 
-adminBannersRouter.patch('/:id', (req, res) => {
-  const existing = db.prepare(`${SELECT_BANNER} WHERE id = ?`).get(req.params.id) as BannerRow | undefined
+adminBannersRouter.patch('/:id', async (req, res) => {
+  const { rows: existingRows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [req.params.id])
+  const existing = existingRows[0]
   if (!existing) {
     res.status(404).json({ error: 'banner_not_found' })
     return
@@ -93,12 +97,13 @@ adminBannersRouter.patch('/:id', (req, res) => {
     return
   }
 
-  db.prepare(`
-    UPDATE banners SET kicker=@kicker, title=@title, note=@note, emoji=@emoji, cta_label=@ctaLabel,
-      link=@link, active=@active, sort_order=@sortOrder
-    WHERE id=@id
-  `).run({ id: req.params.id, ...data, active: data.active ? 1 : 0 })
+  await pool.query(
+    `UPDATE banners SET kicker=$1, title=$2, note=$3, emoji=$4, cta_label=$5,
+       link=$6, active=$7, sort_order=$8
+     WHERE id=$9`,
+    [data.kicker, data.title, data.note, data.emoji, data.ctaLabel, data.link, data.active ? 1 : 0, data.sortOrder, req.params.id]
+  )
 
-  const row = db.prepare(`${SELECT_BANNER} WHERE id = ?`).get(req.params.id) as BannerRow
-  res.json({ banner: serialize(row) })
+  const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [req.params.id])
+  res.json({ banner: serialize(rows[0]) })
 })
