@@ -37,7 +37,7 @@ npm run build:admin    # لوحة التحكم -> admin/dist/
 npm run start          # يشغّل خادم Express واحد يخدم كل شيء (العميل + /admin + /api) على نفس المنفذ
 ```
 
-في وضع الإنتاج (`NODE_ENV=production`) الخادم نفسه يقدّم ملفات `dist/` (تطبيق العميل على `/`) و`admin/dist/` (لوحة التحكم على `/admin`) بالإضافة إلى `/api`، فلا حاجة لإعداد CORS أو منافذ منفصلة.
+في وضع الإنتاج (`NODE_ENV=production`) الخادم نفسه يقدّم ملفات `dist/` (تطبيق العميل على `/`) و`admin/dist/` (لوحة التحكم على `/admin`) بالإضافة إلى `/api`، فلا حاجة لإعداد CORS أو منافذ منفصلة. `npm run start` يستخدم حزمة `cross-env` لضبط `NODE_ENV` — بيشتغل على PowerShell/cmd.exe وليس على Bash/zsh بس (الصيغة القديمة `NODE_ENV=production node ...` مباشرة كانت بتفشل على PowerShell).
 
 قاعدة البيانات PostgreSQL — الاتصال عبر متغيّر البيئة `DATABASE_URL` (افتراضياً `postgresql://postgres:postgres@localhost:5432/alaa_eldin` لو مش موجود). الجداول تُنشأ تلقائياً عند أول تشغيل للخادم (`server/src/db.ts`, دالة `initDb()`)، والبذرة الأولى (الأقسام/المنتجات/بانر افتراضي/إعدادات المتجر) تُزرع تلقائياً لو الجداول فاضية — لا حاجة لأي هجرة (migration) يدوية.
 
