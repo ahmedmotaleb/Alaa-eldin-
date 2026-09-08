@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { api, type AdminSettings } from '../../utils/api'
+import { isValidEgyptianMobile } from '../../utils/phone'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 export function StoreSettingsPage() {
@@ -26,6 +27,10 @@ export function StoreSettingsPage() {
     if (!form) return
     setError('')
     setSuccess('')
+    if (!isValidEgyptianMobile(form.whatsappNumber.trim())) {
+      setError('أدخل رقم واتساب مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015')
+      return
+    }
     setSaving(true)
     try {
       const { settings } = await api.updateSettings(form)
@@ -62,8 +67,15 @@ export function StoreSettingsPage() {
           <div className="admin-form-card-sub">الرقم اللي بتوصل عليه طلبات العملاء</div>
         </div>
         <label>رقم واتساب المتجر
-          <input value={form.whatsappNumber} onChange={e => set('whatsappNumber', e.target.value)} placeholder="2010XXXXXXXX" />
-          <span className="admin-form-help">بصيغة دولية بدون علامة + — مثال مصر: 2010XXXXXXXX</span>
+          <input
+            value={form.whatsappNumber}
+            onChange={e => set('whatsappNumber', e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+            placeholder="01012345678"
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={11}
+          />
+          <span className="admin-form-help">بالصيغة المحلية المصرية فقط — مثال: 01012345678 (بدون +20)</span>
         </label>
 
         {error && <div className="admin-form-error">{error}</div>}

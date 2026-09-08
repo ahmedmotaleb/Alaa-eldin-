@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">علاء الدين</string>
+    <string name="title_activity_main">علاء الدين</string>
+    <string name="package_name">com.alaaeldin.supermarket</string>
+    <string name="custom_url_scheme">com.alaaeldin.supermarket</string>
+</resources>

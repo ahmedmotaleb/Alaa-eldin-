@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { deliverySlots } from '../data/deliverySlots'
 import { governorates } from '../data/governorates'
@@ -9,6 +9,7 @@ import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
 import { api, ApiError } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
+import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
 
 const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate: '', address: '' }
@@ -19,9 +20,22 @@ export function CheckoutPage() {
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
   const [slot, setSlot] = useState<DeliverySlotId>('now')
-  const [formError, setFormError] = useState(false)
+  const [touched, setTouched] = useState(false)
   const [apiError, setApiError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const nameValid = customer.fullName.trim().length >= 2 && customer.fullName.trim().length <= 100
+  const mobileValid = isValidEgyptianMobile(customer.mobile.trim())
+  const governorateValid = customer.governorate.trim().length > 0
+  const addressValid = customer.address.trim().length >= 5 && customer.address.trim().length <= 300
+  const formValid = nameValid && mobileValid && governorateValid && addressValid
+
+  const nameError = touched && !nameValid ? ar.checkout.nameError : ''
+  const mobileError = touched && !customer.mobile.trim()
+    ? ar.checkout.mobileRequiredError
+    : touched && !mobileValid ? ar.checkout.mobileInvalidError : ''
+  const governorateError = touched && !governorateValid ? ar.checkout.governorateError : ''
+  const addressError = touched && !addressValid ? ar.checkout.addressError : ''
   const [cartWasEmptyOnEntry] = useState(() => detailedItems.length === 0)
   // ثابت طول محاولة الدفع دي (حتى لو submit() اتنادت أكتر من مرة بسبب retry/timeout) —
   // عشان لو نفس الطلب وصل السيرفر فعلاً قبل كده، يرجع نفس الطلب بدل ما يتكرر (idempotency).
@@ -37,12 +51,9 @@ export function CheckoutPage() {
 
   async function submit() {
     if (!settings.codEnabled) return
-    if (!customer.fullName.trim() || !customer.mobile.trim() || !customer.governorate || !customer.address.trim()) {
-      setFormError(true)
-      return
-    }
+    setTouched(true)
+    if (!formValid) return
 
-    setFormError(false)
     setApiError('')
     setSubmitting(true)
 
@@ -86,20 +97,44 @@ export function CheckoutPage() {
       <div className="form-card">
         <h2>{ar.checkout.deliveryInfoTitle}</h2>
         <label>{ar.checkout.fullNameLabel}
-          <input value={customer.fullName} onChange={e => update('fullName', e.target.value)} placeholder={ar.checkout.fullNamePlaceholder} />
+          <input
+            value={customer.fullName}
+            onChange={e => update('fullName', e.target.value)}
+            placeholder={ar.checkout.fullNamePlaceholder}
+            maxLength={100}
+            aria-invalid={!!nameError}
+          />
         </label>
+        {nameError && <div className="field-error">{nameError}</div>}
         <label>{ar.checkout.mobileLabel}
-          <input value={customer.mobile} onChange={e => update('mobile', e.target.value)} placeholder={ar.checkout.mobilePlaceholder} />
+          <input
+            value={customer.mobile}
+            onChange={e => update('mobile', e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+            placeholder={ar.checkout.mobilePlaceholder}
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={11}
+            aria-invalid={!!mobileError}
+          />
         </label>
+        {mobileError && <div className="field-error">{mobileError}</div>}
         <label>{ar.checkout.governorateLabel}
-          <select value={customer.governorate} onChange={e => update('governorate', e.target.value)}>
+          <select value={customer.governorate} onChange={e => update('governorate', e.target.value)} aria-invalid={!!governorateError}>
             <option value="" disabled>{ar.checkout.governoratePlaceholder}</option>
             {governorates.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </label>
+        {governorateError && <div className="field-error">{governorateError}</div>}
         <label>{ar.checkout.addressLabel}
-          <input value={customer.address} onChange={e => update('address', e.target.value)} placeholder={ar.checkout.addressPlaceholder} />
+          <input
+            value={customer.address}
+            onChange={e => update('address', e.target.value)}
+            placeholder={ar.checkout.addressPlaceholder}
+            maxLength={300}
+            aria-invalid={!!addressError}
+          />
         </label>
+        {addressError && <div className="field-error">{addressError}</div>}
       </div>
 
       <div className="form-card">
@@ -141,10 +176,12 @@ export function CheckoutPage() {
         <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(total)}</span></div>
       </div>
 
-      {formError && <div className="form-error-banner">{ar.checkout.formError}</div>}
+      <Link to="/refund-exchange-policy" className="checkout-policy-link">{ar.checkout.policyLink}</Link>
+
+      {touched && !formValid && <div className="form-error-banner">{ar.checkout.formError}</div>}
       {apiError && <div className="form-error-banner">{apiError}</div>}
 
-      <StickyActionBar label={ar.checkout.submit} meta={formatMoney(total)} onClick={submit} disabled={submitting || !settings.codEnabled} />
+      <StickyActionBar label={ar.checkout.submit} meta={formatMoney(total)} onClick={submit} disabled={submitting || !settings.codEnabled || !formValid} />
     </div>
   )
 }

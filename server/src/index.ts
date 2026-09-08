@@ -30,6 +30,8 @@ import { adminExpensesRouter } from './routes/adminExpenses.js'
 import { adminRidersRouter } from './routes/adminRiders.js'
 import { adminSettlementsRouter } from './routes/adminSettlements.js'
 import { adminAuditLogsRouter } from './routes/adminAuditLogs.js'
+import { adminPagesRouter } from './routes/adminPages.js'
+import { pagesRouter } from './routes/pages.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
@@ -47,9 +49,27 @@ app.disable('x-powered-by')
 app.use(attachRequestId)
 app.use(apiRequestLogger)
 
-if (!isProduction) {
-  app.use(cors({ origin: DEV_ORIGIN, credentials: true }))
-}
+// الويب (تطوير وإنتاج) بيكلّم الـ API من نفس الأصل (/api) فمحتاجش CORS خالص. تطبيق
+// الأندرويد (Capacitor) لوحده هو اللي بيبعت طلبات cross-origin حقيقية (من https://localhost
+// جوه الـ WebView) لرابط Railway المطلق — فلازم يتسمحله بالاسم صراحة حتى في الإنتاج،
+// من غير ما نستخدم '*' مع credentials أو نوسّع القائمة لأي أصل تاني.
+const ALLOWED_ORIGINS = new Set([
+  DEV_ORIGIN,
+  'https://localhost', // Capacitor Android الافتراضي (androidScheme: 'https')
+  'http://localhost',
+  'capacitor://localhost'
+])
+
+app.use(cors({
+  origin(origin, callback) {
+    // مفيش هيدر Origin خالص (نفس الأصل، أو أداة زي curl) — مسموح دايماً.
+    if (!origin) { callback(null, true); return }
+    if (ALLOWED_ORIGINS.has(origin)) { callback(null, true); return }
+    // في التطوير بس: مسموح بأي أصل http محلي (منافذ Vite بتتغيّر). الإنتاج مقيّد بالقائمة الصريحة فقط.
+    callback(null, !isProduction)
+  },
+  credentials: true
+}))
 
 // بدون مصادقة، بدون أي اعتماد تاني غير قاعدة البيانات — يُستخدم كـ Railway healthcheck.
 app.get('/health', async (_req, res) => {
@@ -81,6 +101,8 @@ app.use('/api', catalogRouter)
 app.use('/api', discountsRouter)
 app.use('/api', bannersRouter)
 app.use('/api', settingsRouter)
+app.use('/api', pagesRouter)
+app.use('/api/admin/pages', adminPagesRouter)
 app.use('/api/admin/orders', adminOrdersRouter)
 app.use('/api/admin/products', adminProductsRouter)
 app.use('/api/admin/products', adminProductImagesRouter)

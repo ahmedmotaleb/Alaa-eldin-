@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
-import { hashPassword, verifyPassword, createSession, destroySession, createPasswordResetToken, consumePasswordResetToken, SESSION_COOKIE } from '../auth.js'
+import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, SESSION_COOKIE } from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
 import { logEvent, logWarn } from '../logger.js'
 
@@ -18,6 +18,15 @@ function setSessionCookie(res: import('express').Response, token: string, expire
     expires,
     path: '/'
   })
+}
+
+// كوكيز SameSite=Lax (مطلوبة كحماية CSRF أساسية) ما بترجعش على طلبات cross-origin —
+// تطبيق الأندرويد (Capacitor) بيبعت الهيدر ده بنفسه (راجع src/utils/api.ts) عشان ياخد
+// نفس token الجلسة في جسم الرد ويبعته لاحقاً كـ "Authorization: Bearer <token>" بدل
+// الاعتماد على كوكيز عبر أصل مختلف. متصفح الويب العادي محدش بيبعت الهيدر ده، فسلوكه
+// (وحماية httpOnly بتاعته) يفضل بالظبط زي ما كان — الرمز نفسه ما بيتكشفش لـ JS الويب أبداً.
+export function isNativeClient(req: import('express').Request): boolean {
+  return req.headers['x-client-platform'] === 'android'
 }
 
 authRouter.post('/register', async (req, res) => {
@@ -51,7 +60,10 @@ authRouter.post('/register', async (req, res) => {
 
   const { token, expires } = await createSession(id)
   setSessionCookie(res, token, expires)
-  res.status(201).json({ user: { id, email: email.toLowerCase(), fullName: fullName.trim(), createdAt, isAdmin: false } })
+  res.status(201).json({
+    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), createdAt, isAdmin: false },
+    ...(isNativeClient(req) ? { token } : {})
+  })
 })
 
 authRouter.post('/login', async (req, res) => {
@@ -76,7 +88,10 @@ authRouter.post('/login', async (req, res) => {
   const { token, expires } = await createSession(row.id)
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
-  res.json({ user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin } })
+  res.json({
+    user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin },
+    ...(isNativeClient(req) ? { token } : {})
+  })
 })
 
 // نفس الرد بالظبط سواء كان الإيميل مسجّل أو لأ، عشان محدش يقدر يكتشف إيميلات عملاء حقيقيين
@@ -122,7 +137,7 @@ authRouter.post('/reset-password', async (req, res) => {
 })
 
 authRouter.post('/logout', async (req, res) => {
-  const token = req.cookies?.[SESSION_COOKIE]
+  const token = extractSessionToken(req)
   if (token) await destroySession(token)
   res.clearCookie(SESSION_COOKIE, { path: '/' })
   if (req.user) logEvent('logout', { userId: req.user.id })

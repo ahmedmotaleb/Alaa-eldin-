@@ -4,7 +4,7 @@ import type { ApiSettings } from '../utils/api'
 // محمية خلف CatalogGate اللي بيستنى تحميل الكتالوج والإعدادات معاً قبل ما يعرض أي صفحة.
 const DEFAULT_SETTINGS: ApiSettings = {
   name: 'علاء الدين',
-  whatsappNumber: '201XXXXXXXXX',
+  whatsappNumber: '01000000000',
   currency: 'ج.م',
   minimumOrder: 100,
   freeShippingThreshold: 500,

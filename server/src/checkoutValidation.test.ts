@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { validateCheckoutInput } from './checkoutValidation.js'
 
-const validCustomer = { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' }
+const validCustomer = { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع الاختبار رقم 1' }
+
+function withCustomer(overrides: Partial<typeof validCustomer>) {
+  return {
+    deliverySlot: 'now' as const,
+    paymentMethod: 'COD',
+    customer: { ...validCustomer, ...overrides },
+    items: [{ productId: 'p1', quantity: 1 }]
+  }
+}
 
 describe('validateCheckoutInput', () => {
   it('accepts a well-formed request and strips it down to the safe shape', () => {
@@ -82,24 +91,77 @@ describe('validateCheckoutInput', () => {
     expect(result).toEqual({ ok: false, error: 'invalid_items' })
   })
 
-  it('rejects missing customer fields', () => {
-    const result = validateCheckoutInput({
-      deliverySlot: 'now',
-      paymentMethod: 'COD',
-      customer: { fullName: '', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
-      items: [{ productId: 'p1', quantity: 1 }]
-    })
-    expect(result).toEqual({ ok: false, error: 'invalid_request' })
+  // ---- الحقول الإلزامية (الاسم/الموبايل/المحافظة/العنوان) ----
+
+  it('rejects a missing name', () => {
+    const result = validateCheckoutInput(withCustomer({ fullName: undefined as unknown as string }))
+    expect(result).toEqual({ ok: false, error: 'customer_name_required' })
   })
 
-  it('normalizes a valid Egyptian mobile number', () => {
-    const result = validateCheckoutInput({
-      deliverySlot: 'now',
-      paymentMethod: 'COD',
-      customer: { ...validCustomer, mobile: '+20 101 234 5678' },
-      items: [{ productId: 'p1', quantity: 1 }]
-    })
+  it('rejects a blank (whitespace-only) name', () => {
+    const result = validateCheckoutInput(withCustomer({ fullName: '   ' }))
+    expect(result).toEqual({ ok: false, error: 'customer_name_required' })
+  })
+
+  it('rejects a single-character name (below minimum length)', () => {
+    const result = validateCheckoutInput(withCustomer({ fullName: 'ا' }))
+    expect(result).toEqual({ ok: false, error: 'customer_name_required' })
+  })
+
+  it('rejects a missing phone', () => {
+    const result = validateCheckoutInput(withCustomer({ mobile: undefined as unknown as string }))
+    expect(result).toEqual({ ok: false, error: 'customer_mobile_required' })
+  })
+
+  it('rejects a blank phone', () => {
+    const result = validateCheckoutInput(withCustomer({ mobile: '   ' }))
+    expect(result).toEqual({ ok: false, error: 'customer_mobile_required' })
+  })
+
+  it('rejects an invalid phone (wrong length)', () => {
+    const result = validateCheckoutInput(withCustomer({ mobile: '0101234567' }))
+    expect(result).toEqual({ ok: false, error: 'customer_mobile_invalid' })
+  })
+
+  // القاعدة الحرجة الجديدة: أرقام +20/20 الدولية بقت مرفوضة تماماً، ومفيش أي تحويل تلقائي
+  // ليها — العميل لازم يدخل الرقم بالصيغة المحلية المصرية من الأساس.
+  it('rejects the +20 international format instead of silently converting it', () => {
+    const result = validateCheckoutInput(withCustomer({ mobile: '+201012345678' }))
+    expect(result).toEqual({ ok: false, error: 'customer_mobile_invalid' })
+  })
+
+  it('rejects the 20 international format without a plus sign', () => {
+    const result = validateCheckoutInput(withCustomer({ mobile: '201012345678' }))
+    expect(result).toEqual({ ok: false, error: 'customer_mobile_invalid' })
+  })
+
+  it('rejects a missing governorate', () => {
+    const result = validateCheckoutInput(withCustomer({ governorate: undefined as unknown as string }))
+    expect(result).toEqual({ ok: false, error: 'customer_governorate_required' })
+  })
+
+  it('rejects a blank governorate', () => {
+    const result = validateCheckoutInput(withCustomer({ governorate: '   ' }))
+    expect(result).toEqual({ ok: false, error: 'customer_governorate_required' })
+  })
+
+  it('rejects a missing address', () => {
+    const result = validateCheckoutInput(withCustomer({ address: undefined as unknown as string }))
+    expect(result).toEqual({ ok: false, error: 'customer_address_required' })
+  })
+
+  it('rejects a blank (whitespace-only) address', () => {
+    const result = validateCheckoutInput(withCustomer({ address: '     ' }))
+    expect(result).toEqual({ ok: false, error: 'customer_address_required' })
+  })
+
+  it('rejects an address below the minimum sensible length', () => {
+    const result = validateCheckoutInput(withCustomer({ address: 'شق' }))
+    expect(result).toEqual({ ok: false, error: 'customer_address_required' })
+  })
+
+  it('accepts a fully valid request with all mandatory fields present', () => {
+    const result = validateCheckoutInput(withCustomer({}))
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.data.customer.mobile).toBe('01012345678')
   })
 })

@@ -1,4 +1,4 @@
-import { normalizeEgyptianMobile } from './phone.js'
+import { isValidEgyptianMobile } from './phone.js'
 
 export const DELIVERY_SLOTS = ['now', 'evening', 'tomorrow'] as const
 export type DeliverySlotId = typeof DELIVERY_SLOTS[number]
@@ -28,6 +28,11 @@ export interface CheckoutInput {
 
 export type CheckoutValidationError =
   | 'invalid_request'
+  | 'customer_name_required'
+  | 'customer_mobile_required'
+  | 'customer_mobile_invalid'
+  | 'customer_governorate_required'
+  | 'customer_address_required'
   | 'invalid_delivery_slot'
   | 'payment_method_not_supported'
   | 'invalid_items'
@@ -38,20 +43,39 @@ export type CheckoutValidationResult =
   | { ok: false, error: CheckoutValidationError }
 
 const MAX_ITEM_LINES = 100
+const NAME_MIN_LENGTH = 2
+const NAME_MAX_LENGTH = 100
+const ADDRESS_MIN_LENGTH = 5
+const ADDRESS_MAX_LENGTH = 300
 
 export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
   const b = body as Record<string, unknown> | null
   if (!b || typeof b !== 'object') return { ok: false, error: 'invalid_request' }
 
   const customer = b.customer as Record<string, unknown> | undefined
-  if (
-    !customer ||
-    typeof customer.fullName !== 'string' || !customer.fullName.trim() ||
-    typeof customer.mobile !== 'string' || !customer.mobile.trim() ||
-    typeof customer.governorate !== 'string' || !customer.governorate.trim() ||
-    typeof customer.address !== 'string' || !customer.address.trim()
-  ) {
-    return { ok: false, error: 'invalid_request' }
+  if (!customer || typeof customer !== 'object') return { ok: false, error: 'invalid_request' }
+
+  // الاسم: إلزامي، بدون فراغات زيادة، بحد أدنى وأقصى منطقيين.
+  const rawName = typeof customer.fullName === 'string' ? customer.fullName.trim() : ''
+  if (!rawName || rawName.length < NAME_MIN_LENGTH || rawName.length > NAME_MAX_LENGTH) {
+    return { ok: false, error: 'customer_name_required' }
+  }
+
+  // الموبايل: لازم صيغة مصرية محلية صحيحة بالظبط — مفيش أي تحويل تلقائي لصيغة +20/20،
+  // ولا قبول جزئي لأي صيغة تانية. الفراغ يترفض بكود مختلف عن الصيغة الخاطئة عشان رسالة
+  // الخطأ في الواجهة تبقى دقيقة (رقم مطلوب مقابل رقم غير صحيح).
+  const rawMobile = typeof customer.mobile === 'string' ? customer.mobile.trim() : ''
+  if (!rawMobile) return { ok: false, error: 'customer_mobile_required' }
+  if (!isValidEgyptianMobile(rawMobile)) return { ok: false, error: 'customer_mobile_invalid' }
+
+  // المحافظة: إلزامية زي ما كانت دايماً.
+  const rawGovernorate = typeof customer.governorate === 'string' ? customer.governorate.trim() : ''
+  if (!rawGovernorate) return { ok: false, error: 'customer_governorate_required' }
+
+  // العنوان: إلزامي، بدون فراغات زيادة، بحد أدنى وأقصى منطقيين (مش مجرد فراغات).
+  const rawAddress = typeof customer.address === 'string' ? customer.address.trim() : ''
+  if (!rawAddress || rawAddress.length < ADDRESS_MIN_LENGTH || rawAddress.length > ADDRESS_MAX_LENGTH) {
+    return { ok: false, error: 'customer_address_required' }
   }
 
   if (typeof b.deliverySlot !== 'string' || !DELIVERY_SLOTS.includes(b.deliverySlot as DeliverySlotId)) {
@@ -83,20 +107,16 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     mergedItems.set(item.productId, (mergedItems.get(item.productId) ?? 0) + item.quantity)
   }
 
-  // الموبايل: لو الصيغة معروفة (مصري) بيتوحّد لشكل قياسي؛ لو مش معروفة، بنسيبه زي ما هو
-  // بدل ما نرفض الطلب كله بسبب صيغة رقم غير متوقعة (قد يكون رقم حقيقي بصيغة نادرة).
-  const normalizedMobile = normalizeEgyptianMobile(customer.mobile.trim()) ?? customer.mobile.trim()
-
   return {
     ok: true,
     data: {
       deliverySlot: b.deliverySlot as DeliverySlotId,
       paymentMethod: PAYMENT_METHOD_COD,
       customer: {
-        fullName: customer.fullName.trim(),
-        mobile: normalizedMobile,
-        governorate: customer.governorate.trim(),
-        address: customer.address.trim()
+        fullName: rawName,
+        mobile: rawMobile,
+        governorate: rawGovernorate,
+        address: rawAddress
       },
       items: Array.from(mergedItems, ([productId, quantity]) => ({ productId, quantity })),
       discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined

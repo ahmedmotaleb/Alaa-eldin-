@@ -149,6 +149,17 @@ export interface AdminAuditLog {
   createdAt: string
 }
 
+export interface AdminContentPage {
+  id: number
+  slug: string
+  title: string
+  content: string
+  active: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AdminCustomer {
   id: string
   email: string
@@ -277,6 +288,10 @@ export const api = {
     request<{ logs: AdminAuditLog[], page: number, limit: number, total: number, totalPages: number }>(
       `/admin/audit-logs?page=${page}&limit=${limit}`
     ),
+  listPages: () => request<{ pages: AdminContentPage[] }>('/admin/pages'),
+  getPage: (id: number) => request<{ page: AdminContentPage }>(`/admin/pages/${id}`),
+  updatePage: (id: number, body: { title: string, content: string, active: boolean }) =>
+    request<{ page: AdminContentPage }>(`/admin/pages/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   listCategories: () => request<{ categories: AdminCategory[] }>('/admin/categories'),
   createCategory: (body: { id: string, name: string, emoji: string, tint: string }) =>
     request<{ category: AdminCategory }>('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),

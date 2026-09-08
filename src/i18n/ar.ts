@@ -25,6 +25,7 @@ export const ar = {
   common: {
     openCart: 'فتح السلة',
     back: 'رجوع',
+    pressBackAgainToExit: 'اضغط مرة أخرى للخروج',
     viewAll: 'عرض الكل',
     decreaseQty: 'تقليل الكمية',
     increaseQty: 'زيادة الكمية',
@@ -127,6 +128,12 @@ export const ar = {
     codDisabledNotice: 'الدفع عند الاستلام متوقف مؤقتاً، برجاء المحاولة لاحقاً أو التواصل معنا',
     orderSummaryItemsCount: (count: number) => `${count} منتج`,
     formError: 'من فضلك اكمل الاسم ورقم الموبايل والعنوان.',
+    nameError: 'الاسم مطلوب',
+    mobileRequiredError: 'رقم الموبايل مطلوب',
+    mobileInvalidError: 'أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015',
+    governorateError: 'المحافظة مطلوبة',
+    addressError: 'العنوان مطلوب',
+    policyLink: 'سياسة الاسترجاع والاستبدال',
     submit: 'تأكيد الطلب وإرسال واتساب'
   },
 
@@ -169,7 +176,7 @@ export const ar = {
     contactWhatsapp: 'تواصل معنا على واتساب',
     savedAddresses: 'عناويني المحفوظة',
     favorites: 'المفضلة',
-    returnPolicy: 'سياسة الاستبدال والاسترجاع',
+    returnPolicy: 'سياسة الاسترجاع والاستبدال',
     settingsAndNotifications: 'الإعدادات والإشعارات',
     logout: 'تسجيل الخروج'
   },
@@ -247,6 +254,11 @@ export const ar = {
       cod_disabled: 'الدفع عند الاستلام متوقف مؤقتاً، برجاء المحاولة لاحقاً',
       invalid_or_expired_token: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد',
       invalid_request: 'يرجى إدخال جميع بيانات الطلب المطلوبة',
+      customer_name_required: 'الاسم مطلوب',
+      customer_mobile_required: 'رقم الموبايل مطلوب',
+      customer_mobile_invalid: 'أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015',
+      customer_governorate_required: 'المحافظة مطلوبة',
+      customer_address_required: 'العنوان مطلوب',
       invalid_delivery_slot: 'يرجى اختيار موعد توصيل صحيح',
       payment_method_not_supported: 'طريقة الدفع غير مدعومة حالياً',
       invalid_items: 'السلة غير صالحة، يرجى إعادة المحاولة',

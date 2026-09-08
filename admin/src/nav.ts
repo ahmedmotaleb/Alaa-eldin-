@@ -70,6 +70,7 @@ export const NAV: NavGroup[] = [
       { id: 'whatsapp', label: 'واتساب' }
     ]
   },
+  { id: 'pages', label: 'الصفحات', icon: '📄', children: [] },
   {
     id: 'settings', label: 'الإعدادات', icon: '⚙️', children: [
       { id: 'store', label: 'المتجر' },

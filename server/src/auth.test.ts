@@ -3,7 +3,7 @@
 // من غير ما نحتاج نشغّل سيرفر HTTP حقيقي.
 import { describe, expect, it, vi } from 'vitest'
 import type { Request, Response } from 'express'
-import { requireAdmin } from './auth.js'
+import { requireAdmin, extractSessionToken } from './auth.js'
 import type { AuthedUser } from './auth.js'
 
 function makeRes() {
@@ -47,5 +47,32 @@ describe('requireAdmin', () => {
 
     expect(next).toHaveBeenCalledOnce()
     expect(res.status).not.toHaveBeenCalled()
+  })
+})
+
+describe('extractSessionToken', () => {
+  it('reads the token from the session cookie (web)', () => {
+    const req = { cookies: { session_token: 'cookie-token-abc' }, headers: {} } as unknown as Request
+    expect(extractSessionToken(req)).toBe('cookie-token-abc')
+  })
+
+  it('falls back to the Authorization Bearer header when there is no cookie (Android)', () => {
+    const req = { cookies: {}, headers: { authorization: 'Bearer native-token-xyz' } } as unknown as Request
+    expect(extractSessionToken(req)).toBe('native-token-xyz')
+  })
+
+  it('prefers the cookie over the Authorization header when both are present', () => {
+    const req = { cookies: { session_token: 'cookie-wins' }, headers: { authorization: 'Bearer header-token' } } as unknown as Request
+    expect(extractSessionToken(req)).toBe('cookie-wins')
+  })
+
+  it('ignores a malformed Authorization header', () => {
+    const req = { cookies: {}, headers: { authorization: 'not-a-bearer-token' } } as unknown as Request
+    expect(extractSessionToken(req)).toBeUndefined()
+  })
+
+  it('returns undefined when neither cookie nor header is present', () => {
+    const req = { cookies: {}, headers: {} } as unknown as Request
+    expect(extractSessionToken(req)).toBeUndefined()
   })
 })

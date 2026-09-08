@@ -37,7 +37,7 @@ export function Sidebar() {
             <div className="sidebar-group" key={group.id}>
               <button
                 className={`sidebar-group-btn ${isActiveGroup && group.children.length === 0 ? 'active' : ''}`}
-                onClick={() => group.children.length ? toggle(group.id) : navigate('/')}
+                onClick={() => group.children.length ? toggle(group.id) : navigate(group.id === 'home' ? '/' : `/${group.id}`)}
               >
                 <span className="sidebar-group-icon">{group.icon}</span>
                 <span className="sidebar-group-label">{group.label}</span>

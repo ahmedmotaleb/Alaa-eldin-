@@ -2,6 +2,7 @@ import { getSettings } from '../store/settingsStore'
 import { deliverySlots } from '../data/deliverySlots'
 import type { Order } from '../types/models'
 import { formatMoney } from './money'
+import { toWhatsAppInternational } from './phone'
 import { ar } from '../i18n/ar'
 
 function slotLabel(slotId: Order['deliverySlot']) {
@@ -39,5 +40,7 @@ export function buildWhatsAppOrderMessage(order: Order) {
 
 export function buildWhatsAppUrl(order: Order) {
   const text = buildWhatsAppOrderMessage(order)
-  return `https://wa.me/${getSettings().whatsappNumber}?text=${encodeURIComponent(text)}`
+  // رقم واتساب المتجر مخزّن بالصيغة المحلية (01xxxxxxxxx) — التحويل للصيغة الدولية
+  // بيحصل هنا بس، وقت بناء الرابط، مش وقت التخزين.
+  return `https://wa.me/${toWhatsAppInternational(getSettings().whatsappNumber)}?text=${encodeURIComponent(text)}`
 }

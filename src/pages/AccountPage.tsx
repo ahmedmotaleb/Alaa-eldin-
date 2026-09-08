@@ -1,13 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { getSettings } from '../store/settingsStore'
 import { useAuth } from '../store/AuthContext'
+import { toWhatsAppInternational } from '../utils/phone'
 import { ar } from '../i18n/ar'
 
 const ACCOUNT_ROWS = [
-  { icon: '📍', label: ar.account.savedAddresses },
-  { icon: '❤️', label: ar.account.favorites },
-  { icon: '↺', label: ar.account.returnPolicy },
-  { icon: '⚙️', label: ar.account.settingsAndNotifications }
+  { icon: '📍', label: ar.account.savedAddresses, path: undefined },
+  { icon: '❤️', label: ar.account.favorites, path: undefined },
+  { icon: '↺', label: ar.account.returnPolicy, path: '/refund-exchange-policy' },
+  { icon: '⚙️', label: ar.account.settingsAndNotifications, path: undefined }
 ]
 
 function initials(name: string) {
@@ -50,13 +51,13 @@ export function AccountPage() {
       </div>
 
       <div className="account-rows">
-        <a className="account-row" href={`https://wa.me/${getSettings().whatsappNumber}`} target="_blank" rel="noreferrer">
+        <a className="account-row" href={`https://wa.me/${toWhatsAppInternational(getSettings().whatsappNumber)}`} target="_blank" rel="noreferrer">
           <span className="account-row-icon">💬</span>
           <span className="account-row-label">{ar.account.contactWhatsapp}</span>
           <span className="account-row-chevron">‹</span>
         </a>
         {ACCOUNT_ROWS.map(row => (
-          <button className="account-row" key={row.label}>
+          <button className="account-row" key={row.label} onClick={row.path ? () => navigate(row.path!) : undefined}>
             <span className="account-row-icon">{row.icon}</span>
             <span className="account-row-label">{row.label}</span>
             <span className="account-row-chevron">‹</span>

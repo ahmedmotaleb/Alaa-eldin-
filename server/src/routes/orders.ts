@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../auth.js'
 import { validateCheckoutInput } from '../checkoutValidation.js'
 import { createOrder, getOrderByNumberForUser, listOrdersForUser, OrderError } from '../services/orderService.js'
+import { logWarn, maskPhone } from '../logger.js'
 
 export const ordersRouter = Router()
 
@@ -38,6 +39,13 @@ ordersRouter.get('/:orderNumber', requireAuth, async (req, res) => {
 ordersRouter.post('/', async (req, res) => {
   const validation = validateCheckoutInput(req.body)
   if (!validation.ok) {
+    // ما بنسجّلش أي بيانات شخصية كاملة (عنوان/اسم) — لو كان الخطأ متعلق بالموبايل بالذات،
+    // بنسجّل نسخة مقنّعة منه بس (010****5678) للمساعدة في تتبع الأعطال من غير كشف الرقم الكامل.
+    const rawMobile = (req.body as { customer?: { mobile?: unknown } })?.customer?.mobile
+    logWarn('checkout_validation_failed', {
+      errorCode: validation.error,
+      ...(validation.error.startsWith('customer_mobile') && typeof rawMobile === 'string' ? { mobile: maskPhone(rawMobile) } : {})
+    })
     res.status(400).json({ error: validation.error })
     return
   }

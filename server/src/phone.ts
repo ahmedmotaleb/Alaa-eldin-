@@ -1,9 +1,18 @@
-// توحيد صيغ الموبايل المصري الشائعة (01xxxxxxxxx / +201xxxxxxxxx / 201xxxxxxxxx) لتمثيل
-// واحد ثابت قبل التخزين: 01 + بادئة الشبكة (0/1/2/5) + 8 أرقام = 11 رقم بالظبط.
-const EGY_MOBILE_RE = /^(?:\+?20)?(?:0)?1([0125]\d{8})$/
+// قاعدة رقم الموبايل المصري: بادئة 01 + رمز شبكة (0/1/2/5) + 8 أرقام = 11 رقم بالظبط،
+// أرقام غربية فقط (\d في JS بيطابق 0-9 فقط، مش الأرقام الهندية/الفارسية الشرقية ٠-٩).
+// الصيغة الدولية (+20/20/0020) مرفوضة تماماً وما بتتحولش تلقائياً — العميل لازم يدخل
+// الرقم بالصيغة المحلية المصرية مباشرة.
+const EGY_MOBILE_RE = /^01[0125][0-9]{8}$/
 
-export function normalizeEgyptianMobile(input: string): string | null {
-  const digits = input.replace(/[\s\-()]/g, '')
-  const match = digits.match(EGY_MOBILE_RE)
-  return match ? `01${match[1]}` : null
+export function isValidEgyptianMobile(phone: string): boolean {
+  return typeof phone === 'string' && EGY_MOBILE_RE.test(phone)
+}
+
+// تحويل للصيغة الدولية بدون علامة + (لازمة لبناء رابط/وجهة واتساب فقط) — الرقم
+// المخزّن في قاعدة البيانات يفضل زي ما هو بالصيغة المحلية، التحويل ده لحظي وقت إنشاء
+// الرابط بس. لو الرقم مش بصيغة محلية صحيحة (بيانات تاريخية قديمة مثلاً)، بيرجعه زي
+// ما هو من غير أي تحويل بدل ما يرمي خطأ.
+export function toWhatsAppInternational(phone: string): string {
+  if (!isValidEgyptianMobile(phone)) return phone
+  return `20${phone.slice(1)}`
 }

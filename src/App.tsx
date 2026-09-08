@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { OfflineBanner } from './components/OfflineBanner'
+import { AndroidBackButton } from './components/AndroidBackButton'
 import { AuthProvider } from './store/AuthContext'
 import { CartProvider } from './store/CartContext'
 import { CatalogProvider, useCatalog } from './store/CatalogContext'
@@ -13,6 +14,7 @@ import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoryPage } from './pages/CategoryPage'
 import { CheckoutPage } from './pages/CheckoutPage'
 import { ConfirmationPage } from './pages/ConfirmationPage'
+import { ContentPage } from './pages/ContentPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -57,6 +59,7 @@ export default function App() {
         <CatalogProvider>
           <CartProvider>
             <ToastProvider>
+              <AndroidBackButton />
               <OfflineBanner />
               <CatalogGate>
                 <Routes>
@@ -79,6 +82,7 @@ export default function App() {
                     <Route path="/register" element={<RegisterPage />} />
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
+                    <Route path="/refund-exchange-policy" element={<ContentPage slug="refund-exchange-policy" />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>

@@ -1,4 +1,13 @@
-const BASE = '/api'
+import { isNative } from './platform'
+import { getNativeSessionToken, setNativeSessionToken, clearNativeSessionToken } from './nativeSession'
+
+// الويب (تطوير وإنتاج) بيستخدم مسار نسبي (/api) على نفس الأصل دايماً — مفيش أي تغيير هنا.
+// تطبيق الأندرويد (Capacitor) بيحمّل الواجهة من ملفات محلية جوه الـ APK (مش من نفس أصل
+// السيرفر)، فلازم رابط API مطلق بصيغة HTTPS كامل. القيمة دي بتتحدد وقت البناء عن طريق
+// VITE_API_BASE_URL (راجع .env.example) — مفيش أي رابط localhost مثبّت هنا لبيئة الإنتاج.
+const BASE = isNative()
+  ? `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api`
+  : '/api'
 
 export class ApiError extends Error {
   code: string
@@ -13,12 +22,22 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // على الأندرويد، الكوكيز اللي بيحطها السيرفر (أصل مختلف تماماً) ما بترجعش على طلبات
+  // JS تالية أصلاً — فبنعتمد بدلها على Authorization: Bearer <token> المخزّن محلياً بعد
+  // تسجيل الدخول. الويب يفضل زي ما هو تماماً (كوكيز httpOnly، من غير أي Authorization header).
+  const nativeHeaders: Record<string, string> = {}
+  if (isNative()) {
+    nativeHeaders['X-Client-Platform'] = 'android'
+    const token = getNativeSessionToken()
+    if (token) nativeHeaders.Authorization = `Bearer ${token}`
+  }
+
   let res: Response
   try {
     res = await fetch(BASE + path, {
       credentials: 'include',
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) }
+      headers: { 'Content-Type': 'application/json', ...nativeHeaders, ...(options.headers ?? {}) }
     })
   } catch {
     throw new ApiError('network_error', 0)
@@ -96,6 +115,12 @@ export interface ApiProduct {
   primaryImageAlt?: string
 }
 
+export interface ApiContentPage {
+  slug: string
+  title: string
+  content: string
+}
+
 export interface ApiBanner {
   id: number
   kicker: string
@@ -120,10 +145,12 @@ export interface ApiSettings {
 
 export const api = {
   register: (body: { email: string, password: string, fullName: string }) =>
-    request<{ user: ApiUser }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ user: ApiUser, token?: string }>('/auth/register', { method: 'POST', body: JSON.stringify(body) })
+      .then(res => { if (isNative() && res.token) setNativeSessionToken(res.token); return res }),
   login: (body: { email: string, password: string }) =>
-    request<{ user: ApiUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    request<{ user: ApiUser, token?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(body) })
+      .then(res => { if (isNative() && res.token) setNativeSessionToken(res.token); return res }),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }).finally(() => { if (isNative()) clearNativeSessionToken() }),
   me: () => request<{ user: ApiUser }>('/auth/me'),
   forgotPassword: (email: string) => request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>
@@ -132,6 +159,7 @@ export const api = {
   listProducts: () => request<{ products: ApiProduct[] }>('/products'),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),
+  getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),
   listOrders: () => request<{ orders: ApiOrder[], pagination: { page: number, limit: number, total: number, pages: number } }>('/orders'),
   getOrder: (orderNumber: string) => request<{ order: ApiOrder }>(`/orders/${encodeURIComponent(orderNumber)}`),
   // السيرفر هو اللي بيحسب كل حاجة (سعر الوحدة، الإجمالي الفرعي، الخصم، التوصيل، الإجمالي

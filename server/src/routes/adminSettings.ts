@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { isValidEgyptianMobile } from '../phone.js'
 
 export const adminSettingsRouter = Router()
 adminSettingsRouter.use(requireAdmin)
@@ -29,7 +30,7 @@ adminSettingsRouter.patch('/', async (req, res) => {
 
   if (
     typeof b.name !== 'string' || !b.name.trim() ||
-    typeof b.whatsappNumber !== 'string' || !b.whatsappNumber.trim() ||
+    typeof b.whatsappNumber !== 'string' || !isValidEgyptianMobile(b.whatsappNumber.trim()) ||
     typeof b.currency !== 'string' || !b.currency.trim() ||
     typeof b.minimumOrder !== 'number' || b.minimumOrder < 0 ||
     typeof b.freeShippingThreshold !== 'number' || b.freeShippingThreshold < 0 ||
