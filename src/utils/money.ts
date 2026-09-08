@@ -1,5 +1,5 @@
-import { STORE_CONFIG } from '../config/store'
+import { getSettings } from '../store/settingsStore'
 
 export function formatMoney(value: number) {
-  return `${value.toFixed(2)} ${STORE_CONFIG.currency}`
+  return `${Math.round(value).toLocaleString('ar-EG')} ${getSettings().currency}`
 }

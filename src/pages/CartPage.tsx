@@ -1,80 +1,139 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { QuantityCounter } from '../components/QuantityCounter'
-import { STORE_CONFIG } from '../config/store'
+import { ProductArt } from '../components/ProductArt'
+import { StickyActionBar } from '../components/StickyActionBar'
+import { getSettings } from '../store/settingsStore'
 import { useCart } from '../store/CartContext'
+import { useToast } from '../store/ToastContext'
 import { formatMoney } from '../utils/money'
+import { ApiError } from '../utils/api'
+import { ar } from '../i18n/ar'
 
 export function CartPage() {
   const navigate = useNavigate()
-  const { detailedItems, subtotal, deliveryFee, total, setQuantity, removeItem } = useCart()
+  const { detailedItems, subtotal, deliveryFee, discount, total, setQuantity, removeItem, applyDiscount, removeDiscount } = useCart()
+  const flash = useToast()
+  const [discountInput, setDiscountInput] = useState('')
+  const [discountApplying, setDiscountApplying] = useState(false)
+  const [discountError, setDiscountError] = useState('')
 
-  const freeProgress = Math.min(100, (subtotal / STORE_CONFIG.freeShippingThreshold) * 100)
-  const remainingForFree = Math.max(0, STORE_CONFIG.freeShippingThreshold - subtotal)
-  const belowMinimum = subtotal > 0 && subtotal < STORE_CONFIG.minimumOrder
+  async function submitDiscount() {
+    if (!discountInput.trim()) return
+    setDiscountApplying(true)
+    setDiscountError('')
+    try {
+      await applyDiscount(discountInput.trim())
+      setDiscountInput('')
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'discount_min_order' && typeof err.data.minOrder === 'number') {
+        setDiscountError(ar.errors.discountMinOrder(formatMoney(err.data.minOrder)))
+      } else {
+        setDiscountError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
+      }
+    } finally {
+      setDiscountApplying(false)
+    }
+  }
+
+  const settings = getSettings()
+  const belowMinimum = subtotal > 0 && subtotal < settings.minimumOrder
+  const remainingForFree = Math.max(0, settings.freeShippingThreshold - subtotal)
+  const freeProgress = Math.min(100, Math.round((subtotal / settings.freeShippingThreshold) * 100))
+
+  const shippingCopy = detailedItems.length === 0
+    ? ar.cart.startOrderForFreeShipping(formatMoney(settings.freeShippingThreshold))
+    : remainingForFree === 0
+      ? ar.cart.freeShippingEarned
+      : ar.cart.remainingForFreeShipping(formatMoney(remainingForFree))
 
   if (!detailedItems.length) {
     return (
-      <section>
-        <div className="page-title"><h1>السلة</h1></div>
-        <div className="empty-card">
-          <div className="empty-icon">🛒</div>
-          <h2>السلة فارغة</h2>
-          <p>أضف المنتجات التي تحتاجها ثم ارجع لإتمام الطلب.</p>
-          <button className="primary-button" onClick={() => navigate('/')}>ابدأ التسوق</button>
-        </div>
-      </section>
+      <div className="empty-card cart-empty">
+        <div className="empty-icon">🛒</div>
+        <h2>{ar.cart.emptyTitle}</h2>
+        <p>{ar.cart.emptyNote}</p>
+        <button className="primary-button" onClick={() => navigate('/')}>{ar.cart.shopNow}</button>
+      </div>
     )
   }
 
   return (
-    <section>
-      <div className="page-title"><h1>السلة</h1></div>
-
-      {belowMinimum && (
-        <div className="alert warning">
-          الحد الأدنى للطلب {formatMoney(STORE_CONFIG.minimumOrder)}.
-          أضف منتجات بقيمة {formatMoney(STORE_CONFIG.minimumOrder - subtotal)} لإتمام الطلب.
-        </div>
-      )}
-
+    <div className="cart-page">
       <div className="shipping-progress-card">
-        <div className="shipping-copy">
-          {remainingForFree > 0
-            ? <>متبقي <strong>{formatMoney(remainingForFree)}</strong> للحصول على توصيل مجاني.</>
-            : <strong>تهانينا، التوصيل مجاني لطلبك.</strong>}
-        </div>
+        <div className="shipping-copy">{shippingCopy}</div>
         <div className="progress-track"><div className="progress-fill" style={{ width: `${freeProgress}%` }} /></div>
       </div>
 
       <div className="cart-list">
         {detailedItems.map(item => (
           <article className="cart-item" key={item.productId}>
-            <img src={item.product.image} alt={item.product.name} />
+            <ProductArt product={item.product} height={64} width={64} fontSize={30} radius={16} showBadge={false} showUnavailable={false} />
             <div className="cart-item-content">
               <strong>{item.product.name}</strong>
-              <span>{formatMoney(item.product.price)} / {item.product.unit}</span>
-              <QuantityCounter value={item.quantity} onChange={value => setQuantity(item.productId, value)} />
+              <span>{item.product.unit} · {formatMoney(item.product.price)}</span>
+              <div className="cart-item-footer">
+                <div className="bordered-stepper">
+                  <button onClick={() => setQuantity(item.productId, item.quantity - 1)} aria-label={ar.common.decreaseQty}>−</button>
+                  <span>{item.quantity}</span>
+                  <button onClick={() => setQuantity(item.productId, item.quantity + 1)} aria-label={ar.common.increaseQty}>+</button>
+                </div>
+                <span className="cart-item-line-total">{formatMoney(item.product.price * item.quantity)}</span>
+              </div>
             </div>
-            <button className="delete-button" onClick={() => removeItem(item.productId)} aria-label={`حذف ${item.product.name}`}>
-              حذف
+            <button className="delete-button" onClick={() => removeItem(item.productId)} aria-label={ar.common.remove(item.product.name)}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13" stroke="#B42318" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           </article>
         ))}
       </div>
 
-      <div className="summary-card">
-        <div><span>الإجمالي الفرعي</span><strong>{formatMoney(subtotal)}</strong></div>
-        <div><span>التوصيل</span><strong>{deliveryFee === 0 ? 'مجاني' : formatMoney(deliveryFee)}</strong></div>
-        <div className="summary-total"><span>الإجمالي</span><strong>{formatMoney(total)}</strong></div>
+      {belowMinimum && (
+        <div className="min-order-banner">
+          {ar.cart.minOrderBanner(formatMoney(settings.minimumOrder), formatMoney(settings.minimumOrder - subtotal))}
+        </div>
+      )}
+
+      <div className="discount-card">
+        {discount ? (
+          <div className="discount-applied-row">
+            <span className="discount-applied-label">{ar.cart.discountApplied(discount.code)}</span>
+            <button className="discount-remove-btn" onClick={removeDiscount}>{ar.cart.discountRemove}</button>
+          </div>
+        ) : (
+          <div className="discount-input-row">
+            <input
+              value={discountInput}
+              onChange={e => setDiscountInput(e.target.value)}
+              placeholder={ar.cart.discountCodePlaceholder}
+              onKeyDown={e => { if (e.key === 'Enter') submitDiscount() }}
+            />
+            <button className="discount-apply-btn" onClick={submitDiscount} disabled={discountApplying || !discountInput.trim()}>
+              {discountApplying ? ar.cart.discountApplying : ar.cart.discountApply}
+            </button>
+          </div>
+        )}
+        {discountError && <div className="discount-error">{discountError}</div>}
       </div>
 
-      <button
-        className="primary-button sticky-checkout"
-        disabled={subtotal < STORE_CONFIG.minimumOrder}
-        onClick={() => navigate('/checkout')}
-      >
-        إتمام الطلب
-      </button>
-    </section>
+      <div className="summary-card">
+        <div><span>{ar.cart.subtotal}</span><span>{formatMoney(subtotal)}</span></div>
+        {discount && <div className="summary-discount"><span>{ar.cart.discount}</span><span>-{formatMoney(discount.amount)}</span></div>}
+        <div><span>{ar.cart.delivery}</span><span>{deliveryFee ? formatMoney(deliveryFee) : ar.cart.free}</span></div>
+        <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(total)}</span></div>
+      </div>
+
+      <StickyActionBar
+        label={subtotal < settings.minimumOrder ? ar.cart.minOrderCta(formatMoney(settings.minimumOrder)) : ar.cart.checkout}
+        meta={formatMoney(total)}
+        muted={subtotal < settings.minimumOrder}
+        onClick={() => {
+          if (subtotal < settings.minimumOrder) {
+            flash(ar.cart.minOrderToast(formatMoney(settings.minimumOrder)))
+            return
+          }
+          navigate('/checkout')
+        }}
+      />
+    </div>
   )
 }

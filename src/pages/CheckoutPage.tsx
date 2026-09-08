@@ -1,115 +1,156 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { STORE_CONFIG } from '../config/store'
+import { StickyActionBar } from '../components/StickyActionBar'
+import { deliverySlots } from '../data/deliverySlots'
+import { governorates } from '../data/governorates'
 import { useCart } from '../store/CartContext'
-import type { CustomerDetails, DeliverySlot, Order } from '../types/models'
+import { useRequireAuth } from '../hooks/useRequireAuth'
+import type { CustomerDetails, DeliverySlotId, Order } from '../types/models'
+import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl, createOrderId } from '../utils/order'
+import { api, ApiError } from '../utils/api'
+import { getSettings } from '../store/settingsStore'
+import { ar } from '../i18n/ar'
 
-const initialCustomer: CustomerDetails = {
-  fullName: '',
-  mobile: '',
-  area: '',
-  address: '',
-  landmark: '',
-  notes: ''
-}
+const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate: '', address: '' }
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { detailedItems, subtotal, deliveryFee, total, clearCart } = useCart()
+  const { user } = useRequireAuth()
+  const { detailedItems, subtotal, deliveryFee, discount, total, clearCart } = useCart()
+  const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
-  const [deliverySlot, setDeliverySlot] = useState<DeliverySlot>('أقرب وقت')
-  const [error, setError] = useState('')
+  const [slot, setSlot] = useState<DeliverySlotId>('now')
+  const [formError, setFormError] = useState(false)
+  const [apiError, setApiError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [cartWasEmptyOnEntry] = useState(() => detailedItems.length === 0)
+
+  useEffect(() => {
+    if (cartWasEmptyOnEntry) navigate('/cart', { replace: true })
+  }, [cartWasEmptyOnEntry, navigate])
 
   function update<K extends keyof CustomerDetails>(key: K, value: CustomerDetails[K]) {
     setCustomer(current => ({ ...current, [key]: value }))
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-
-    if (subtotal < STORE_CONFIG.minimumOrder) {
-      setError('الطلب أقل من الحد الأدنى المسموح.')
+  async function submit() {
+    if (!settings.codEnabled) return
+    if (!customer.fullName.trim() || !customer.mobile.trim() || !customer.governorate || !customer.address.trim()) {
+      setFormError(true)
       return
     }
-    if (!customer.fullName.trim() || !customer.area.trim() || !customer.address.trim()) {
-      setError('يرجى إكمال الاسم والمنطقة والعنوان.')
-      return
-    }
-    if (!/^01\d{9}$/.test(customer.mobile)) {
-      setError('رقم الموبايل يجب أن يكون 11 رقم ويبدأ بـ 01.')
-      return
-    }
+    if (!user) return
 
-    const order: Order = {
-      id: createOrderId(),
-      createdAt: new Date().toISOString(),
-      customer,
-      deliverySlot,
-      paymentMethod: 'الدفع عند الاستلام',
-      items: detailedItems.map(item => ({
-        productId: item.product.id,
-        name: item.product.name,
-        unit: item.product.unit,
-        unitPrice: item.product.price,
-        quantity: item.quantity,
-        lineTotal: item.product.price * item.quantity
-      })),
-      subtotal,
-      deliveryFee,
-      total
-    }
+    setFormError(false)
+    setApiError('')
+    setSubmitting(true)
 
-    localStorage.setItem('alaa-eldin-last-order', JSON.stringify(order))
-    const whatsappUrl = buildWhatsAppUrl(order)
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-    clearCart()
-    navigate(`/confirmation/${order.id}`)
+    const items = detailedItems.map(item => ({
+      productId: item.product.id,
+      name: item.product.name,
+      unit: item.product.unit,
+      unitPrice: item.product.price,
+      quantity: item.quantity,
+      lineTotal: item.product.price * item.quantity
+    }))
+
+    try {
+      const { order: created } = await api.createOrder({
+        id: createOrderId(),
+        deliverySlot: slot,
+        paymentMethod: ar.checkout.cashOnDelivery,
+        customer,
+        items,
+        subtotal,
+        deliveryFee,
+        total,
+        discountCode: discount?.code
+      })
+
+      const order = created as unknown as Order
+      window.open(buildWhatsAppUrl(order), '_blank', 'noopener,noreferrer')
+      clearCart()
+      navigate(`/confirmation/${order.id}`)
+    } catch (err) {
+      setApiError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
+      setSubmitting(false)
+    }
   }
 
   return (
-    <section>
-      <div className="page-title">
-        <h1>إتمام الطلب</h1>
-        <p>أكمل بيانات التوصيل ثم أرسل الطلب عبر واتساب.</p>
+    <div className="checkout-page">
+      <div className="checkout-steps">
+        {ar.checkout.steps.map((label, i) => (
+          <div className={`checkout-step ${i <= 1 ? 'active' : ''}`} key={label}>
+            <div className="checkout-step-bar" />
+            <div className="checkout-step-label">{label}</div>
+          </div>
+        ))}
       </div>
 
-      <form className="checkout-form" onSubmit={submit}>
-        <div className="form-card">
-          <h2>بيانات التوصيل</h2>
-          <label>الاسم الكامل<input value={customer.fullName} onChange={e => update('fullName', e.target.value)} /></label>
-          <label>رقم الموبايل<input inputMode="numeric" maxLength={11} value={customer.mobile} onChange={e => update('mobile', e.target.value.replace(/\D/g, ''))} placeholder="01*********" /></label>
-          <label>المنطقة<input value={customer.area} onChange={e => update('area', e.target.value)} /></label>
-          <label>العنوان التفصيلي<textarea rows={3} value={customer.address} onChange={e => update('address', e.target.value)} /></label>
-          <label>علامة مميزة<input value={customer.landmark} onChange={e => update('landmark', e.target.value)} /></label>
-          <label>ملاحظات<textarea rows={3} value={customer.notes} onChange={e => update('notes', e.target.value)} /></label>
-        </div>
+      <div className="form-card">
+        <h2>{ar.checkout.deliveryInfoTitle}</h2>
+        <label>{ar.checkout.fullNameLabel}
+          <input value={customer.fullName} onChange={e => update('fullName', e.target.value)} placeholder={ar.checkout.fullNamePlaceholder} />
+        </label>
+        <label>{ar.checkout.mobileLabel}
+          <input value={customer.mobile} onChange={e => update('mobile', e.target.value)} placeholder={ar.checkout.mobilePlaceholder} />
+        </label>
+        <label>{ar.checkout.governorateLabel}
+          <select value={customer.governorate} onChange={e => update('governorate', e.target.value)}>
+            <option value="" disabled>{ar.checkout.governoratePlaceholder}</option>
+            {governorates.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </label>
+        <label>{ar.checkout.addressLabel}
+          <input value={customer.address} onChange={e => update('address', e.target.value)} placeholder={ar.checkout.addressPlaceholder} />
+        </label>
+      </div>
 
-        <div className="form-card">
-          <h2>موعد التوصيل</h2>
-          {(['أقرب وقت', 'اليوم مساءً', 'غداً صباحاً'] as DeliverySlot[]).map(slot => (
-            <label className="radio-row" key={slot}>
-              <input type="radio" checked={deliverySlot === slot} onChange={() => setDeliverySlot(slot)} />
-              <span>{slot}</span>
-            </label>
+      <div className="form-card">
+        <h2>{ar.checkout.deliverySlotTitle}</h2>
+        <div className="slot-list">
+          {deliverySlots.map(option => (
+            <button
+              key={option.id}
+              className={`slot-option ${slot === option.id ? 'active' : ''}`}
+              onClick={() => setSlot(option.id)}
+            >
+              <span>
+                <span className="slot-label">{option.label}</span>
+                <span className="slot-note">{option.note}</span>
+              </span>
+              <span className="slot-dot" />
+            </button>
           ))}
         </div>
+      </div>
 
-        <div className="form-card">
-          <h2>الدفع</h2>
-          <label className="radio-row locked">
-            <input type="radio" checked readOnly />
-            <span>الدفع عند الاستلام (كاش)</span>
-          </label>
+      <div className="form-card">
+        <h2>{ar.checkout.paymentTitle}</h2>
+        <div className={`payment-option ${settings.codEnabled ? 'active' : 'disabled'}`}>
+          <span className="payment-icon">💵</span>
+          <span><span className="payment-label">{ar.checkout.cashOnDelivery}</span><span className="payment-note">{settings.codEnabled ? ar.checkout.cashOnDeliveryNote : ar.checkout.codDisabledNotice}</span></span>
+          {settings.codEnabled && <span className="payment-dot" />}
         </div>
+        <div className="payment-option disabled">
+          <span className="payment-icon">💳</span>
+          <span><span className="payment-label">{ar.checkout.cardPayment}</span><span className="payment-note">{ar.checkout.comingSoon}</span></span>
+        </div>
+      </div>
 
-        {error && <div className="alert warning">{error}</div>}
+      <div className="summary-card">
+        <div><span>{ar.checkout.orderSummaryItemsCount(detailedItems.reduce((sum, i) => sum + i.quantity, 0))}</span><span>{formatMoney(subtotal)}</span></div>
+        {discount && <div className="summary-discount"><span>{ar.cart.discountApplied(discount.code)}</span><span>-{formatMoney(discount.amount)}</span></div>}
+        <div><span>{ar.cart.delivery}</span><span>{deliveryFee ? formatMoney(deliveryFee) : ar.cart.free}</span></div>
+        <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(total)}</span></div>
+      </div>
 
-        <button className="primary-button" type="submit">
-          تأكيد الطلب وإرسال عبر واتساب
-        </button>
-      </form>
-    </section>
+      {formError && <div className="form-error-banner">{ar.checkout.formError}</div>}
+      {apiError && <div className="form-error-banner">{apiError}</div>}
+
+      <StickyActionBar label={ar.checkout.submit} meta={formatMoney(total)} onClick={submit} disabled={submitting || !settings.codEnabled} />
+    </div>
   )
 }

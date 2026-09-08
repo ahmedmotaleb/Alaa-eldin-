@@ -1,10 +1,10 @@
-export type ProductUnit = 'كيلو' | 'عبوة' | 'قطعة' | 'زجاجة' | 'كرتونة'
+export type ProductUnit = string
 
 export interface Category {
   id: string
   name: string
   emoji: string
-  image?: string
+  tint: string
 }
 
 export interface Product {
@@ -17,10 +17,9 @@ export interface Product {
   oldPrice?: number
   unit: ProductUnit
   available: boolean
-  image: string
+  emoji: string
   bestseller?: boolean
   offer?: boolean
-  newArrival?: boolean
   orderCount?: number
 }
 
@@ -29,15 +28,19 @@ export interface CartItem {
   quantity: number
 }
 
-export type DeliverySlot = 'أقرب وقت' | 'اليوم مساءً' | 'غداً صباحاً'
+export type DeliverySlotId = 'now' | 'evening' | 'tomorrow'
+
+export interface DeliverySlot {
+  id: DeliverySlotId
+  label: string
+  note: string
+}
 
 export interface CustomerDetails {
   fullName: string
   mobile: string
-  area: string
+  governorate: string
   address: string
-  landmark?: string
-  notes?: string
 }
 
 export interface OrderLine {
@@ -49,14 +52,19 @@ export interface OrderLine {
   lineTotal: number
 }
 
+export type OrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
+
 export interface Order {
   id: string
   createdAt: string
   customer: CustomerDetails
-  deliverySlot: DeliverySlot
-  paymentMethod: 'الدفع عند الاستلام'
+  deliverySlot: DeliverySlotId
+  paymentMethod: string
   items: OrderLine[]
   subtotal: number
   deliveryFee: number
   total: number
+  status: OrderStatus
+  discountCode?: string
+  discountAmount: number
 }

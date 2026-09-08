@@ -1,24 +1,20 @@
 import { useNavigate } from 'react-router-dom'
-import { categories } from '../data/categories'
+import { useCatalog } from '../store/CatalogContext'
+import { ar } from '../i18n/ar'
 
 export function CategoriesPage() {
   const navigate = useNavigate()
+  const { categories, products } = useCatalog()
 
   return (
-    <section>
-      <div className="page-title">
-        <h1>الأقسام</h1>
-        <p>اختار القسم المناسب وابدأ التسوق.</p>
-      </div>
-
-      <div className="category-grid">
-        {categories.map(category => (
-          <button className="category-card" key={category.id} onClick={() => navigate(`/category/${category.id}`)}>
-            <span>{category.emoji}</span>
-            <strong>{category.name}</strong>
-          </button>
-        ))}
-      </div>
-    </section>
+    <div className="categories-grid">
+      {categories.map(category => (
+        <button key={category.id} className="category-card" onClick={() => navigate(`/category/${category.id}`)}>
+          <span className="category-card-icon" style={{ background: category.tint }}>{category.emoji}</span>
+          <span className="category-card-name">{category.name}</span>
+          <span className="category-card-count">{ar.categories.productsCount(products.filter(p => p.categoryId === category.id).length)}</span>
+        </button>
+      ))}
+    </div>
   )
 }

@@ -1,60 +1,66 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { STORE_CONFIG } from '../config/store'
-import type { Order } from '../types/models'
+import { useRequireAuth } from '../hooks/useRequireAuth'
+import { deliverySlots } from '../data/deliverySlots'
 import { formatMoney } from '../utils/money'
-import { buildWhatsAppOrderMessage, buildWhatsAppUrl } from '../utils/order'
+import { api, ApiError, type ApiOrder } from '../utils/api'
+import { ar } from '../i18n/ar'
 
 export function ConfirmationPage() {
   const navigate = useNavigate()
   const { orderId } = useParams()
+  const { user } = useRequireAuth()
+  const [order, setOrder] = useState<ApiOrder | null>(null)
+  const [error, setError] = useState('')
 
-  const order = useMemo(() => {
-    try {
-      const raw = localStorage.getItem('alaa-eldin-last-order')
-      return raw ? JSON.parse(raw) as Order : null
-    } catch {
-      return null
-    }
-  }, [])
+  useEffect(() => {
+    if (!user || !orderId) return
+    api.getOrder(orderId)
+      .then(({ order }) => setOrder(order))
+      .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
+  }, [user, orderId])
 
-  if (!order || order.id !== orderId) {
-    return <div className="empty-card">تعذر العثور على تفاصيل الطلب.</div>
-  }
+  if (!user || (!order && !error)) return null
+  if (error || !order) return <div className="empty-card">{error || ar.errors.forCode('order_not_found')}</div>
+
+  const slot = deliverySlots.find(s => s.id === order.deliverySlot)?.label ?? ''
 
   return (
-    <section className="confirmation-page">
-      <div className="success-icon">✓</div>
-      <h1>تم تجهيز طلبك للإرسال</h1>
-      <p>رقم الطلب: <strong>{order.id}</strong></p>
+    <div className="confirmation-page">
+      <div className="success-icon">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5.2 5L20 6.5" stroke="#16A34A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </div>
+      <h1>{ar.confirmation.title}</h1>
+      <p>{ar.confirmation.phoneNote(order.customer.mobile)}</p>
+
+      <div className="order-id-card">
+        <div><div className="order-id-label">{ar.confirmation.orderNumber}</div><div className="order-id-value">{order.id}</div></div>
+        <div><div className="order-id-label">{ar.confirmation.expectedDelivery}</div><div className="order-id-value small">{slot}</div></div>
+      </div>
 
       <div className="invoice-card">
-        <h2>ملخص الفاتورة</h2>
+        <h2>{ar.confirmation.invoiceTitle}</h2>
         {order.items.map(item => (
           <div className="invoice-line" key={item.productId}>
             <span>{item.name} × {item.quantity}</span>
-            <strong>{formatMoney(item.lineTotal)}</strong>
+            <span>{formatMoney(item.lineTotal)}</span>
           </div>
         ))}
         <hr />
-        <div className="invoice-line"><span>الإجمالي الفرعي</span><strong>{formatMoney(order.subtotal)}</strong></div>
-        <div className="invoice-line"><span>التوصيل</span><strong>{order.deliveryFee ? formatMoney(order.deliveryFee) : 'مجاني'}</strong></div>
-        <div className="invoice-line invoice-total"><span>الإجمالي</span><strong>{formatMoney(order.total)}</strong></div>
+        {order.discountCode && (
+          <div className="invoice-line"><span>{ar.cart.discountApplied(order.discountCode)}</span><span>-{formatMoney(order.discountAmount)}</span></div>
+        )}
+        <div className="invoice-line"><span>{ar.confirmation.delivery}</span><span>{order.deliveryFee ? formatMoney(order.deliveryFee) : ar.cart.free}</span></div>
+        <div className="invoice-line invoice-total"><span>{ar.confirmation.totalCash}</span><span>{formatMoney(order.total)}</span></div>
       </div>
 
-      <details className="message-preview">
-        <summary>عرض نص الطلب المرسل</summary>
-        <pre>{buildWhatsAppOrderMessage(order)}</pre>
-      </details>
+      <button className="primary-button" onClick={() => navigate(`/track/${order.id}`)}>{ar.confirmation.trackOrder}</button>
+      <button className="secondary-button" onClick={() => navigate('/')}>{ar.confirmation.backHome}</button>
 
-      <div className="stack-actions">
-        <a className="primary-button link-button" href={buildWhatsAppUrl(order)} target="_blank" rel="noreferrer">
-          تواصل معنا على واتساب
-        </a>
-        <button className="secondary-button" onClick={() => navigate('/')}>متابعة التسوق</button>
+      <div className="whatsapp-note">
+        <span>💬</span>
+        <span>{ar.confirmation.whatsappNote}</span>
       </div>
-
-      <p className="muted-note">سيتم الدفع عند الاستلام. رقم واتساب الحالي في المشروع قيمة تجريبية ويجب استبداله قبل النشر.</p>
-    </section>
+    </div>
   )
 }
