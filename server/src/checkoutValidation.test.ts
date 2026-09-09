@@ -61,14 +61,26 @@ describe('validateCheckoutInput', () => {
     if (result.ok) expect(result.data.items).toEqual([{ productId: 'p1', quantity: 5 }])
   })
 
-  it('rejects an unknown delivery slot', () => {
+  // شكل الحقل بس بيتحقق منه هنا (نص مش فاضي) — هل الميعاد موجود فعلاً ومفعّل بيتحقق منه
+  // من قاعدة البيانات جوه orderService.createOrder (زي أي تحقق تاني محتاج حالة حالية).
+  it('rejects a blank delivery slot', () => {
+    const result = validateCheckoutInput({
+      deliverySlot: '   ',
+      paymentMethod: 'COD',
+      customer: validCustomer,
+      items: [{ productId: 'p1', quantity: 1 }]
+    })
+    expect(result).toEqual({ ok: false, error: 'invalid_delivery_slot' })
+  })
+
+  it('accepts any non-empty delivery slot id at the structural-validation stage', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'yesterday',
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 1 }]
     })
-    expect(result).toEqual({ ok: false, error: 'invalid_delivery_slot' })
+    expect(result.ok).toBe(true)
   })
 
   it('rejects a payment method other than COD', () => {

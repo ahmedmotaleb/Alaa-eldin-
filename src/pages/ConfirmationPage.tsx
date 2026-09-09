@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
-import { deliverySlots } from '../data/deliverySlots'
+import { useCatalog } from '../store/CatalogContext'
 import { formatMoney } from '../utils/money'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { saveGuestTracking } from '../utils/guestTracking'
@@ -12,6 +12,7 @@ export function ConfirmationPage() {
   const location = useLocation()
   const { orderNumber } = useParams()
   const { user, loading } = useAuth()
+  const { deliverySlots } = useCatalog()
   const stateOrder = (location.state as { order?: ApiOrder } | null)?.order ?? null
   const [order, setOrder] = useState<ApiOrder | null>(stateOrder)
   const [error, setError] = useState('')

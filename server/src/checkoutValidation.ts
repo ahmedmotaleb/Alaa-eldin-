@@ -1,8 +1,5 @@
 import { isValidEgyptianMobile } from './phone.js'
 
-export const DELIVERY_SLOTS = ['now', 'evening', 'tomorrow'] as const
-export type DeliverySlotId = typeof DELIVERY_SLOTS[number]
-
 // الدفع عند الاستلام هو الطريقة الوحيدة المدعومة فعلياً حالياً.
 export const PAYMENT_METHOD_COD = 'COD'
 
@@ -19,7 +16,7 @@ export interface CheckoutCustomerInput {
 }
 
 export interface CheckoutInput {
-  deliverySlot: DeliverySlotId
+  deliverySlot: string
   paymentMethod: string
   customer: CheckoutCustomerInput
   items: CheckoutItemInput[]
@@ -78,7 +75,10 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'customer_address_required' }
   }
 
-  if (typeof b.deliverySlot !== 'string' || !DELIVERY_SLOTS.includes(b.deliverySlot as DeliverySlotId)) {
+  // الشكل بس بيتحقق هنا (نص مش فاضي) — الوجود الفعلي والتفعيل بيتأكد منه من قاعدة البيانات
+  // جوه orderService.createOrder، زي أي حالة تانية محتاجة قراءة حالة حالية (المخزون، الخصم).
+  const rawDeliverySlot = typeof b.deliverySlot === 'string' ? b.deliverySlot.trim() : ''
+  if (!rawDeliverySlot) {
     return { ok: false, error: 'invalid_delivery_slot' }
   }
 
@@ -110,7 +110,7 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
   return {
     ok: true,
     data: {
-      deliverySlot: b.deliverySlot as DeliverySlotId,
+      deliverySlot: rawDeliverySlot,
       paymentMethod: PAYMENT_METHOD_COD,
       customer: {
         fullName: rawName,

@@ -65,12 +65,19 @@ export interface CartItem {
   quantity: number
 }
 
-export type DeliverySlotId = 'now' | 'evening' | 'tomorrow'
+// المواعيد بقت مُدارة من السيرفر (جدول delivery_slots) بدل قايمة ثابتة في الكود — أي معرّف
+// نصي ممكن يبقى ميعاد فعلي حالياً أو في المستقبل، مفيش قايمة مغلقة من 3 قيم تحديداً بعد كده.
+export type DeliverySlotId = string
 
 export interface DeliverySlot {
   id: DeliverySlotId
   label: string
   note: string
+}
+
+export interface DeliveryZone {
+  governorate: string
+  deliveryFee: number
 }
 
 export interface CustomerDetails {

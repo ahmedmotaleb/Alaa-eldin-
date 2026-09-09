@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRequireAuth } from '../hooks/useRequireAuth'
-import { governorates } from '../data/governorates'
+import { useCatalog } from '../store/CatalogContext'
 import { api, ApiError, type ApiAddress, type ApiAddressInput } from '../utils/api'
 import { ar } from '../i18n/ar'
 
@@ -12,6 +12,7 @@ const emptyForm: ApiAddressInput = {
 
 export function AddressesPage() {
   const { user, loading: authLoading } = useRequireAuth()
+  const { deliveryZones } = useCatalog()
   const navigate = useNavigate()
   const [addresses, setAddresses] = useState<ApiAddress[] | null>(null)
   const [error, setError] = useState('')
@@ -139,7 +140,7 @@ export function AddressesPage() {
           <label>{ar.addresses.governorateField}
             <select value={form.governorate} onChange={e => set('governorate', e.target.value)}>
               <option value="" disabled>{ar.checkout.governoratePlaceholder}</option>
-              {governorates.map(g => <option key={g} value={g}>{g}</option>)}
+              {deliveryZones.map(z => <option key={z.governorate} value={z.governorate}>{z.governorate}</option>)}
             </select>
           </label>
           <label>{ar.addresses.areaField}

@@ -10,6 +10,7 @@ import {
 } from './inventoryService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
+import { getActiveDeliveryZoneFee, isActiveDeliverySlot } from './deliveryService.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
@@ -161,6 +162,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       const settings = await loadStoreSettingsForUpdate(client)
       if (!settings.codEnabled) throw new OrderError(400, 'cod_disabled')
 
+      // المحافظة والميعاد لازم يكونوا فعلاً موجودين ومفعّلين دلوقتي — مش مجرد نص غير فاضي
+      // (اللي validateCheckoutInput بيتحقق منه بس كشكل). ده بيمنع طلب برسوم توصيل افتراضية
+      // غلط لمحافظة مش متاحة، أو ميعاد اتشال/اتعطل من لوحة التحكم.
+      const zoneDeliveryFee = await getActiveDeliveryZoneFee(client, input.customer.governorate)
+      if (zoneDeliveryFee === null) throw new OrderError(400, 'delivery_zone_unavailable')
+      if (!(await isActiveDeliverySlot(client, input.deliverySlot))) throw new OrderError(400, 'invalid_delivery_slot')
+
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined
 
       const productIds = input.items.map(i => i.productId)
@@ -211,7 +219,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount })
       }
 
-      const deliveryFee = calculateDeliveryFee(subtotal, settings)
+      const deliveryFee = calculateDeliveryFee(subtotal, { freeShippingThreshold: settings.freeShippingThreshold, deliveryFee: zoneDeliveryFee })
       const total = computeTotal(subtotal, discountAmount, deliveryFee)
 
       const id = crypto.randomUUID()

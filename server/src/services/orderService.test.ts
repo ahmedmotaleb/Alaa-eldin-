@@ -40,6 +40,12 @@ async function resetFixtures() {
     `INSERT INTO store_settings (id, name, whatsapp_number, currency, minimum_order, free_shipping_threshold, delivery_fee)
      VALUES (1, 'متجر اختبار', '20100', 'ج.م', 100, 500, 30)`
   )
+
+  // delivery_zones/delivery_slots مش بيتمسحوا هنا (بيانات مرجعية دائمة اتزرعت بالـ migration،
+  // مش fixture لكل اختبار) — بس الصفوف اللي اختبارات الملف ده بتلعب فيها بترجع لحالتها الافتراضية
+  // عشان أي تعديل (تعطيل/تغيير رسم) من اختبار سابق ميأثرش على الاختبار الجاي أو ملفات تانية.
+  await pool.query(`UPDATE delivery_zones SET delivery_fee = 30, is_active = 1 WHERE governorate = 'القاهرة'`)
+  await pool.query(`UPDATE delivery_slots SET is_active = 1 WHERE id = 'now'`)
 }
 
 async function setStock(quantity: number) {
@@ -105,6 +111,45 @@ describe('createOrder — server-authoritative pricing', () => {
   it('rejects when cod is disabled in store settings', async () => {
     await pool.query('UPDATE store_settings SET cod_enabled = 0 WHERE id = 1')
     await expect(createOrder(baseInput(), null, nextKey())).rejects.toMatchObject({ code: 'cod_disabled' })
+  })
+})
+
+describe('createOrder — server-authoritative delivery zones and slots', () => {
+  it('prices delivery from the matched zone row, not the flat store-wide default', async () => {
+    await pool.query(`UPDATE delivery_zones SET delivery_fee = 55 WHERE governorate = 'القاهرة'`)
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    // الإعداد العام لسه 30 (من resetFixtures) — المتوقع هنا 55 لأنه سعر منطقة القاهرة تحديداً.
+    expect(order.deliveryFee).toBe(55)
+    expect(order.total).toBe(PRODUCT_PRICE * 5 + 55)
+  })
+
+  it('still grants free shipping at the threshold even with a non-default zone fee', async () => {
+    await pool.query(`UPDATE delivery_zones SET delivery_fee = 55 WHERE governorate = 'القاهرة'`)
+    await pool.query('UPDATE store_settings SET free_shipping_threshold = 190 WHERE id = 1')
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(order.deliveryFee).toBe(0)
+  })
+
+  it('rejects a governorate with no configured delivery zone at all', async () => {
+    await expect(
+      createOrder(baseInput({ customer: { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'محافظة غير موجودة', address: 'شارع 1' } }), null, nextKey())
+    ).rejects.toMatchObject({ status: 400, code: 'delivery_zone_unavailable' })
+  })
+
+  it('rejects a governorate whose zone exists but was deactivated by the admin', async () => {
+    await pool.query(`UPDATE delivery_zones SET is_active = 0 WHERE governorate = 'القاهرة'`)
+    await expect(createOrder(baseInput(), null, nextKey())).rejects.toMatchObject({ status: 400, code: 'delivery_zone_unavailable' })
+  })
+
+  it('rejects a delivery slot id that does not exist', async () => {
+    await expect(
+      createOrder(baseInput({ deliverySlot: 'yesterday' }), null, nextKey())
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_delivery_slot' })
+  })
+
+  it('rejects a delivery slot that exists but was deactivated by the admin', async () => {
+    await pool.query(`UPDATE delivery_slots SET is_active = 0 WHERE id = 'now'`)
+    await expect(createOrder(baseInput(), null, nextKey())).rejects.toMatchObject({ status: 400, code: 'invalid_delivery_slot' })
   })
 })
 

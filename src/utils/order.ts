@@ -1,15 +1,14 @@
 import { getSettings } from '../store/settingsStore'
-import { deliverySlots } from '../data/deliverySlots'
-import type { Order } from '../types/models'
+import type { DeliverySlot, Order } from '../types/models'
 import { formatMoney } from './money'
 import { toWhatsAppInternational } from './phone'
 import { ar } from '../i18n/ar'
 
-function slotLabel(slotId: Order['deliverySlot']) {
+function slotLabel(slotId: Order['deliverySlot'], deliverySlots: DeliverySlot[]) {
   return deliverySlots.find(s => s.id === slotId)?.label ?? slotId
 }
 
-export function buildWhatsAppOrderMessage(order: Order) {
+export function buildWhatsAppOrderMessage(order: Order, deliverySlots: DeliverySlot[]) {
   const msg = ar.order.whatsappMessage
   const items = order.items
     .map((item, index) =>
@@ -33,13 +32,13 @@ export function buildWhatsAppOrderMessage(order: Order) {
     msg.mobile(order.customer.mobile),
     msg.governorate(order.customer.governorate),
     msg.address(order.customer.address),
-    msg.deliverySlot(slotLabel(order.deliverySlot)),
+    msg.deliverySlot(slotLabel(order.deliverySlot, deliverySlots)),
     msg.payment
   ].filter(Boolean).join('\n')
 }
 
-export function buildWhatsAppUrl(order: Order) {
-  const text = buildWhatsAppOrderMessage(order)
+export function buildWhatsAppUrl(order: Order, deliverySlots: DeliverySlot[]) {
+  const text = buildWhatsAppOrderMessage(order, deliverySlots)
   // رقم واتساب المتجر مخزّن بالصيغة المحلية (01xxxxxxxxx) — التحويل للصيغة الدولية
   // بيحصل هنا بس، وقت بناء الرابط، مش وقت التخزين.
   return `https://wa.me/${toWhatsAppInternational(getSettings().whatsappNumber)}?text=${encodeURIComponent(text)}`

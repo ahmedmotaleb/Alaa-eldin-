@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StickyActionBar } from '../components/StickyActionBar'
-import { deliverySlots } from '../data/deliverySlots'
-import { governorates } from '../data/governorates'
 import { useCart } from '../store/CartContext'
 import { useAuth } from '../store/AuthContext'
-import type { CustomerDetails, DeliverySlotId, Order } from '../types/models'
+import { useCatalog } from '../store/CatalogContext'
+import type { CustomerDetails, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
 import { api, ApiError, type ApiAddress } from '../utils/api'
@@ -27,11 +26,12 @@ const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, total, clearCart } = useCart()
+  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, clearCart } = useCart()
   const { user } = useAuth()
+  const { deliveryZones, deliverySlots } = useCatalog()
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
-  const [slot, setSlot] = useState<DeliverySlotId>('now')
+  const [slot, setSlot] = useState<string>(() => deliverySlots[0]?.id ?? '')
   const [touched, setTouched] = useState(false)
   const [apiError, setApiError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -73,6 +73,15 @@ export function CheckoutPage() {
       address: addressLine(address)
     })
   }
+
+  // رسوم التوصيل الفعلية بتختلف حسب المحافظة المختارة — قبل ما العميل يختار محافظة بيتعرض
+  // التقدير العام من السلة، وبعد الاختيار بيتحدّث فوراً برسوم المنطقة الحقيقية (لسه السيرفر
+  // هو اللي بيحسب ويثبّت الرقم الفعلي وقت إرسال الطلب).
+  const zoneFee = deliveryZones.find(z => z.governorate === customer.governorate)?.deliveryFee
+  const previewDeliveryFee = zoneFee !== undefined
+    ? (subtotal === 0 || subtotal >= settings.freeShippingThreshold ? 0 : zoneFee)
+    : deliveryFee
+  const previewTotal = Math.max(0, subtotal - (discount?.amount ?? 0)) + previewDeliveryFee
 
   const nameValid = customer.fullName.trim().length >= 2 && customer.fullName.trim().length <= 100
   const mobileValid = isValidEgyptianMobile(customer.mobile.trim())
@@ -127,7 +136,7 @@ export function CheckoutPage() {
       }, idempotencyKey)
 
       const order = created as unknown as Order
-      window.open(buildWhatsAppUrl(order), '_blank', 'noopener,noreferrer')
+      window.open(buildWhatsAppUrl(order, deliverySlots), '_blank', 'noopener,noreferrer')
       clearCart()
       navigate(`/confirmation/${order.orderNumber}`, { state: { order } })
     } catch (err) {
@@ -202,7 +211,7 @@ export function CheckoutPage() {
         <label>{ar.checkout.governorateLabel}
           <select value={customer.governorate} onChange={e => update('governorate', e.target.value)} aria-invalid={!!governorateError}>
             <option value="" disabled>{ar.checkout.governoratePlaceholder}</option>
-            {governorates.map(g => <option key={g} value={g}>{g}</option>)}
+            {deliveryZones.map(z => <option key={z.governorate} value={z.governorate}>{z.governorate}</option>)}
           </select>
         </label>
         {governorateError && <div className="field-error">{governorateError}</div>}
@@ -253,8 +262,8 @@ export function CheckoutPage() {
       <div className="summary-card">
         <div><span>{ar.checkout.orderSummaryItemsCount(detailedItems.reduce((sum, i) => sum + i.quantity, 0))}</span><span>{formatMoney(subtotal)}</span></div>
         {discount && <div className="summary-discount"><span>{ar.cart.discountApplied(discount.code)}</span><span>-{formatMoney(discount.amount)}</span></div>}
-        <div><span>{ar.cart.delivery}</span><span>{deliveryFee ? formatMoney(deliveryFee) : ar.cart.free}</span></div>
-        <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(total)}</span></div>
+        <div><span>{ar.cart.delivery}</span><span>{previewDeliveryFee ? formatMoney(previewDeliveryFee) : ar.cart.free}</span></div>
+        <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(previewTotal)}</span></div>
       </div>
 
       <Link to="/refund-exchange-policy" className="checkout-policy-link">{ar.checkout.policyLink}</Link>
@@ -262,7 +271,7 @@ export function CheckoutPage() {
       {touched && !formValid && <div className="form-error-banner">{ar.checkout.formError}</div>}
       {apiError && <div className="form-error-banner">{apiError}</div>}
 
-      <StickyActionBar label={ar.checkout.submit} meta={formatMoney(total)} onClick={submit} disabled={submitting || !settings.codEnabled || !formValid} />
+      <StickyActionBar label={ar.checkout.submit} meta={formatMoney(previewTotal)} onClick={submit} disabled={submitting || !settings.codEnabled || !formValid} />
     </div>
   )
 }

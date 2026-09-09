@@ -252,6 +252,21 @@ export interface AdminSettings {
   showExactLowStock: boolean
 }
 
+export interface AdminDeliveryZone {
+  governorate: string
+  deliveryFee: number
+  isActive: boolean
+  sortOrder: number
+}
+
+export interface AdminDeliverySlot {
+  id: string
+  label: string
+  note: string
+  isActive: boolean
+  sortOrder: number
+}
+
 export const api = {
   login: (body: { email: string, password: string }) =>
     request<{ user: AdminUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
@@ -379,6 +394,14 @@ export const api = {
   getSettings: () => request<{ settings: AdminSettings }>('/admin/settings'),
   updateSettings: (body: Partial<AdminSettings>) =>
     request<{ settings: AdminSettings }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  listDeliveryZones: () => request<{ zones: AdminDeliveryZone[] }>('/admin/delivery/zones'),
+  updateDeliveryZone: (governorate: string, body: { deliveryFee: number, isActive: boolean }) =>
+    request<{ zone: AdminDeliveryZone }>(`/admin/delivery/zones/${encodeURIComponent(governorate)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  listDeliverySlots: () => request<{ slots: AdminDeliverySlot[] }>('/admin/delivery/slots'),
+  createDeliverySlot: (body: { id: string, label: string, note: string, isActive: boolean }) =>
+    request<{ slot: AdminDeliverySlot }>('/admin/delivery/slots', { method: 'POST', body: JSON.stringify(body) }),
+  updateDeliverySlot: (id: string, body: { label: string, note: string, isActive: boolean }) =>
+    request<{ slot: AdminDeliverySlot }>(`/admin/delivery/slots/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   listRiders: () => request<{ riders: AdminRider[] }>('/admin/riders'),
   createRider: (body: { name: string, phone?: string }) =>
     request<{ rider: AdminRider }>('/admin/riders', { method: 'POST', body: JSON.stringify(body) }),

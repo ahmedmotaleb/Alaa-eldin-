@@ -244,6 +244,17 @@ export interface ApiBanner {
   link: string
 }
 
+export interface ApiDeliveryZone {
+  governorate: string
+  deliveryFee: number
+}
+
+export interface ApiDeliverySlot {
+  id: string
+  label: string
+  note: string
+}
+
 export interface ApiSettings {
   name: string
   whatsappNumber: string
@@ -286,6 +297,8 @@ export const api = {
   trackGuestOrder: (orderNumber: string, token: string) =>
     request<{ order: ApiOrder }>(`/track/${encodeURIComponent(orderNumber)}${buildQuery({ t: token })}`),
   listCategories: () => request<{ categories: ApiCategory[] }>('/categories'),
+  listDeliveryZones: () => request<{ zones: ApiDeliveryZone[] }>('/delivery/zones'),
+  listDeliverySlots: () => request<{ slots: ApiDeliverySlot[] }>('/delivery/slots'),
   // كل الفلترة/الفرز/التقسيم لصفحات بيحصل في السيرفر — الواجهة الأمامية مبتحملش الكتالوج
   // كامل أبداً ولا بتعمل أي فلترة بنفسها.
   listProducts: (params: ListProductsParams = {}) =>
