@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
-import { useCatalog } from '../store/CatalogContext'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
@@ -12,11 +11,11 @@ import { ar } from '../i18n/ar'
 export function OrdersPage() {
   const navigate = useNavigate()
   const { user, loading: authLoading } = useAuth()
-  const { products } = useCatalog()
   const { addItem } = useCart()
   const flash = useToast()
   const [orders, setOrders] = useState<ApiOrder[] | null>(null)
   const [error, setError] = useState('')
+  const [reordering, setReordering] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -26,28 +25,40 @@ export function OrdersPage() {
   }, [user])
 
   // "إعادة الطلب": بيضيف للسلة بس المنتجات لسه موجودة ومتاحة دلوقتي، وبالكمية المطلوبة —
+  // بنتحقق من الحالة الحالية عن طريق POST /api/products/resolve (بدل تحميل الكتالوج كامل).
   // السعر اللي هيتحسب فعلياً وقت الدفع هو السعر الحالي من الكتالوج (نفس منطق السلة العادي)،
   // مش سعر الطلب القديم المخزّن. أي منتج اتشال من الكتالوج أو بقى غير متاح بيتخطّى بصمت
   // من غير ما يوقف باقي العملية، مع تنبيه واضح للعميل بعدد المنتجات المتخطاة.
-  function reorder(order: ApiOrder) {
-    let addedCount = 0
-    let skippedCount = 0
-    for (const line of order.items) {
-      const product = products.find(p => p.id === line.productId)
-      if (!product || !product.available) {
-        skippedCount += 1
-        continue
-      }
-      addItem(line.productId, line.quantity)
-      addedCount += 1
-    }
+  async function reorder(order: ApiOrder) {
+    setReordering(order.id)
+    try {
+      const ids = order.items.map(line => line.productId)
+      const { products } = await api.resolveProducts(ids)
+      const byId = new Map(products.map(p => [p.id, p]))
 
-    if (addedCount === 0) {
-      flash(ar.account.reorderNoneAvailable)
-      return
+      let addedCount = 0
+      let skippedCount = 0
+      for (const line of order.items) {
+        const product = byId.get(line.productId)
+        if (!product || !product.available) {
+          skippedCount += 1
+          continue
+        }
+        addItem(line.productId, line.quantity)
+        addedCount += 1
+      }
+
+      if (addedCount === 0) {
+        flash(ar.account.reorderNoneAvailable)
+        return
+      }
+      flash(skippedCount > 0 ? ar.account.reorderSomeSkipped(skippedCount) : ar.account.reorderAllAdded)
+      navigate('/cart')
+    } catch {
+      flash(ar.errors.generic)
+    } finally {
+      setReordering(null)
     }
-    flash(skippedCount > 0 ? ar.account.reorderSomeSkipped(skippedCount) : ar.account.reorderAllAdded)
-    navigate('/cart')
   }
 
   if (authLoading || (user && orders === null && !error)) return null
@@ -87,7 +98,7 @@ export function OrdersPage() {
                 </span>
               </span>
             </button>
-            <button className="order-row-reorder" onClick={() => reorder(order)}>{ar.account.reorder}</button>
+            <button className="order-row-reorder" onClick={() => reorder(order)} disabled={reordering === order.id}>{ar.account.reorder}</button>
           </div>
         )
       })}

@@ -1,33 +1,59 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { AddControl } from '../components/AddControl'
-import { useCatalog } from '../store/CatalogContext'
+import { api, type ApiProduct } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { addRecentSearch, loadRecentSearches } from '../utils/recentSearches'
 import { ar } from '../i18n/ar'
 
+const DEBOUNCE_MS = 300
+
 export function SearchPage() {
   const navigate = useNavigate()
-  const { products } = useCatalog()
   const [query, setQuery] = useState('')
   const [recents, setRecents] = useState<string[]>(() => loadRecentSearches())
-
-  const trimmed = query.trim()
-  const results = useMemo(
-    () => trimmed ? products.filter(p => p.name.includes(trimmed) || p.description.includes(trimmed)) : [],
-    [trimmed]
-  )
-  const trending = useMemo(() => products.filter(p => p.bestseller).slice(0, 5), [])
+  const [trending, setTrending] = useState<ApiProduct[]>([])
+  const [results, setResults] = useState<ApiProduct[]>([])
+  const [searching, setSearching] = useState(false)
+  const requestToken = useRef(0)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
-    if (trimmed && results.length > 0) addRecentSearch(trimmed)
-  }, [trimmed, results.length])
+    api.listProducts({ bestseller: true, limit: 5 }).then(({ products }) => setTrending(products)).catch(() => {})
+  }, [])
+
+  // بحث حقيقي من السيرفر بعد 300ms من توقف الكتابة (debounce) — مفيش طلب في كل ضغطة زر،
+  // وأي رد من طلب قديم اتلغى (stale) بيتجاهل لو المستخدم غيّر النص قبل ما يوصل.
+  useEffect(() => {
+    const trimmed = query.trim()
+    clearTimeout(debounceTimer.current)
+    if (!trimmed) {
+      setResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    debounceTimer.current = setTimeout(() => {
+      const token = ++requestToken.current
+      api.autocomplete(trimmed)
+        .then(({ products }) => {
+          if (token !== requestToken.current) return
+          setResults(products)
+          if (products.length > 0) addRecentSearch(trimmed)
+        })
+        .catch(() => { if (token === requestToken.current) setResults([]) })
+        .finally(() => { if (token === requestToken.current) setSearching(false) })
+    }, DEBOUNCE_MS)
+    return () => clearTimeout(debounceTimer.current)
+  }, [query])
 
   function pickRecent(term: string) {
     setQuery(term)
     setRecents(loadRecentSearches())
   }
+
+  const trimmed = query.trim()
 
   return (
     <div className="search-page">
@@ -72,7 +98,7 @@ export function SearchPage() {
         </div>
       )}
 
-      {trimmed && results.length > 0 && (
+      {trimmed && !searching && results.length > 0 && (
         <div>
           <div className="results-count">{ar.search.resultsCount(results.length)}</div>
           <div className="search-results">
@@ -93,7 +119,7 @@ export function SearchPage() {
         </div>
       )}
 
-      {trimmed && results.length === 0 && (
+      {trimmed && trimmed.length >= 2 && !searching && results.length === 0 && (
         <div className="no-results-card">
           <div className="no-results-icon">🔍</div>
           <div className="no-results-title">{ar.search.noResultsTitle(trimmed)}</div>

@@ -1,12 +1,14 @@
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useCart } from '../store/CartContext'
 import { useCatalog } from '../store/CatalogContext'
+import { usePageTitle } from '../store/pageTitleStore'
 import { ar } from '../i18n/ar'
 
 function useSubTitle() {
   const location = useLocation()
-  const { categoryId, slug } = useParams()
-  const { categories, products } = useCatalog()
+  const { categoryId } = useParams()
+  const { categories } = useCatalog()
+  const productPageTitle = usePageTitle()
   const { pathname } = location
   const t = ar.nav.subTitles
 
@@ -14,7 +16,7 @@ function useSubTitle() {
   if (pathname.startsWith('/category/')) return categories.find(c => c.id === categoryId)?.name ?? t.genericCategory
   if (pathname === '/offers') return ar.home.todaysOffersTitle
   if (pathname === '/best-sellers') return ar.home.bestSellersTitle
-  if (pathname.startsWith('/product/')) return products.find(p => p.slug === slug)?.name ?? t.product
+  if (pathname.startsWith('/product/')) return productPageTitle || t.product
   if (pathname === '/search') return t.search
   if (pathname === '/cart') return t.cart
   if (pathname === '/checkout') return t.checkout

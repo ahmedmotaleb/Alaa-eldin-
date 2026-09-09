@@ -58,7 +58,9 @@ export const ar = {
   productList: {
     sortPopular: 'الأكثر طلباً',
     sortLow: 'السعر: الأقل',
-    sortHigh: 'السعر: الأعلى'
+    sortHigh: 'السعر: الأعلى',
+    loadMore: 'عرض المزيد',
+    loadingMore: 'جارِ التحميل...'
   },
 
   product: {

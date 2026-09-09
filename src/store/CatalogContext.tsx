@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '../utils/api'
 import { setSettings } from './settingsStore'
-import type { Category, Product } from '../types/models'
+import type { Category } from '../types/models'
 import { ar } from '../i18n/ar'
 
+// الكتالوج هنا بيحمّل بس الأقسام وإعدادات المتجر وقت بدء التشغيل — مفيش تحميل لكل المنتجات
+// خالص. أي صفحة محتاجة منتجات (الرئيسية، قسم، بحث، تفاصيل منتج...) بتجيبها بنفسها من
+// GET /api/products (بصفحات/فلاتر) أو GET /api/products/:slug، كل واحدة على حدة.
 interface CatalogContextValue {
-  products: Product[]
   categories: Category[]
   loading: boolean
   error: string
@@ -14,16 +16,14 @@ interface CatalogContextValue {
 const CatalogContext = createContext<CatalogContextValue | null>(null)
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([api.listCategories(), api.listProducts(), api.getSettings()])
-      .then(([catRes, prodRes, settingsRes]) => {
+    Promise.all([api.listCategories(), api.getSettings()])
+      .then(([catRes, settingsRes]) => {
         setCategories(catRes.categories)
-        setProducts(prodRes.products)
         setSettings(settingsRes.settings)
       })
       .catch(() => setError(ar.errors.forCode('network_error')))
@@ -31,7 +31,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <CatalogContext.Provider value={{ products, categories, loading, error }}>
+    <CatalogContext.Provider value={{ categories, loading, error }}>
       {children}
     </CatalogContext.Provider>
   )

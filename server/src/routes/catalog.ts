@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
+import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, type SortOption } from '../services/catalogService.js'
 
 export const catalogRouter = Router()
 
@@ -9,73 +10,59 @@ interface CategoryRow {
   name: string
   emoji: string
   tint: string
+  productCount: string
 }
 
-interface ProductRow {
-  id: string
-  slug: string
-  categoryId: string
-  name: string
-  description: string
-  price: number
-  oldPrice: number | null
-  unit: string
-  emoji: string
-  available: number
-  bestseller: number
-  offer: number
-  orderCount: number
-  primaryImage: string | null
-  primaryImageAlt: string | null
-}
+const SORT_OPTIONS = new Set<SortOption>(['popular', 'price_asc', 'price_desc', 'name', 'newest'])
 
-function serializeProduct(row: ProductRow) {
-  return {
-    id: row.id,
-    slug: row.slug,
-    categoryId: row.categoryId,
-    name: row.name,
-    description: row.description,
-    price: row.price,
-    oldPrice: row.oldPrice ?? undefined,
-    unit: row.unit,
-    emoji: row.emoji,
-    available: !!row.available,
-    bestseller: !!row.bestseller,
-    offer: !!row.offer,
-    orderCount: row.orderCount,
-    primaryImage: row.primaryImage ?? undefined,
-    primaryImageAlt: row.primaryImageAlt ?? undefined
-  }
+function parseBool(value: unknown): boolean | undefined {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
 }
-
-// صورة واحدة تمثيلية لكل منتج: الصورة الأساسية (is_primary) لو موجودة، وإلا أول صورة
-// بالترتيب (sort_order) — نفس سلسلة الأولوية المتبعة في كل الواجهة. الإيموجي والصورة
-// النائبة (placeholder) اتحسابهم بيتم على الواجهة الأمامية لو primaryImage جت فاضية.
-const PRIMARY_IMAGE_JOIN = `
-  LEFT JOIN LATERAL (
-    SELECT image_url, alt_text FROM product_images pi
-    WHERE pi.product_id = p.id
-    ORDER BY pi.is_primary DESC, pi.sort_order ASC
-    LIMIT 1
-  ) img ON true
-`
 
 catalogRouter.get('/categories', async (_req, res) => {
-  const { rows } = await pool.query<CategoryRow>('SELECT id, name, emoji, tint FROM categories ORDER BY sort_order')
-  res.json({ categories: rows })
+  const { rows } = await pool.query<CategoryRow>(`
+    SELECT c.id, c.name, c.emoji, c.tint,
+           (SELECT count(*) FROM products p WHERE p.category_id = c.id) as "productCount"
+    FROM categories c
+    ORDER BY c.sort_order
+  `)
+  res.json({ categories: rows.map(r => ({ ...r, productCount: Number(r.productCount) })) })
 })
 
-catalogRouter.get('/products', async (_req, res) => {
-  const { rows } = await pool.query<ProductRow>(`
-    SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice",
-           p.unit, p.emoji, p.available, p.bestseller, p.offer, p.order_count as "orderCount",
-           img.image_url as "primaryImage", img.alt_text as "primaryImageAlt"
-    FROM products p
-    ${PRIMARY_IMAGE_JOIN}
-    ORDER BY p.name
-  `)
-  res.json({ products: rows.map(serializeProduct) })
+// كل الفلترة والفرز والتقسيم لصفحات بيحصل في PostgreSQL — الواجهة الأمامية مبتحملش الكتالوج
+// كامل خالص ولا بتعمل أي فلترة/فرز في React. راجع Product Card DTO في catalogService (بيانات
+// خفيفة بس بدون الوصف الكامل أو التكلفة أو الكمية الدقيقة).
+catalogRouter.get('/products', async (req, res) => {
+  const sort = SORT_OPTIONS.has(req.query.sort as SortOption) ? (req.query.sort as SortOption) : undefined
+  const result = await listProducts({
+    page: req.query.page ? Number(req.query.page) : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+    category: typeof req.query.category === 'string' ? req.query.category : undefined,
+    search: typeof req.query.search === 'string' ? req.query.search : undefined,
+    sort,
+    offer: parseBool(req.query.offer),
+    bestseller: parseBool(req.query.bestseller),
+    available: parseBool(req.query.available),
+    brand: typeof req.query.brand === 'string' ? req.query.brand : undefined
+  })
+  res.json(result)
+})
+
+// إكمال تلقائي بعد 300ms debounce على الواجهة — هنا برضه بنفس شرط حد أدنى حرفين، ما عدا
+// مطابقة باركود دقيقة اللي بتشتغل فوراً.
+catalogRouter.get('/products/autocomplete', async (req, res) => {
+  const products = await autocompleteProducts(typeof req.query.search === 'string' ? req.query.search : '')
+  res.json({ products })
+})
+
+// حل دفعة من معرفات المنتجات لحالتها الحالية (سعر/صورة/توفر/وحدة) — بيستخدمها السلة
+// (والطلبات المحفوظة محلياً) عشان تعيد التحقق من بيانات المنتج من غير ما تحمّل الكتالوج كامل.
+catalogRouter.post('/products/resolve', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown) => typeof id === 'string') : []
+  const products = await resolveProducts(ids)
+  res.json({ products })
 })
 
 // بدائل مشابهة مُدارة يدوياً من الإدارة — لعرض اقتراحات فقط، مفيش أي استبدال تلقائي
@@ -83,4 +70,15 @@ catalogRouter.get('/products', async (_req, res) => {
 catalogRouter.get('/products/:id/alternatives', async (req, res) => {
   const alternatives = await listPublicAlternatives(String(req.params.id))
   res.json({ alternatives })
+})
+
+// تفاصيل منتج كاملة للعميل (وصف، معرض صور، بدائل، منتجات مشابهة) — مفيش تكلفة داخلية
+// ولا كمية مخزون دقيقة، بس حالة مخزون آمنة (متوفر/منخفض/نافد).
+catalogRouter.get('/products/:slug', async (req, res) => {
+  const product = await getProductBySlug(String(req.params.slug))
+  if (!product) {
+    res.status(404).json({ error: 'product_not_found' })
+    return
+  }
+  res.json({ product })
 })

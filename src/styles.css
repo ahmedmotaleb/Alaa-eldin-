@@ -196,6 +196,8 @@ h1, h2, h3, p { margin: 0; }
 .sort-pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; }
 .sort-pills button { flex: none; border: 1px solid var(--border); background: #fff; color: #2a3a2f; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 12.5px; }
 .sort-pills button.active { background: var(--green); color: #fff; border-color: var(--green); }
+.load-more-button { display: block; width: 100%; margin-top: 14px; border: 1px solid var(--border); background: #fff; color: var(--green); border-radius: 14px; padding: 12px; font-weight: 800; font-size: 13.5px; }
+.load-more-button:disabled { opacity: .6; }
 .product-skeleton { background: #fff; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
 .skeleton-shimmer { background: linear-gradient(100deg,#EFF2F0 30%,#F8FAF9 50%,#EFF2F0 70%); background-size: 250% 100%; animation: shim 1.2s linear infinite; }
 .skeleton-art { height: 112px; }

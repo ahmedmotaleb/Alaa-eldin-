@@ -88,6 +88,7 @@ export interface ApiCategory {
   name: string
   emoji: string
   tint: string
+  productCount: number
 }
 
 export interface ApiDiscount {
@@ -97,22 +98,83 @@ export interface ApiDiscount {
   amount: number
 }
 
+export type ApiStockState = 'in_stock' | 'low_stock' | 'out_of_stock'
+
+// بيانات كارت المنتج الخفيفة بس (بدون الوصف الكامل) — دي اللي بترجع من قائمة/بحث المنتجات.
 export interface ApiProduct {
   id: string
   slug: string
   categoryId: string
+  name: string
+  price: number
+  oldPrice?: number
+  unit: string
+  emoji: string
+  available: boolean
+  stockState: ApiStockState
+  bestseller: boolean
+  offer: boolean
+  orderCount: number
+  primaryImage?: string
+  primaryImageAlt?: string
+  brand: string
+}
+
+export interface ApiPagination {
+  page: number
+  limit: number
+  total: number
+  pages: number
+}
+
+export interface ApiProductGalleryImage {
+  id: string
+  url: string
+  altText: string
+  isPrimary: boolean
+  sortOrder: number
+}
+
+export interface ApiProductDetail {
+  id: string
+  slug: string
+  categoryId: string
+  categoryName: string
   name: string
   description: string
   price: number
   oldPrice?: number
   unit: string
   emoji: string
+  brand: string
   available: boolean
-  bestseller: boolean
-  offer: boolean
-  orderCount: number
-  primaryImage?: string
-  primaryImageAlt?: string
+  stockState: ApiStockState
+  gallery: ApiProductGalleryImage[]
+  alternatives: ApiAlternativeProduct[]
+  similarProducts: ApiProduct[]
+}
+
+export type ProductSort = 'popular' | 'price_asc' | 'price_desc' | 'name' | 'newest'
+
+export interface ListProductsParams {
+  page?: number
+  limit?: number
+  category?: string
+  search?: string
+  sort?: ProductSort
+  offer?: boolean
+  bestseller?: boolean
+  available?: boolean
+  brand?: string
+}
+
+function buildQuery(params: object): string {
+  const usp = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') usp.set(key, String(value))
+  }
+  const qs = usp.toString()
+  return qs ? `?${qs}` : ''
 }
 
 export interface ApiContentPage {
@@ -168,7 +230,15 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
   listCategories: () => request<{ categories: ApiCategory[] }>('/categories'),
-  listProducts: () => request<{ products: ApiProduct[] }>('/products'),
+  // كل الفلترة/الفرز/التقسيم لصفحات بيحصل في السيرفر — الواجهة الأمامية مبتحملش الكتالوج
+  // كامل أبداً ولا بتعمل أي فلترة بنفسها.
+  listProducts: (params: ListProductsParams = {}) =>
+    request<{ products: ApiProduct[], pagination: ApiPagination }>(`/products${buildQuery(params)}`),
+  getProduct: (slug: string) => request<{ product: ApiProductDetail }>(`/products/${encodeURIComponent(slug)}`),
+  // بتُستخدم من السلة (وأي مكان تاني محتاج يتأكد من الحالة الحالية لمنتجات معروفة بالـ id)
+  // عشان تاخد السعر/التوفر/الصورة الحاليين من غير ما تحمّل الكتالوج كامل.
+  resolveProducts: (ids: string[]) => request<{ products: ApiProduct[] }>('/products/resolve', { method: 'POST', body: JSON.stringify({ ids }) }),
+  autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),
   getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),

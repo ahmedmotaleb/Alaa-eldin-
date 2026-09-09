@@ -4,20 +4,36 @@ import { ProductGrid } from '../components/ProductGrid'
 import { Section } from '../components/Section'
 import { useCatalog } from '../store/CatalogContext'
 import { hasOnboarded } from '../utils/onboarding'
-import { api, type ApiBanner } from '../utils/api'
+import { api, type ApiBanner, type ApiProduct } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { ar } from '../i18n/ar'
 
+const HOME_SECTION_LIMIT = 6
+
 export function HomePage() {
   const navigate = useNavigate()
-  const { categories, products } = useCatalog()
+  const { categories } = useCatalog()
   const settings = getSettings()
   const [banners, setBanners] = useState<ApiBanner[]>([])
   const [bannerIndex, setBannerIndex] = useState(0)
+  const [offers, setOffers] = useState<ApiProduct[]>([])
+  const [bestsellers, setBestsellers] = useState<ApiProduct[]>([])
 
   useEffect(() => {
     api.listBanners().then(({ banners }) => setBanners(banners)).catch(() => {})
   }, [])
+
+  // الصفحة الرئيسية بتجيب بس 6 عروض و6 الأكثر مبيعاً من السيرفر مباشرة — مش بتحمّل الكتالوج
+  // كامل عشان تعرض 12 منتج بس.
+  useEffect(() => {
+    if (settings.showTodaysOffers) {
+      api.listProducts({ offer: true, limit: HOME_SECTION_LIMIT }).then(({ products }) => setOffers(products)).catch(() => {})
+    }
+    if (settings.showBestSellers) {
+      api.listProducts({ bestseller: true, limit: HOME_SECTION_LIMIT }).then(({ products }) => setBestsellers(products)).catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.showTodaysOffers, settings.showBestSellers])
 
   if (!hasOnboarded()) return <Navigate to="/onboarding" replace />
 
@@ -61,13 +77,13 @@ export function HomePage() {
           subtitle={ar.home.offersEndIn}
           action={<button className="section-link pill" onClick={() => navigate('/offers')}>{ar.home.allOffers}</button>}
         >
-          <ProductGrid products={products.filter(p => p.oldPrice).slice(0, 6)} layout="rail" />
+          <ProductGrid products={offers} layout="rail" />
         </Section>
       )}
 
       {settings.showBestSellers && (
         <Section title={ar.home.bestSellersTitle} action={<button className="section-link" onClick={() => navigate('/best-sellers')}>{ar.common.viewAll}</button>}>
-          <ProductGrid products={products.filter(p => p.bestseller).slice(0, 6)} />
+          <ProductGrid products={bestsellers} />
         </Section>
       )}
 

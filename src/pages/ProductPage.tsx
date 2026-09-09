@@ -1,43 +1,57 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { StickyActionBar } from '../components/StickyActionBar'
-import { useCatalog } from '../store/CatalogContext'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
-import { api, type ApiAlternativeProduct } from '../utils/api'
+import { setPageTitle } from '../store/pageTitleStore'
+import { api, type ApiProductDetail } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ar } from '../i18n/ar'
 
 export function ProductPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { products, categories } = useCatalog()
-  const product = products.find(p => p.slug === slug)
   const { items, addItem } = useCart()
   const flash = useToast()
-  const [alternatives, setAlternatives] = useState<ApiAlternativeProduct[]>([])
+  const [product, setProduct] = useState<ApiProductDetail | null | undefined>(undefined)
 
-  const similar = useMemo(
-    () => products.filter(p => p.categoryId === product?.categoryId && p.id !== product?.id).slice(0, 6),
-    [product]
-  )
-
-  // بدائل مشابهة مُدارة يدوياً من الإدارة — اقتراح فقط، مفيش أي استبدال تلقائي للمنتج
-  // الحالي؛ العميل هو اللي بيقرر يفتح البديل أو لأ.
+  // صفحة المنتج بتجيب تفاصيله (وصف، معرض صور، بدائل، منتجات مشابهة) من GET /api/products/:slug
+  // مباشرة — من غير ما تحتاج الكتالوج كامل محمّل مقدماً.
   useEffect(() => {
-    if (!product) return
+    if (!slug) return
     let cancelled = false
-    api.getAlternatives(product.id)
-      .then(({ alternatives }) => { if (!cancelled) setAlternatives(alternatives) })
-      .catch(() => { if (!cancelled) setAlternatives([]) })
+    setProduct(undefined)
+    api.getProduct(slug)
+      .then(({ product }) => { if (!cancelled) setProduct(product) })
+      .catch(() => { if (!cancelled) setProduct(null) })
     return () => { cancelled = true }
-  }, [product])
+  }, [slug])
 
-  if (!product) return <Navigate to="/" replace />
+  useEffect(() => {
+    setPageTitle(product?.name ?? '')
+    return () => setPageTitle('')
+  }, [product?.name])
+
+  if (product === null) return <Navigate to="/" replace />
+  if (product === undefined) return null
 
   const quantity = items.find(item => item.productId === product.id)?.quantity ?? 0
-  const categoryName = categories.find(c => c.id === product.categoryId)?.name ?? ''
+  const primaryImage = product.gallery.find(img => img.isPrimary) ?? product.gallery[0]
+  const artProduct = {
+    id: product.id,
+    slug: product.slug,
+    categoryId: product.categoryId,
+    name: product.name,
+    price: product.price,
+    oldPrice: product.oldPrice,
+    unit: product.unit,
+    available: product.available,
+    stockState: product.stockState,
+    emoji: product.emoji,
+    primaryImage: primaryImage?.url,
+    primaryImageAlt: primaryImage?.altText
+  }
 
   function addOne() {
     if (!product!.available) return
@@ -47,7 +61,7 @@ export function ProductPage() {
 
   return (
     <div className="product-page">
-      <ProductArt product={product} height={250} fontSize={120} />
+      <ProductArt product={artProduct} height={250} fontSize={120} />
 
       <div className="product-detail-sheet">
         <div className="product-detail-head">
@@ -56,7 +70,7 @@ export function ProductPage() {
             {product.available ? ar.product.available : ar.product.unavailable}
           </span>
         </div>
-        <div className="product-detail-meta">{ar.product.pricePerUnit(product.unit, categoryName)}</div>
+        <div className="product-detail-meta">{ar.product.pricePerUnit(product.unit, product.categoryName)}</div>
 
         <div className="product-detail-price">
           <span>{formatMoney(product.price)}</span>
@@ -71,11 +85,11 @@ export function ProductPage() {
           <div><div className="tile-icon">✅</div><div>{ar.product.checkBeforeDelivery}</div></div>
         </div>
 
-        {alternatives.length > 0 && (
+        {product.alternatives.length > 0 && (
           <div>
             <h2 className="related-title">{ar.product.similarAlternatives}</h2>
             <div className="related-rail">
-              {alternatives.map(p => (
+              {product.alternatives.map(p => (
                 <button key={p.id} className="related-card" onClick={() => navigate(`/product/${p.slug}`)}>
                   <span className="related-card-art">
                     {p.primaryImage ? <img src={p.primaryImage} alt="" loading="lazy" /> : <span className="related-card-emoji">{p.emoji}</span>}
@@ -90,11 +104,11 @@ export function ProductPage() {
           </div>
         )}
 
-        {similar.length > 0 && (
+        {product.similarProducts.length > 0 && (
           <div>
             <h2 className="related-title">{ar.product.similarProducts}</h2>
             <div className="related-rail">
-              {similar.map(p => (
+              {product.similarProducts.map(p => (
                 <button key={p.id} className="related-card" onClick={() => navigate(`/product/${p.slug}`)}>
                   <ProductArt product={p} height={80} fontSize={36} showBadge={false} showUnavailable={false} />
                   <span className="related-card-body">

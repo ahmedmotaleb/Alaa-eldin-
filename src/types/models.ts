@@ -5,24 +5,56 @@ export interface Category {
   name: string
   emoji: string
   tint: string
+  productCount: number
 }
 
+export type StockState = 'in_stock' | 'low_stock' | 'out_of_stock'
+
+// نسخة خفيفة من المنتج (بيانات الكارت فقط) — من غير الوصف الكامل، ده بيوصل بس من خلال
+// صفحة تفاصيل المنتج (ProductDetail) عشان مانحملش بيانات زيادة عن اللازم في القوائم/الشبكة.
 export interface Product {
   id: string
   slug: string
   categoryId: string
   name: string
-  description: string
   price: number
   oldPrice?: number
   unit: ProductUnit
   available: boolean
+  stockState: StockState
   emoji: string
   bestseller?: boolean
   offer?: boolean
   orderCount?: number
   primaryImage?: string
   primaryImageAlt?: string
+  brand?: string
+}
+
+export interface ProductGalleryImage {
+  id: string
+  url: string
+  altText: string
+  isPrimary: boolean
+  sortOrder: number
+}
+
+export interface ProductDetail {
+  id: string
+  slug: string
+  categoryId: string
+  categoryName: string
+  name: string
+  description: string
+  price: number
+  oldPrice?: number
+  unit: ProductUnit
+  emoji: string
+  brand: string
+  available: boolean
+  stockState: StockState
+  gallery: ProductGalleryImage[]
+  similarProducts: Product[]
 }
 
 export interface CartItem {

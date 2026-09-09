@@ -1,16 +1,19 @@
-import type { Product } from '../types/models'
-import { useProductList, type SortOption } from '../hooks/useProductList'
+import type { ListProductsParams, ProductSort } from '../utils/api'
+import { useProductList } from '../hooks/useProductList'
 import { ProductGrid } from './ProductGrid'
 import { ar } from '../i18n/ar'
 
-const SORT_OPTIONS: { id: SortOption, label: string }[] = [
+const SORT_OPTIONS: { id: ProductSort, label: string }[] = [
   { id: 'popular', label: ar.productList.sortPopular },
-  { id: 'low', label: ar.productList.sortLow },
-  { id: 'high', label: ar.productList.sortHigh }
+  { id: 'price_asc', label: ar.productList.sortLow },
+  { id: 'price_desc', label: ar.productList.sortHigh }
 ]
 
-export function ProductListScreen({ products, loadingKey }: { products: Product[], loadingKey: string }) {
-  const { sort, setSort, sorted, loading } = useProductList(products, loadingKey)
+// filters بيوصف الفلتر الثابت لهذه الشاشة (قسم مُحدد، أو offer=true، أو bestseller=true)؛
+// filterKey لازم يكون قيمة مستقرة (زي معرف القسم) تتغير بس لو الفلتر الفعلي اتغير، عشان
+// useProductList يعرف امتى يعيد الطلب من السيرفر.
+export function ProductListScreen({ filters, filterKey }: { filters: Omit<ListProductsParams, 'page' | 'limit' | 'sort'>, filterKey: string }) {
+  const { sort, setSort, products, loading, loadingMore, hasMore, loadMore } = useProductList(filters, filterKey)
 
   return (
     <div className="product-list-screen">
@@ -40,7 +43,14 @@ export function ProductListScreen({ products, loadingKey }: { products: Product[
           ))}
         </div>
       ) : (
-        <ProductGrid products={sorted} />
+        <>
+          <ProductGrid products={products} />
+          {hasMore && (
+            <button className="load-more-button" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? ar.productList.loadingMore : ar.productList.loadMore}
+            </button>
+          )}
+        </>
       )}
     </div>
   )

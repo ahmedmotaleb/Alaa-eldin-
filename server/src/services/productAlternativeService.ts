@@ -50,7 +50,7 @@ function serialize(row: RawRow): AlternativeProductRow {
 // مش مفيد كاقتراح شراء.
 export async function listPublicAlternatives(productId: string): Promise<AlternativeProductRow[]> {
   const { rows } = await pool.query<RawRow>(
-    `${SELECT_ALTERNATIVES} AND p.available = 1 ORDER BY pa.priority ASC, p.name ASC`,
+    `${SELECT_ALTERNATIVES} AND p.available = 1 AND p.stock > 0 ORDER BY pa.priority ASC, p.name ASC`,
     [productId]
   )
   return rows.map(serialize)

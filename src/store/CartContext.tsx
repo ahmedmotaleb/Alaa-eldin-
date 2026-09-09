@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useCatalog } from './CatalogContext'
 import { getSettings } from './settingsStore'
 import { api, type ApiDiscount } from '../utils/api'
 import type { CartItem, Product } from '../types/models'
@@ -37,22 +36,42 @@ function loadInitialCart(): CartItem[] {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { products } = useCatalog()
   const [items, setItems] = useState<CartItem[]>(loadInitialCart)
+  const [resolved, setResolved] = useState<Record<string, Product>>({})
   const [discount, setDiscount] = useState<ApiDiscount | null>(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
   }, [items])
 
+  // السلة بتاخد بيانات المنتجات الحالية (سعر/صورة/توفر/وحدة) من نقطة الحل الجماعي
+  // POST /api/products/resolve بدل ما تحمّل الكتالوج كامل — بيتعاد الطلب لما تتغير مجموعة
+  // معرفات المنتجات الموجودة في السلة فقط.
+  const idsKey = [...new Set(items.map(item => item.productId))].sort().join(',')
+  useEffect(() => {
+    const ids = idsKey ? idsKey.split(',') : []
+    if (!ids.length) {
+      setResolved({})
+      return
+    }
+    let cancelled = false
+    api.resolveProducts(ids)
+      .then(({ products }) => {
+        if (cancelled) return
+        setResolved(Object.fromEntries(products.map(p => [p.id, p])))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [idsKey])
+
   const detailedItems = useMemo(() => {
     return items
       .map(item => {
-        const product = products.find(p => p.id === item.productId)
+        const product = resolved[item.productId]
         return product ? { ...item, product } : null
       })
       .filter(Boolean) as DetailedCartItem[]
-  }, [items, products])
+  }, [items, resolved])
 
   const subtotal = detailedItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
   const deliveryFee = subtotal >= getSettings().freeShippingThreshold || subtotal === 0 ? 0 : getSettings().deliveryFee
