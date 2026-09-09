@@ -3,3 +3,4 @@ dist
 dist-ssr
 *.tsbuildinfo
 .DS_Store
+.vite
