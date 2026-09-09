@@ -1,9 +1,16 @@
+import { logWarn, logError } from './logger.js'
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const RESEND_FROM = process.env.RESEND_FROM ?? 'علاء الدين <onboarding@resend.dev>'
+const isProduction = process.env.NODE_ENV === 'production'
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   if (!RESEND_API_KEY) {
-    console.warn(`RESEND_API_KEY غير مضبوط — رابط استعادة كلمة المرور (لن يُرسل بريد فعلي): ${resetUrl}`)
+    // رابط الاستعادة بيحتوي على توكن صالح فعلياً — ممنوع منعاً باتاً يتكتب في لوجات
+    // الإنتاج (كان بيتطبع كامل هنا قبل كده، خارج redaction بتاع pino). في بيئة التطوير
+    // بس بيتعرض عشان المطوّر يقدر يكمّل الفلو من غير مفتاح Resend.
+    logWarn('password_reset_email_skipped', { reason: 'resend_api_key_missing' })
+    if (!isProduction) console.warn(`[dev only] رابط استعادة كلمة المرور: ${resetUrl}`)
     return
   }
 
@@ -34,6 +41,6 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    console.error('فشل إرسال بريد استعادة كلمة المرور:', res.status, body)
+    logError('password_reset_email_failed', { status: res.status, providerMessage: body.slice(0, 300) })
   }
 }

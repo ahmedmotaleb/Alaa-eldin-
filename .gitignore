@@ -4,3 +4,9 @@ dist-ssr
 *.tsbuildinfo
 .DS_Store
 .vite
+
+# ملفات البيئة الحقيقية (فيها أسرار: DATABASE_URL، مفاتيح Resend/Cloudinary...) — نسخ
+# .env.example فقط هي اللي بتتراجع في Git.
+.env
+.env.*
+!.env.example
