@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
+import { ProductGallery } from '../components/ProductGallery'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
@@ -61,7 +62,11 @@ export function ProductPage() {
 
   return (
     <div className="product-page">
-      <ProductArt product={artProduct} height={250} fontSize={120} />
+      {product.gallery.length > 0 ? (
+        <ProductGallery images={product.gallery} productName={product.name} />
+      ) : (
+        <ProductArt product={artProduct} height={250} fontSize={120} priority />
+      )}
 
       <div className="product-detail-sheet">
         <div className="product-detail-head">

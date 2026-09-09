@@ -86,7 +86,7 @@ async function validateBody(body: unknown) {
     typeof b?.price !== 'number' || b.price <= 0 ||
     typeof b?.cost !== 'number' || b.cost < 0 ||
     typeof b?.unit !== 'string' || !b.unit.trim() ||
-    typeof b?.emoji !== 'string' || !b.emoji.trim() ||
+    typeof b?.emoji !== 'string' ||
     typeof b?.available !== 'boolean' ||
     typeof b?.stock !== 'number' || b.stock < 0 ||
     typeof b?.alertThreshold !== 'number' || b.alertThreshold < 0

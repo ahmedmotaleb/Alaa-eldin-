@@ -6,6 +6,7 @@ import { useCatalog } from '../store/CatalogContext'
 import { hasOnboarded } from '../utils/onboarding'
 import { api, type ApiBanner, type ApiProduct } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
+import { transformImage } from '../utils/image'
 import { ar } from '../i18n/ar'
 
 const HOME_SECTION_LIMIT = 6
@@ -49,7 +50,14 @@ export function HomePage() {
             {banner.note && <div className="promo-hero-note">{banner.note}</div>}
             <button onClick={() => navigate(banner.link)}>{banner.ctaLabel}</button>
           </div>
-          <div className="promo-hero-emoji">{banner.emoji}</div>
+          {banner.imageUrl ? (
+            <picture>
+              {banner.mobileImageUrl && <source media="(max-width: 640px)" srcSet={transformImage(banner.mobileImageUrl, 'card')} />}
+              <img className="promo-hero-image" src={transformImage(banner.imageUrl, 'card')} alt={banner.altText || banner.title} loading="eager" />
+            </picture>
+          ) : (
+            <div className="promo-hero-emoji">{banner.emoji}</div>
+          )}
         </div>
       )}
       {banners.length > 1 && (
@@ -64,7 +72,9 @@ export function HomePage() {
         <div className="category-rail">
           {categories.map(category => (
             <button key={category.id} className="category-rail-item" onClick={() => navigate(`/category/${category.id}`)}>
-              <span className="category-rail-icon" style={{ background: category.tint }}>{category.emoji}</span>
+              <span className="category-rail-icon" style={{ background: category.image ? '#fff' : category.tint }}>
+                {category.image ? <img src={transformImage(category.image, 'thumbnail')} alt="" loading="lazy" /> : (category.emoji || '🗂️')}
+              </span>
               <span>{category.name}</span>
             </button>
           ))}

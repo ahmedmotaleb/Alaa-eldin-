@@ -101,8 +101,9 @@ export function ProductFormPage() {
         <label>العلامة التجارية
           <input value={form.brand} onChange={e => set('brand', e.target.value)} placeholder="مثال: كريستال" />
         </label>
-        <label>الإيموجي المعروض للمنتج
+        <label>الإيموجي المعروض للمنتج (اختياري)
           <input value={form.emoji} onChange={e => set('emoji', e.target.value)} placeholder="🫒" />
+          <span className="admin-form-help">يُستخدم بديل مؤقت لو المنتج لسه من غير صورة حقيقية — لو فيه صورة مرفوعة، هي اللي بتظهر أولاً دايماً</span>
         </label>
       </div>
 

@@ -10,6 +10,7 @@ interface CategoryRow {
   name: string
   emoji: string
   tint: string
+  imageUrl: string | null
   productCount: string
 }
 
@@ -23,12 +24,18 @@ function parseBool(value: unknown): boolean | undefined {
 
 catalogRouter.get('/categories', async (_req, res) => {
   const { rows } = await pool.query<CategoryRow>(`
-    SELECT c.id, c.name, c.emoji, c.tint,
+    SELECT c.id, c.name, c.emoji, c.tint, c.image_url as "imageUrl",
            (SELECT count(*) FROM products p WHERE p.category_id = c.id) as "productCount"
     FROM categories c
     ORDER BY c.sort_order
   `)
-  res.json({ categories: rows.map(r => ({ ...r, productCount: Number(r.productCount) })) })
+  res.json({
+    categories: rows.map(r => ({
+      id: r.id, name: r.name, emoji: r.emoji, tint: r.tint,
+      image: r.imageUrl ?? undefined,
+      productCount: Number(r.productCount)
+    }))
+  })
 })
 
 // كل الفلترة والفرز والتقسيم لصفحات بيحصل في PostgreSQL — الواجهة الأمامية مبتحملش الكتالوج

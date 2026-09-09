@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, ApiError, type AdminCategory } from '../../utils/api'
 import type { LayoutContext } from '../../components/AdminLayout'
@@ -14,6 +14,9 @@ export function CategoriesPage() {
   const [form, setForm] = useState({ id: '', name: '', emoji: '', tint: TINTS[0] })
   const [createError, setCreateError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [pendingUploadId, setPendingUploadId] = useState<string | null>(null)
 
   function load() {
     api.listCategories()
@@ -46,11 +49,46 @@ export function CategoriesPage() {
     }
   }
 
+  function triggerUpload(categoryId: string) {
+    setPendingUploadId(categoryId)
+    fileInputRef.current?.click()
+  }
+
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    const categoryId = pendingUploadId
+    e.target.value = ''
+    if (!file || !categoryId) return
+    setUploadingId(categoryId)
+    try {
+      await api.uploadCategoryImage(categoryId, file)
+      load()
+    } catch {
+      setError('تعذر رفع صورة القسم')
+    } finally {
+      setUploadingId(null)
+      setPendingUploadId(null)
+    }
+  }
+
+  async function removeImage(categoryId: string) {
+    setUploadingId(categoryId)
+    try {
+      await api.deleteCategoryImage(categoryId)
+      load()
+    } catch {
+      setError('تعذر حذف صورة القسم')
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!categories) return null
 
   return (
     <>
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onFilePicked} />
       {showCreate && (
         <div className="admin-form-card" style={{ marginBottom: 4 }}>
           <div className="admin-form-card-title">إضافة قسم جديد</div>
@@ -81,11 +119,21 @@ export function CategoriesPage() {
         {categories.map(c => (
           <div className="admin-category-card" key={c.id}>
             <div className="admin-category-card-head">
-              <span className="admin-category-card-icon" style={{ background: c.tint }}>{c.emoji}</span>
+              <span className="admin-category-card-icon" style={{ background: c.image ? undefined : c.tint, padding: 0, overflow: 'hidden' }}>
+                {c.image ? <img src={c.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : c.emoji}
+              </span>
               <span>
                 <span className="admin-category-card-title">{c.name}</span>
                 <span className="admin-category-card-sub">{c.productCount} منتج</span>
               </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="admin-category-card-btn" disabled={uploadingId === c.id} onClick={() => triggerUpload(c.id)}>
+                {uploadingId === c.id ? 'جارِ الرفع...' : c.image ? 'تغيير الصورة' : 'رفع صورة'}
+              </button>
+              {c.image && (
+                <button className="admin-category-card-btn" disabled={uploadingId === c.id} onClick={() => removeImage(c.id)}>حذف الصورة</button>
+              )}
             </div>
             <button className="admin-category-card-btn" onClick={() => navigate('/products/all')}>إدارة القسم</button>
           </div>

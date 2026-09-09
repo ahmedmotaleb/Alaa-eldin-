@@ -5,6 +5,7 @@ export interface Category {
   name: string
   emoji: string
   tint: string
+  image?: string
   productCount: number
 }
 

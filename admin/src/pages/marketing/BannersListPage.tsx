@@ -27,7 +27,9 @@ export function BannersListPage() {
       {banners.map(b => (
         <div className="admin-category-card" key={b.id}>
           <div className="admin-category-card-head">
-            <span className="admin-category-card-icon" style={{ background: '#F1F4F2' }}>{b.emoji}</span>
+            <span className="admin-category-card-icon" style={{ background: b.imageUrl ? '#fff' : '#F1F4F2', overflow: 'hidden' }}>
+              {b.imageUrl ? <img src={b.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : b.emoji}
+            </span>
             <span style={{ minWidth: 0 }}>
               <span className="admin-category-card-title">{b.title}</span>
               <span className="admin-category-card-sub">{b.note || '—'}</span>

@@ -88,6 +88,7 @@ export interface ApiCategory {
   name: string
   emoji: string
   tint: string
+  image?: string
   productCount: number
 }
 
@@ -203,6 +204,9 @@ export interface ApiBanner {
   title: string
   note: string
   emoji: string
+  imageUrl?: string
+  mobileImageUrl?: string
+  altText: string
   ctaLabel: string
   link: string
 }

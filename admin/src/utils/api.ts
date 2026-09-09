@@ -101,6 +101,7 @@ export interface AdminCategory {
   name: string
   emoji: string
   tint: string
+  image?: string
   productCount: number
 }
 
@@ -225,13 +226,18 @@ export interface AdminBanner {
   title: string
   note: string
   emoji: string
+  imageUrl?: string
+  mobileImageUrl?: string
+  altText: string
   ctaLabel: string
   link: string
   active: boolean
   sortOrder: number
+  startsAt?: string
+  endsAt?: string
 }
 
-export type AdminBannerInput = Omit<AdminBanner, 'id' | 'sortOrder'>
+export type AdminBannerInput = Omit<AdminBanner, 'id' | 'sortOrder' | 'imageUrl' | 'mobileImageUrl'>
 
 export interface AdminSettings {
   name: string
@@ -316,6 +322,25 @@ export const api = {
   listCategories: () => request<{ categories: AdminCategory[] }>('/admin/categories'),
   createCategory: (body: { id: string, name: string, emoji: string, tint: string }) =>
     request<{ category: AdminCategory }>('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
+  uploadCategoryImage: async (categoryId: string, file: File) => {
+    const form = new FormData()
+    form.append('image', file)
+    let res: Response
+    try {
+      res = await fetch(`${BASE}/admin/categories/${encodeURIComponent(categoryId)}/image`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form
+      })
+    } catch {
+      throw new ApiError('network_error', 0)
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new ApiError(data?.error ?? 'server_error', res.status)
+    return data as { image: string }
+  },
+  deleteCategoryImage: (categoryId: string) =>
+    request<void>(`/admin/categories/${encodeURIComponent(categoryId)}/image`, { method: 'DELETE' }),
   listCustomers: () => request<{ customers: AdminCustomer[] }>('/admin/customers'),
   getCustomer: (id: string) =>
     request<{ customer: AdminCustomer, orders: AdminCustomerOrder[] }>(`/admin/customers/${encodeURIComponent(id)}`),
@@ -336,6 +361,21 @@ export const api = {
     request<{ banner: AdminBanner }>('/admin/banners', { method: 'POST', body: JSON.stringify(body) }),
   updateBanner: (id: number, body: Partial<AdminBannerInput>) =>
     request<{ banner: AdminBanner }>(`/admin/banners/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  uploadBannerImage: async (id: number, file: File, variant: 'desktop' | 'mobile' = 'desktop') => {
+    const form = new FormData()
+    form.append('image', file)
+    let res: Response
+    try {
+      res = await fetch(`${BASE}/admin/banners/${id}/image?variant=${variant}`, { method: 'POST', credentials: 'include', body: form })
+    } catch {
+      throw new ApiError('network_error', 0)
+    }
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new ApiError(data?.error ?? 'server_error', res.status)
+    return data as { image: string }
+  },
+  deleteBannerImage: (id: number, variant: 'desktop' | 'mobile' = 'desktop') =>
+    request<void>(`/admin/banners/${id}/image?variant=${variant}`, { method: 'DELETE' }),
   getSettings: () => request<{ settings: AdminSettings }>('/admin/settings'),
   updateSettings: (body: Partial<AdminSettings>) =>
     request<{ settings: AdminSettings }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),

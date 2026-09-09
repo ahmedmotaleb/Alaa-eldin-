@@ -35,7 +35,8 @@ export const ar = {
     noProducts: 'لا توجد منتجات حالياً.',
     loading: 'جارِ التحميل...',
     unit: 'منتج',
-    currency: 'ج.م'
+    currency: 'ج.م',
+    close: 'إغلاق'
   },
 
   home: {
@@ -76,6 +77,8 @@ export const ar = {
     checkBeforeDelivery: 'فحص قبل التسليم',
     similarProducts: 'منتجات مشابهة',
     similarAlternatives: 'بدائل مشابهة',
+    viewImageLarger: 'اعرض الصورة بحجم أكبر',
+    imageNumber: (n: number) => `صورة ${n}`,
     addToCart: 'أضف إلى السلة',
     updateCart: 'تحديث السلة'
   },
