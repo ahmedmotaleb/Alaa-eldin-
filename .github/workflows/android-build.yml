@@ -49,15 +49,19 @@ jobs:
         run: npm ci
 
       # نفس بوابة الرابط اللي بتشتغل محلياً — بتفشل لو الأصل ناقص/مش HTTPS/localhost،
-      # عشان CI ما ينتجش APK مكسور بصمت.
+      # عشان CI ما ينتجش APK مكسور بصمت. القيمة الافتراضية هي رابط الإنتاج (موجود أصلاً
+      # في .env.example وANDROID_BUILD.md، مش سر)، ومتغيّر المستودع بيتجاوزها لو اتظبط.
       - name: Validate native API origin
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-        run: npm run check:native-origin
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://alaa-eldin-production.up.railway.app' }}
+          ORIGIN_SOURCE: ${{ vars.VITE_API_BASE_URL && 'repository variable' || 'workflow default' }}
+        run: |
+          echo "API origin: $VITE_API_BASE_URL (from: $ORIGIN_SOURCE)"
+          npm run check:native-origin
 
       - name: Build web assets and sync to Android
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://alaa-eldin-production.up.railway.app' }}
         run: npm run android:sync
 
       - name: Assemble debug APK
@@ -111,12 +115,12 @@ jobs:
 
       - name: Validate native API origin
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://alaa-eldin-production.up.railway.app' }}
         run: npm run check:native-origin
 
       - name: Build web assets and sync to Android
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://alaa-eldin-production.up.railway.app' }}
         run: npm run android:sync
 
       # الـ keystore بيتخزّن كـ base64 في الأسرار وبيتفك هنا لملف مؤقت. build.gradle

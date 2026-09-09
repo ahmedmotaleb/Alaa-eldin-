@@ -27,6 +27,16 @@ const fromFile = { ...readEnvFile('.env.production'), ...readEnvFile('.env') }
 const raw = (process.env.VITE_API_BASE_URL ?? fromFile.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '')
 
 function fail(message) {
+  // في GitHub Actions بنطلع annotation رسمية كمان — النص العربي لوحده بيتعرض بشكل مبعثر
+  // في لوج الـ Actions (اتجاه RTL)، والـ annotation بتظهر واضحة فوق في ملخّص الـ run.
+  if (process.env.GITHUB_ACTIONS) {
+    console.log(
+      '::error title=Invalid native API origin::' +
+      'VITE_API_BASE_URL is missing or invalid. ' +
+      'Set it as a repository variable (Settings > Secrets and variables > Actions > Variables) ' +
+      'to a full HTTPS origin with no trailing /api, e.g. https://alaa-eldin-production.up.railway.app'
+    )
+  }
   console.error('\n❌ بناء الأندرويد متوقف: رابط الـ API غير صالح.')
   console.error(`   ${message}`)
   console.error('\n   المطلوب: VITE_API_BASE_URL برابط HTTPS كامل بدون /api في آخره، مثال:')
