@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- allowBackup=false عن قصد: التطبيق بيخزّن توكن جلسة العميل على الجهاز، والنسخ
+         الاحتياطي التلقائي لأندرويد كان بينسخه لـ Google Drive ومنه ممكن يترجّع على جهاز
+         تاني. البيانات المهمة كلها موجودة على السيرفر أصلاً (الحساب، الطلبات، العناوين)
+         فمفيش أي حاجة بتضيع على المستخدم بإيقاف النسخ الاحتياطي — بيسجّل دخول تاني وخلاص. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"

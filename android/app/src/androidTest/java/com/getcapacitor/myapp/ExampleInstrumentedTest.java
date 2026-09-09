@@ -21,6 +21,9 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.getcapacitor.app", appContext.getPackageName());
+        // لازم يطابق applicationId الحقيقي في android/app/build.gradle — كان متسايب على
+        // قيمة قالب Capacitor الافتراضية (com.getcapacitor.app)، يعني الاختبار ده كان
+        // هيفشل أول ما يتشغّل كبوابة في CI.
+        assertEquals("com.alaaeldin.supermarket", appContext.getPackageName());
     }
 }

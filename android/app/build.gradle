@@ -3,15 +3,49 @@ apply plugin: 'com.android.application'
 // توقيع الإصدار (release signing) — القيم بتيجي من android/keystore.properties (ملف محلي
 // غير مرفوع لـ Git، راجع .gitignore) أو من متغيرات بيئة (ANDROID_KEYSTORE_PATH,
 // ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) — لا كلمة سر ولا
-// مسار keystore متثبّت هنا في الكود. لو الاثنين مش موجودين، بناء release هيفشل بوضوح
-// بدل ما يستخدم توقيع افتراضي غير آمن أو يبني بصمت بدون توقيع حقيقي.
+// مسار keystore متثبّت هنا في الكود.
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
+
+// لازم المدخلات الأربعة كلها تكون موجودة — مش المسار بس. قبل كده الفحص كان بيتأكد من
+// وجود ملف الـ keystore فقط، وفي حالة غيابه كان بناء release بيكمل من غير signingConfig
+// خالص وينتج APK **غير موقّع** بصمت (رغم إن التعليق كان بيدّعي إنه بيفشل بوضوح).
 def resolvedKeystorePath = keystoreProps.getProperty('storeFile') ?: System.getenv('ANDROID_KEYSTORE_PATH')
-def hasReleaseSigning = resolvedKeystorePath != null && file(resolvedKeystorePath).exists()
+def resolvedStorePassword = keystoreProps.getProperty('storePassword') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def resolvedKeyAlias = keystoreProps.getProperty('keyAlias') ?: System.getenv('ANDROID_KEY_ALIAS')
+def resolvedKeyPassword = keystoreProps.getProperty('keyPassword') ?: System.getenv('ANDROID_KEY_PASSWORD')
+
+def missingSigningInputs = []
+if (!resolvedKeystorePath) {
+    missingSigningInputs << 'ANDROID_KEYSTORE_PATH (أو storeFile في keystore.properties)'
+} else if (!file(resolvedKeystorePath).exists()) {
+    missingSigningInputs << "ملف الـ keystore غير موجود على المسار: ${resolvedKeystorePath}"
+}
+if (!resolvedStorePassword) missingSigningInputs << 'ANDROID_KEYSTORE_PASSWORD (أو storePassword)'
+if (!resolvedKeyAlias) missingSigningInputs << 'ANDROID_KEY_ALIAS (أو keyAlias)'
+if (!resolvedKeyPassword) missingSigningInputs << 'ANDROID_KEY_PASSWORD (أو keyPassword)'
+
+def hasReleaseSigning = missingSigningInputs.isEmpty()
+
+// الحارس الفعلي: أي مهمة assemble/bundle لـ release من غير توقيع كامل بتفشل البناء فوراً
+// برسالة بتقول الناقص بالظبط. بناء debug مش متأثر إطلاقاً (بيستخدم مفتاح debug الافتراضي)،
+// عشان CI والمطوّرين يقدروا يبنوا debug من غير أي أسرار.
+gradle.taskGraph.whenReady { graph ->
+    def buildingRelease = graph.allTasks.any { task ->
+        def name = task.name.toLowerCase()
+        name.contains('release') && (name.contains('assemble') || name.contains('bundle'))
+    }
+    if (buildingRelease && !hasReleaseSigning) {
+        throw new GradleException(
+            "بناء release متوقف: مدخلات التوقيع ناقصة.\n  - " +
+            missingSigningInputs.join("\n  - ") +
+            "\nراجع ANDROID_BUILD.md لطريقة ضبط keystore.properties أو متغيرات البيئة."
+        )
+    }
+}
 
 android {
     namespace = "com.alaaeldin.supermarket"
@@ -33,9 +67,9 @@ android {
         if (hasReleaseSigning) {
             release {
                 storeFile file(resolvedKeystorePath)
-                storePassword keystoreProps.getProperty('storePassword') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
-                keyAlias keystoreProps.getProperty('keyAlias') ?: System.getenv('ANDROID_KEY_ALIAS')
-                keyPassword keystoreProps.getProperty('keyPassword') ?: System.getenv('ANDROID_KEY_PASSWORD')
+                storePassword resolvedStorePassword
+                keyAlias resolvedKeyAlias
+                keyPassword resolvedKeyPassword
             }
         }
     }

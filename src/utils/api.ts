@@ -5,9 +5,31 @@ import { getNativeSessionToken, setNativeSessionToken, clearNativeSessionToken }
 // تطبيق الأندرويد (Capacitor) بيحمّل الواجهة من ملفات محلية جوه الـ APK (مش من نفس أصل
 // السيرفر)، فلازم رابط API مطلق بصيغة HTTPS كامل. القيمة دي بتتحدد وقت البناء عن طريق
 // VITE_API_BASE_URL (راجع .env.example) — مفيش أي رابط localhost مثبّت هنا لبيئة الإنتاج.
-const BASE = isNative()
-  ? `${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api`
-  : '/api'
+// على الأندرويد الواجهة محمّلة من ملفات محلية جوه الـ APK، فلازم أصل API مطلق وصحيح.
+// لو الرابط ناقص أو غلط، من غير الفحص ده الـ BASE كان بيبقى "/api" وهو نسبي لأصل الـ
+// WebView (https://localhost) — يعني APK بيتبني وينزّل وهو مكسور بالكامل من غير أي خطأ
+// واضح. الفحص هنا بيفشل بصوت عالي بدل ما يشحن نسخة ميتة.
+function resolveNativeApiBase(): string {
+  const raw = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '')
+  if (!raw) {
+    throw new Error('VITE_API_BASE_URL مطلوب لبناء تطبيق الأندرويد — راجع ANDROID_BUILD.md')
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error(`VITE_API_BASE_URL غير صالح كرابط: ${raw}`)
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`VITE_API_BASE_URL لازم يكون HTTPS (القيمة الحالية: ${raw})`)
+  }
+  if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+    throw new Error(`VITE_API_BASE_URL مينفعش يكون localhost في نسخة للتوزيع (القيمة الحالية: ${raw})`)
+  }
+  return `${raw}/api`
+}
+
+const BASE = isNative() ? resolveNativeApiBase() : '/api'
 
 export class ApiError extends Error {
   code: string

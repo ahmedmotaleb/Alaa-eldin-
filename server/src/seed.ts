@@ -56,7 +56,11 @@ async function seedDefaultStoreSettings() {
   await pool.query(
     `INSERT INTO store_settings (id, name, whatsapp_number, currency, minimum_order, free_shipping_threshold, delivery_fee)
      VALUES (1, $1, $2, $3, $4, $5, $6)`,
-    ['علاء الدين', '201XXXXXXXXX', 'ج.م', 100, 500, 30]
+    // رقم الواتساب بيتخزّن بالصيغة المحلية (01xxxxxxxxx) — نفس القاعدة اللي بيفرضها
+    // isValidEgyptianMobile في الواجهة ولوحة التحكم. التحويل للصيغة الدولية بيحصل وقت
+    // بناء رابط wa.me بس. القيمة القديمة هنا كانت بصيغة دولية (201XXXXXXXXX) واللي كانت
+    // بتخالف التحقق نفسه وبتمنع حفظ إعدادات المتجر لحد ما الأدمن يصلّحها يدوياً.
+    ['علاء الدين', '01XXXXXXXXX', 'ج.م', 100, 500, 30]
   )
   console.log('seeded default store_settings')
 }
