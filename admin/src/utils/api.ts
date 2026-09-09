@@ -267,12 +267,92 @@ export interface AdminDeliverySlot {
   sortOrder: number
 }
 
+export interface AnalyticsRevenueDay {
+  date: string
+  revenue: number
+  orderCount: number
+}
+
+export interface AnalyticsCategoryRevenue {
+  categoryId: string
+  categoryName: string
+  revenue: number
+}
+
+export interface AnalyticsProductRevenue {
+  productId: string
+  name: string
+  qty: number
+  revenue: number
+}
+
+export interface AnalyticsSlotRevenue {
+  slot: string
+  count: number
+  revenue: number
+}
+
+export interface AnalyticsRegionRevenue {
+  governorate: string
+  count: number
+  revenue: number
+}
+
+export interface AnalyticsStatusCount {
+  status: string
+  count: number
+}
+
+export interface AnalyticsOverview {
+  totalRevenue: number
+  totalOrders: number
+  avgOrderValue: number
+  revenueByDay: AnalyticsRevenueDay[]
+  revenueByCategory: AnalyticsCategoryRevenue[]
+}
+
+export interface AnalyticsSales {
+  totalRevenue: number
+  avgOrderValue: number
+  maxOrderValue: number
+  revenueByDay: AnalyticsRevenueDay[]
+  revenueBySlot: AnalyticsSlotRevenue[]
+}
+
+export interface AnalyticsProducts {
+  soldProductCount: number
+  totalProductCount: number
+  topProducts: AnalyticsProductRevenue[]
+  revenueByCategory: AnalyticsCategoryRevenue[]
+}
+
+export interface AnalyticsRegions {
+  regions: AnalyticsRegionRevenue[]
+}
+
+export interface AnalyticsOrdersBreakdown {
+  totalOrders: number
+  cancelledCount: number
+  avgItemsPerOrder: number
+  statusCounts: AnalyticsStatusCount[]
+}
+
+export interface AnalyticsHomeSummary {
+  todayRevenue: number
+  todayOrderCount: number
+  totalOrders: number
+  newOrdersCount: number
+  revenueByDay: AnalyticsRevenueDay[]
+  topProducts: AnalyticsProductRevenue[]
+}
+
 export const api = {
   login: (body: { email: string, password: string }) =>
     request<{ user: AdminUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: AdminUser }>('/auth/me'),
-  listOrders: () => request<{ orders: AdminOrder[] }>('/admin/orders'),
+  listOrders: (params: { limit?: number } = {}) =>
+    request<{ orders: AdminOrder[] }>(`/admin/orders${params.limit ? `?limit=${params.limit}` : ''}`),
   getOrder: (id: string) => request<{ order: AdminOrder }>(`/admin/orders/${encodeURIComponent(id)}`),
   updateOrderStatus: (id: string, status: AdminOrderStatus) =>
     request<void>(`/admin/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
@@ -402,6 +482,12 @@ export const api = {
     request<{ slot: AdminDeliverySlot }>('/admin/delivery/slots', { method: 'POST', body: JSON.stringify(body) }),
   updateDeliverySlot: (id: string, body: { label: string, note: string, isActive: boolean }) =>
     request<{ slot: AdminDeliverySlot }>(`/admin/delivery/slots/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  getAnalyticsOverview: () => request<AnalyticsOverview>('/admin/analytics/overview'),
+  getAnalyticsSales: () => request<AnalyticsSales>('/admin/analytics/sales'),
+  getAnalyticsProducts: () => request<AnalyticsProducts>('/admin/analytics/products'),
+  getAnalyticsRegions: () => request<AnalyticsRegions>('/admin/analytics/regions'),
+  getAnalyticsOrdersBreakdown: () => request<AnalyticsOrdersBreakdown>('/admin/analytics/orders-breakdown'),
+  getAnalyticsHomeSummary: () => request<AnalyticsHomeSummary>('/admin/analytics/home-summary'),
   listRiders: () => request<{ riders: AdminRider[] }>('/admin/riders'),
   createRider: (body: { name: string, phone?: string }) =>
     request<{ rider: AdminRider }>('/admin/riders', { method: 'POST', body: JSON.stringify(body) }),
