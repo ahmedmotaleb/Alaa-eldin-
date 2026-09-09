@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { ProductGallery } from '../components/ProductGallery'
+import { FavoriteButton } from '../components/FavoriteButton'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
@@ -70,7 +71,10 @@ export function ProductPage() {
 
       <div className="product-detail-sheet">
         <div className="product-detail-head">
-          <h1>{product.name}</h1>
+          <div className="product-detail-title-row">
+            <h1>{product.name}</h1>
+            <FavoriteButton productId={product.id} className="product-detail-favorite" />
+          </div>
           <span className={`stock-badge ${product.available ? (product.stockState === 'low_stock' ? 'low-stock' : 'available') : 'unavailable'}`}>
             {product.available
               ? (product.stockState === 'low_stock'

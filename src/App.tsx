@@ -6,8 +6,12 @@ import { AndroidBackButton } from './components/AndroidBackButton'
 import { AuthProvider } from './store/AuthContext'
 import { CartProvider } from './store/CartContext'
 import { CatalogProvider, useCatalog } from './store/CatalogContext'
+import { FavoritesProvider } from './store/FavoritesContext'
 import { ToastProvider } from './store/ToastContext'
 import { AccountPage } from './pages/AccountPage'
+import { AddressesPage } from './pages/AddressesPage'
+import { FavoritesPage } from './pages/FavoritesPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { BestSellersPage } from './pages/BestSellersPage'
 import { CartPage } from './pages/CartPage'
 import { CategoriesPage } from './pages/CategoriesPage'
@@ -58,36 +62,41 @@ export default function App() {
       <AuthProvider>
         <CatalogProvider>
           <CartProvider>
-            <ToastProvider>
-              <AndroidBackButton />
-              <OfflineBanner />
-              <CatalogGate>
-                <Routes>
-                  <Route path="/onboarding" element={<OnboardingPage />} />
-                  <Route element={<Layout />}>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/categories" element={<CategoriesPage />} />
-                    <Route path="/category/:categoryId" element={<CategoryPage />} />
-                    <Route path="/offers" element={<OffersPage />} />
-                    <Route path="/best-sellers" element={<BestSellersPage />} />
-                    <Route path="/product/:slug" element={<ProductPage />} />
-                    <Route path="/search" element={<SearchPage />} />
-                    <Route path="/cart" element={<CartPage />} />
-                    <Route path="/checkout" element={<CheckoutPage />} />
-                    <Route path="/confirmation/:orderNumber" element={<ConfirmationPage />} />
-                    <Route path="/track/:orderNumber" element={<TrackingPage />} />
-                    <Route path="/orders" element={<OrdersPage />} />
-                    <Route path="/account" element={<AccountPage />} />
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/register" element={<RegisterPage />} />
-                    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                    <Route path="/reset-password" element={<ResetPasswordPage />} />
-                    <Route path="/refund-exchange-policy" element={<ContentPage slug="refund-exchange-policy" />} />
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Route>
-                </Routes>
-              </CatalogGate>
-            </ToastProvider>
+            <FavoritesProvider>
+              <ToastProvider>
+                <AndroidBackButton />
+                <OfflineBanner />
+                <CatalogGate>
+                  <Routes>
+                    <Route path="/onboarding" element={<OnboardingPage />} />
+                    <Route element={<Layout />}>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/categories" element={<CategoriesPage />} />
+                      <Route path="/category/:categoryId" element={<CategoryPage />} />
+                      <Route path="/offers" element={<OffersPage />} />
+                      <Route path="/best-sellers" element={<BestSellersPage />} />
+                      <Route path="/product/:slug" element={<ProductPage />} />
+                      <Route path="/search" element={<SearchPage />} />
+                      <Route path="/cart" element={<CartPage />} />
+                      <Route path="/checkout" element={<CheckoutPage />} />
+                      <Route path="/confirmation/:orderNumber" element={<ConfirmationPage />} />
+                      <Route path="/track/:orderNumber" element={<TrackingPage />} />
+                      <Route path="/orders" element={<OrdersPage />} />
+                      <Route path="/account" element={<AccountPage />} />
+                      <Route path="/account/addresses" element={<AddressesPage />} />
+                      <Route path="/account/favorites" element={<FavoritesPage />} />
+                      <Route path="/account/profile" element={<ProfilePage />} />
+                      <Route path="/login" element={<LoginPage />} />
+                      <Route path="/register" element={<RegisterPage />} />
+                      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                      <Route path="/reset-password" element={<ResetPasswordPage />} />
+                      <Route path="/refund-exchange-policy" element={<ContentPage slug="refund-exchange-policy" />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Route>
+                  </Routes>
+                </CatalogGate>
+              </ToastProvider>
+            </FavoritesProvider>
           </CartProvider>
         </CatalogProvider>
       </AuthProvider>

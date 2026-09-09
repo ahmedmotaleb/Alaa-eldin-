@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
-import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, SESSION_COOKIE } from '../auth.js'
+import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, requireAuth, SESSION_COOKIE } from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
+import { isValidEgyptianMobile } from '../phone.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export const authRouter = Router()
@@ -61,7 +62,7 @@ authRouter.post('/register', async (req, res) => {
   const { token, expires } = await createSession(id)
   setSessionCookie(res, token, expires)
   res.status(201).json({
-    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), createdAt, isAdmin: false },
+    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false },
     ...(isNativeClient(req) ? { token } : {})
   })
 })
@@ -73,8 +74,8 @@ authRouter.post('/login', async (req, res) => {
     return
   }
 
-  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, createdAt: string, isAdmin: number }>(
-    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", created_at as "createdAt", is_admin as "isAdmin" FROM users WHERE email = $1',
+  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number }>(
+    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin" FROM users WHERE email = $1',
     [email.toLowerCase()]
   )
   const row = rows[0]
@@ -89,7 +90,7 @@ authRouter.post('/login', async (req, res) => {
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, createdAt: row.createdAt, isAdmin: !!row.isAdmin },
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin },
     ...(isNativeClient(req) ? { token } : {})
   })
 })
@@ -150,4 +151,23 @@ authRouter.get('/me', (req, res) => {
     return
   }
   res.json({ user: req.user })
+})
+
+// تعديل بيانات الحساب — الاسم والموبايل بس (نفس قاعدة الموبايل المصري الصارمة). تغيير
+// الإيميل نفسه (هوية الدخول) غير مدعوم هنا عن قصد.
+authRouter.patch('/me', requireAuth, async (req, res) => {
+  const b = req.body as Record<string, unknown>
+  if (
+    typeof b?.fullName !== 'string' || b.fullName.trim().length < 2 || b.fullName.trim().length > 100 ||
+    typeof b?.mobile !== 'string' || (b.mobile.trim() && !isValidEgyptianMobile(b.mobile.trim()))
+  ) {
+    res.status(400).json({ error: 'invalid_profile_fields' })
+    return
+  }
+
+  const fullName = b.fullName.trim()
+  const mobile = b.mobile.trim() || null
+  await pool.query('UPDATE users SET full_name = $1, mobile = $2 WHERE id = $3', [fullName, mobile, req.user!.id])
+  logEvent('profile_updated', { userId: req.user!.id })
+  res.json({ user: { ...req.user, fullName, mobile: mobile ?? undefined } })
 })

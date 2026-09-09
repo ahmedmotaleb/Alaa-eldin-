@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { useRequireAuth } from '../hooks/useRequireAuth'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../store/AuthContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
+import { getGuestTrackingToken } from '../utils/guestTracking'
 import type { OrderStatus } from '../types/models'
 import { ar } from '../i18n/ar'
 
@@ -10,23 +11,34 @@ const STEPS = ar.tracking.steps
 
 export function TrackingPage() {
   const { orderNumber } = useParams()
-  const { user } = useRequireAuth()
+  const { user, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [order, setOrder] = useState<ApiOrder | null>(null)
   const [error, setError] = useState('')
 
+  // الزائر (من غير تسجيل دخول) بيقدر يتابع طلبه بتوكن عالي العشوائية جاي إما من رابط
+  // ?t= مباشرة أو من نسخة محفوظة محلياً من زيارة سابقة لصفحة التأكيد.
+  const guestToken = searchParams.get('t') || (orderNumber ? getGuestTrackingToken(orderNumber) : null)
+
   useEffect(() => {
-    if (!user || !orderNumber) return
+    if (authLoading || !orderNumber) return
+    if (!user && !guestToken) {
+      navigate('/login', { replace: true, state: { from: `/track/${orderNumber}` } })
+      return
+    }
     function load() {
-      api.getOrder(orderNumber!)
+      const request = user ? api.getOrder(orderNumber!) : api.trackGuestOrder(orderNumber!, guestToken!)
+      request
         .then(({ order }) => setOrder(order))
         .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
     }
     load()
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
-  }, [user, orderNumber])
+  }, [user, authLoading, orderNumber, guestToken, navigate])
 
-  if (!user || (!order && !error)) return null
+  if (authLoading || (!order && !error)) return null
   if (error) return <div className="empty-card">{error}</div>
   if (!order || !orderNumber) return null
 

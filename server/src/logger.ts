@@ -41,6 +41,9 @@ type BusinessEvent =
   | 'healthcheck_failed'
   | 'content_page_created' | 'content_page_updated' | 'content_page_status_changed'
   | 'checkout_validation_failed'
+  | 'profile_updated'
+  | 'address_created' | 'address_updated' | 'address_deleted'
+  | 'favorite_added' | 'favorite_removed'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

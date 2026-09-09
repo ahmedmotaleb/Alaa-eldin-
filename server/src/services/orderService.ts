@@ -43,6 +43,7 @@ interface OrderRow {
   discountCode: string | null
   discountAmount: number
   requestFingerprint: string | null
+  guestTrackingToken: string | null
 }
 
 export interface SerializedOrder {
@@ -59,13 +60,16 @@ export interface SerializedOrder {
   status: string
   discountCode?: string
   discountAmount: number
+  // بيتحدد بس لو الطلب من غير تسجيل دخول (guest) — العميل المسجّل بيستخدم ownership العادي
+  // بدل التوكن ده. راجع getOrderByNumberForGuestToken.
+  guestTrackingToken?: string
 }
 
 const SELECT_ORDER_FIELDS = `
   id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
-  request_fingerprint as "requestFingerprint"
+  request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken"
 `
 
 async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
@@ -88,7 +92,8 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     total: row.total,
     status: row.status,
     discountCode: row.discountCode ?? undefined,
-    discountAmount: row.discountAmount
+    discountAmount: row.discountAmount,
+    guestTrackingToken: row.guestTrackingToken ?? undefined
   }
 }
 
@@ -212,6 +217,9 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       const id = crypto.randomUUID()
       const orderNumber = await nextOrderNumber(client)
       const createdAt = new Date().toISOString()
+      // توكن تتبّع عشوائي عالي الإنتروبيا (192 بت) — بيتولّد بس لطلبات الزوار (من غير تسجيل
+      // دخول)، وهو الطريقة الوحيدة الآمنة لفتح رابط تتبع الطلب ده تاني بعد الصفحة الأولى.
+      const guestTrackingToken = userId ? null : crypto.randomBytes(24).toString('base64url')
 
       try {
         await client.query(
@@ -219,13 +227,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
              id, order_number, user_id, created_at, delivery_slot, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
              subtotal, delivery_fee, total, status, discount_code, discount_amount,
-             idempotency_key, request_fingerprint
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17)`,
+             idempotency_key, request_fingerprint, guest_tracking_token
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17,$18)`,
           [
             id, orderNumber, userId, createdAt, input.deliverySlot, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
             subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
-            idempotencyKey, fingerprint
+            idempotencyKey, fingerprint, guestTrackingToken
           ]
         )
       } catch (err) {
@@ -279,6 +287,25 @@ export async function getOrderByNumberForUser(orderNumber: string, userId: strin
     [orderNumber, userId]
   )
   return rows[0] ? serializeOrderRow(rows[0]) : null
+}
+
+// تتبّع طلب زائر آمن: رقم الطلب لوحده مش كفاية أبداً — لازم التوكن الصحيح يتطابق حرفياً
+// (مقارنة بزمن ثابت تمنع timing attack). طلب مرتبط بحساب (user_id مش NULL) ما بيترجعش من
+// هنا خالص حتى لو حد لقط توكن قديم بطريقة ما — بيفضل يعتمد بس على تسجيل الدخول والملكية.
+export async function getOrderByNumberForGuestToken(orderNumber: string, token: string): Promise<SerializedOrder | null> {
+  if (!token) return null
+  const { rows } = await pool.query<OrderRow>(
+    `SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE order_number = $1 AND user_id IS NULL AND guest_tracking_token IS NOT NULL`,
+    [orderNumber]
+  )
+  const row = rows[0]
+  if (!row || !row.guestTrackingToken) return null
+
+  const expected = Buffer.from(row.guestTrackingToken)
+  const provided = Buffer.from(token)
+  if (expected.length !== provided.length || !crypto.timingSafeEqual(expected, provided)) return null
+
+  return serializeOrderRow(row)
 }
 
 export interface Pagination {

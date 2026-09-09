@@ -146,6 +146,8 @@ export const ar = {
     governorateError: 'المحافظة مطلوبة',
     addressError: 'العنوان مطلوب',
     policyLink: 'سياسة الاسترجاع والاستبدال',
+    savedAddressTitle: 'اختر عنوان التوصيل',
+    newAddressOption: '+ عنوان جديد',
     submit: 'تأكيد الطلب وإرسال واتساب'
   },
 
@@ -194,7 +196,59 @@ export const ar = {
     reorder: 'إعادة الطلب',
     reorderAllAdded: 'تم إضافة كل منتجات الطلب للسلة بالأسعار الحالية',
     reorderSomeSkipped: (count: number) => `تم إضافة المنتجات المتاحة للسلة — ${count} منتج غير متوفر حالياً وتم تخطيه`,
-    reorderNoneAvailable: 'كل منتجات هذا الطلب غير متاحة حالياً، تعذّرت إعادة الطلب'
+    reorderNoneAvailable: 'كل منتجات هذا الطلب غير متاحة حالياً، تعذّرت إعادة الطلب',
+    editProfile: 'تعديل البيانات الشخصية',
+    frequentlyPurchasedTitle: 'مشترياتي المعتادة'
+  },
+
+  profile: {
+    title: 'البيانات الشخصية',
+    fullNameLabel: 'الاسم بالكامل',
+    mobileLabel: 'رقم الموبايل',
+    mobilePlaceholder: '01xxxxxxxxx',
+    emailLabel: 'البريد الإلكتروني',
+    emailNote: 'تغيير البريد الإلكتروني غير متاح حالياً',
+    save: 'حفظ التعديلات',
+    saved: 'تم حفظ التعديلات',
+    saveError: 'تعذر حفظ التعديلات، تحقق من البيانات وحاول مرة أخرى',
+    nameError: 'الاسم لازم يكون بين حرفين و100 حرف',
+    mobileError: 'أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015، أو اتركه فاضي'
+  },
+
+  addresses: {
+    title: 'عناويني المحفوظة',
+    addNew: 'إضافة عنوان جديد',
+    emptyTitle: 'مفيش عناوين محفوظة لسه',
+    emptyNote: 'أضف عنوان عشان تختاره بسرعة وقت الدفع.',
+    labelField: 'اسم العنوان',
+    labelPlaceholder: 'مثال: المنزل، الشغل',
+    fullNameField: 'الاسم (اختياري)',
+    mobileField: 'رقم موبايل مختلف (اختياري)',
+    governorateField: 'المحافظة',
+    areaField: 'المنطقة (اختياري)',
+    addressField: 'العنوان بالتفصيل',
+    buildingField: 'العمارة (اختياري)',
+    floorField: 'الدور (اختياري)',
+    apartmentField: 'الشقة (اختياري)',
+    landmarkField: 'علامة مميزة (اختياري)',
+    setDefault: 'اجعله الافتراضي',
+    defaultBadge: 'العنوان الافتراضي',
+    edit: 'تعديل',
+    delete: 'حذف',
+    save: 'حفظ العنوان',
+    cancel: 'إلغاء',
+    deleteConfirm: 'تحذف العنوان ده؟',
+    governorateRequired: 'اختر المحافظة',
+    addressRequired: 'أدخل العنوان بالتفصيل'
+  },
+
+  favorites: {
+    title: 'المفضلة',
+    emptyTitle: 'مفيش منتجات في المفضلة لسه',
+    emptyNote: 'اضغط على ♡ في أي منتج عشان تضيفه هنا.',
+    addedToast: 'تمت الإضافة للمفضلة',
+    removedToast: 'تمت الإزالة من المفضلة',
+    loginRequired: 'سجّل الدخول عشان تضيف المفضلة'
   },
 
   auth: {

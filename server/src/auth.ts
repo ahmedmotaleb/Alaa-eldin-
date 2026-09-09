@@ -58,18 +58,19 @@ export interface AuthedUser {
   id: string
   email: string
   fullName: string
+  mobile?: string
   createdAt: string
   isAdmin: boolean
 }
 
 async function getUserBySession(token: string): Promise<AuthedUser | null> {
-  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin'> & { isAdmin: number }>(`
-    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.created_at as "createdAt", u.is_admin as "isAdmin"
+  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null }>(`
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin"
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = $1 AND s.expires_at > $2
   `, [token, new Date().toISOString()])
   const row = rows[0]
-  return row ? { ...row, isAdmin: !!row.isAdmin } : null
+  return row ? { ...row, mobile: row.mobile ?? undefined, isAdmin: !!row.isAdmin } : null
 }
 
 declare global {

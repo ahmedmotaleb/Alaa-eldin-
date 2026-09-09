@@ -4,6 +4,7 @@ import { useAuth } from '../store/AuthContext'
 import { deliverySlots } from '../data/deliverySlots'
 import { formatMoney } from '../utils/money'
 import { api, ApiError, type ApiOrder } from '../utils/api'
+import { saveGuestTracking } from '../utils/guestTracking'
 import { ar } from '../i18n/ar'
 
 export function ConfirmationPage() {
@@ -21,6 +22,10 @@ export function ConfirmationPage() {
       .then(({ order }) => setOrder(order))
       .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
   }, [stateOrder, loading, user, orderNumber])
+
+  useEffect(() => {
+    if (!user && order?.guestTrackingToken) saveGuestTracking(order.orderNumber, order.guestTrackingToken)
+  }, [user, order])
 
   if (!order && !error && (loading || (!stateOrder && user))) return null
   if (!stateOrder && !user && !order) return <div className="empty-card">{ar.confirmation.guestDetailsUnavailable}</div>
@@ -57,7 +62,14 @@ export function ConfirmationPage() {
         <div className="invoice-line invoice-total"><span>{ar.confirmation.totalCash}</span><span>{formatMoney(order.total)}</span></div>
       </div>
 
-      {user && <button className="primary-button" onClick={() => navigate(`/track/${order.orderNumber}`)}>{ar.confirmation.trackOrder}</button>}
+      {(user || order.guestTrackingToken) && (
+        <button
+          className="primary-button"
+          onClick={() => navigate(user ? `/track/${order.orderNumber}` : `/track/${order.orderNumber}?t=${encodeURIComponent(order.guestTrackingToken!)}`)}
+        >
+          {ar.confirmation.trackOrder}
+        </button>
+      )}
       <button className="secondary-button" onClick={() => navigate('/')}>{ar.confirmation.backHome}</button>
 
       <div className="whatsapp-note">

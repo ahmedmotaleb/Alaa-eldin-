@@ -69,11 +69,10 @@ export function StoreSettingsPage() {
         <label>رقم واتساب المتجر
           <input
             value={form.whatsappNumber}
-            onChange={e => set('whatsappNumber', e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+            onChange={e => set('whatsappNumber', e.target.value)}
             placeholder="01012345678"
             inputMode="numeric"
             autoComplete="tel"
-            maxLength={11}
           />
           <span className="admin-form-help">بالصيغة المحلية المصرية فقط — مثال: 01012345678 (بدون +20)</span>
         </label>

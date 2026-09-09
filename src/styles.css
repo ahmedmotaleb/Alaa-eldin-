@@ -162,7 +162,12 @@ h1, h2, h3, p { margin: 0; }
 /* ---------- product cards ---------- */
 .product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .product-rail { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
-.product-grid-card { min-width: 0; background: #fff; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: var(--card-shadow); display: flex; flex-direction: column; }
+.product-grid-card { position: relative; min-width: 0; background: #fff; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: var(--card-shadow); display: flex; flex-direction: column; }
+.favorite-button { border: 0; background: rgba(255,255,255,.92); width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; font-size: 15px; line-height: 1; color: #9CA3AF; box-shadow: 0 2px 6px rgba(0,0,0,.14); flex: none; }
+.favorite-button.active { color: #dc2626; }
+.product-grid-card-favorite { position: absolute; top: 80px; inset-inline-end: 8px; z-index: 2; }
+.product-detail-title-row { display: flex; align-items: center; gap: 8px; }
+.product-detail-favorite { width: 34px; height: 34px; font-size: 18px; }
 .product-grid-card.rail { flex: none; width: 150px; }
 .product-art-button { border: 0; padding: 0; display: block; width: 100%; }
 .product-art { position: relative; display: grid; place-items: center; width: 100%; }
@@ -346,6 +351,11 @@ h1, h2, h3, p { margin: 0; }
 .slot-note { display: block; font-weight: 500; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .slot-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #cfd8d2; background: #fff; flex: none; }
 .slot-option.active .slot-dot { border-color: var(--green); background: var(--green); }
+.saved-address-list { display: flex; flex-direction: column; gap: 8px; }
+.saved-address-option { border: 1.5px solid var(--border); background: #fff; border-radius: 14px; padding: 11px 13px; text-align: start; display: flex; flex-direction: column; gap: 3px; }
+.saved-address-option.active { border-color: var(--green); background: #f4fbf6; }
+.saved-address-label { font-weight: 800; font-size: 13px; color: #1c2b20; }
+.saved-address-preview { font-weight: 500; font-size: 11.5px; color: var(--muted); }
 .payment-option { border: 1.5px solid var(--border); background: #fafbfa; border-radius: 14px; padding: 12px 13px; display: flex; align-items: center; gap: 11px; }
 .payment-option.active { border-color: var(--green); background: #f4fbf6; }
 .payment-option.disabled { opacity: .6; }

@@ -4,25 +4,75 @@ import { StickyActionBar } from '../components/StickyActionBar'
 import { deliverySlots } from '../data/deliverySlots'
 import { governorates } from '../data/governorates'
 import { useCart } from '../store/CartContext'
+import { useAuth } from '../store/AuthContext'
 import type { CustomerDetails, DeliverySlotId, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
-import { api, ApiError } from '../utils/api'
+import { api, ApiError, type ApiAddress } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
+
+// بيبني سطر عنوان واحد من الحقول المنفصلة للعنوان المحفوظ — الطلب نفسه لسه بياخد سطر
+// عنوان واحد بس (نفس شكل الدفع الحالي)، من غير ما نغيّر شكل بيانات الطلب.
+function addressLine(a: ApiAddress): string {
+  const extra = [a.building && `عمارة ${a.building}`, a.floor && `دور ${a.floor}`, a.apartment && `شقة ${a.apartment}`, a.landmark]
+    .filter(Boolean)
+    .join('، ')
+  const areaLine = a.area ? `${a.area}، ${a.address}` : a.address
+  return extra ? `${areaLine} (${extra})` : areaLine
+}
 
 const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate: '', address: '' }
 
 export function CheckoutPage() {
   const navigate = useNavigate()
   const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, total, clearCart } = useCart()
+  const { user } = useAuth()
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
   const [slot, setSlot] = useState<DeliverySlotId>('now')
   const [touched, setTouched] = useState(false)
   const [apiError, setApiError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [addresses, setAddresses] = useState<ApiAddress[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new')
+
+  // العميل المسجّل بيشوف عناوينه المحفوظة كخيارات جاهزة (الافتراضي مُختار أوتوماتيك)، مع
+  // خيار "عنوان جديد" دايماً متاح — العميل الزائر يفضل يستخدم الحقول العادية زي ما هي.
+  useEffect(() => {
+    if (!user) return
+    api.listAddresses().then(({ addresses: list }) => {
+      setAddresses(list)
+      const defaultAddress = list.find(a => a.isDefault)
+      if (defaultAddress) {
+        setSelectedAddressId(defaultAddress.id)
+        setCustomer({
+          fullName: defaultAddress.fullName || user.fullName,
+          mobile: defaultAddress.mobile || user.mobile || '',
+          governorate: defaultAddress.governorate,
+          address: addressLine(defaultAddress)
+        })
+      }
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
+
+  function pickAddress(id: string) {
+    setSelectedAddressId(id)
+    if (id === 'new') {
+      setCustomer(initialCustomer)
+      return
+    }
+    const address = addresses.find(a => a.id === id)
+    if (!address) return
+    setCustomer({
+      fullName: address.fullName || user?.fullName || '',
+      mobile: address.mobile || user?.mobile || '',
+      governorate: address.governorate,
+      address: addressLine(address)
+    })
+  }
 
   const nameValid = customer.fullName.trim().length >= 2 && customer.fullName.trim().length <= 100
   const mobileValid = isValidEgyptianMobile(customer.mobile.trim())
@@ -97,6 +147,32 @@ export function CheckoutPage() {
         ))}
       </div>
 
+      {user && addresses.length > 0 && (
+        <div className="form-card">
+          <h2>{ar.checkout.savedAddressTitle}</h2>
+          <div className="saved-address-list">
+            {addresses.map(a => (
+              <button
+                key={a.id}
+                type="button"
+                className={`saved-address-option ${selectedAddressId === a.id ? 'active' : ''}`}
+                onClick={() => pickAddress(a.id)}
+              >
+                <span className="saved-address-label">{a.label || a.governorate}{a.isDefault && ` · ${ar.addresses.defaultBadge}`}</span>
+                <span className="saved-address-preview">{addressLine(a)}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`saved-address-option ${selectedAddressId === 'new' ? 'active' : ''}`}
+              onClick={() => pickAddress('new')}
+            >
+              <span className="saved-address-label">{ar.checkout.newAddressOption}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="form-card">
         <h2>{ar.checkout.deliveryInfoTitle}</h2>
         <label>{ar.checkout.fullNameLabel}
@@ -112,11 +188,13 @@ export function CheckoutPage() {
         <label>{ar.checkout.mobileLabel}
           <input
             value={customer.mobile}
-            onChange={e => update('mobile', e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+            // بنحتفظ بالرقم اللي المستخدم كتبه بالظبط من غير أي قص أو تعديل صامت — لو الرقم
+            // غلط (طويل، حروف، مسافات...) بيظهر له خطأ واضح بدل ما نحوّله بصمت لرقم تاني
+            // (زي قص 010123456789 لـ 01012345678 من غير ما يعرف).
+            onChange={e => update('mobile', e.target.value)}
             placeholder={ar.checkout.mobilePlaceholder}
             inputMode="numeric"
             autoComplete="tel"
-            maxLength={11}
             aria-invalid={!!mobileError}
           />
         </label>

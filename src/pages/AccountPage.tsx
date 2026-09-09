@@ -1,12 +1,17 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getSettings } from '../store/settingsStore'
 import { useAuth } from '../store/AuthContext'
 import { toWhatsAppInternational } from '../utils/phone'
+import { api, type ApiProduct } from '../utils/api'
+import { ProductGrid } from '../components/ProductGrid'
+import { Section } from '../components/Section'
 import { ar } from '../i18n/ar'
 
 const ACCOUNT_ROWS = [
-  { icon: '📍', label: ar.account.savedAddresses, path: undefined },
-  { icon: '❤️', label: ar.account.favorites, path: undefined },
+  { icon: '👤', label: ar.account.editProfile, path: '/account/profile' },
+  { icon: '📍', label: ar.account.savedAddresses, path: '/account/addresses' },
+  { icon: '❤️', label: ar.account.favorites, path: '/account/favorites' },
   { icon: '↺', label: ar.account.returnPolicy, path: '/refund-exchange-policy' },
   { icon: '⚙️', label: ar.account.settingsAndNotifications, path: undefined }
 ]
@@ -19,6 +24,12 @@ function initials(name: string) {
 export function AccountPage() {
   const navigate = useNavigate()
   const { user, loading, logout } = useAuth()
+  const [frequentlyPurchased, setFrequentlyPurchased] = useState<ApiProduct[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    api.listFrequentlyPurchased().then(({ products }) => setFrequentlyPurchased(products)).catch(() => {})
+  }, [user])
 
   if (loading) return null
 
@@ -69,6 +80,12 @@ export function AccountPage() {
           <span className="account-row-chevron">‹</span>
         </button>
       </div>
+
+      {frequentlyPurchased.length > 0 && (
+        <Section title={ar.account.frequentlyPurchasedTitle}>
+          <ProductGrid products={frequentlyPurchased} layout="rail" />
+        </Section>
+      )}
     </div>
   )
 }

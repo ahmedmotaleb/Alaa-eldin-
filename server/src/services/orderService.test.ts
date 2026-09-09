@@ -4,13 +4,14 @@
 // على الخصومات والمخزون بيشتغلوا صح تحت تزامن حقيقي.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { createOrder, cancelOrder } from './orderService.js'
+import { createOrder, cancelOrder, getOrderByNumberForGuestToken } from './orderService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
 
 const CATEGORY_ID = 'test-cat'
 const PRODUCT_ID = 'test-prod-1'
 const PRODUCT_PRICE = 38
 const DEFAULT_STOCK = 100
+const USER_ID = 'test-user-order-1'
 
 async function resetFixtures() {
   await pool.query('DELETE FROM stock_movements')
@@ -20,7 +21,12 @@ async function resetFixtures() {
   await pool.query('DELETE FROM products')
   await pool.query('DELETE FROM categories')
   await pool.query('DELETE FROM store_settings')
+  await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
 
+  await pool.query(
+    `INSERT INTO users (id, email, password_hash, full_name, created_at) VALUES ($1, 'order-test@test.local', 'x', 'مستخدم اختبار', now())`,
+    [USER_ID]
+  )
   await pool.query(
     `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'فئة اختبار', '🧪', '#fff', 1)`,
     [CATEGORY_ID]
@@ -251,5 +257,41 @@ describe('cancelOrder', () => {
     const result = await cancelOrder(order.id)
     expect(result).toEqual({ ok: false, error: 'invalid_status_transition' })
     expect(await getStock()).toBe(DEFAULT_STOCK - 5) // لم يُسترجع أي مخزون
+  })
+})
+
+describe('guest order tracking token', () => {
+  it('generates a guest tracking token only for orders with no logged-in user', async () => {
+    const { order: guestOrder } = await createOrder(baseInput(), null, nextKey())
+    expect(guestOrder.guestTrackingToken).toBeTruthy()
+    expect(guestOrder.guestTrackingToken!.length).toBeGreaterThanOrEqual(24)
+
+    const { order: userOrder } = await createOrder(baseInput(), USER_ID, nextKey())
+    expect(userOrder.guestTrackingToken).toBeUndefined()
+  })
+
+  it('resolves a guest order with the correct token', async () => {
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    const resolved = await getOrderByNumberForGuestToken(order.orderNumber, order.guestTrackingToken!)
+    expect(resolved?.id).toBe(order.id)
+  })
+
+  it('rejects a wrong token for a real guest order', async () => {
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(await getOrderByNumberForGuestToken(order.orderNumber, 'not-the-real-token')).toBeNull()
+  })
+
+  it('rejects an empty token', async () => {
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(await getOrderByNumberForGuestToken(order.orderNumber, '')).toBeNull()
+  })
+
+  it('never resolves a logged-in user order via the guest-token path, even with a guessed value', async () => {
+    const { order } = await createOrder(baseInput(), USER_ID, nextKey())
+    expect(await getOrderByNumberForGuestToken(order.orderNumber, 'anything')).toBeNull()
+  })
+
+  it('returns null for an order number that does not exist', async () => {
+    expect(await getOrderByNumberForGuestToken('ALA-000000', 'anything')).toBeNull()
   })
 })

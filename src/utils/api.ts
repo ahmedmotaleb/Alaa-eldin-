@@ -54,6 +54,7 @@ export interface ApiUser {
   id: string
   email: string
   fullName: string
+  mobile?: string
   createdAt: string
   isAdmin: boolean
 }
@@ -81,6 +82,38 @@ export interface ApiOrder {
   status: 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
   discountCode?: string
   discountAmount: number
+  guestTrackingToken?: string
+}
+
+export interface ApiAddress {
+  id: string
+  label: string
+  fullName?: string
+  mobile?: string
+  governorate: string
+  area: string
+  address: string
+  building: string
+  floor: string
+  apartment: string
+  landmark: string
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ApiAddressInput {
+  label: string
+  fullName?: string
+  mobile?: string
+  governorate: string
+  area?: string
+  address: string
+  building?: string
+  floor?: string
+  apartment?: string
+  landmark?: string
+  isDefault: boolean
 }
 
 export interface ApiCategory {
@@ -232,9 +265,26 @@ export const api = {
       .then(res => { if (isNative() && res.token) setNativeSessionToken(res.token); return res }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }).finally(() => { if (isNative()) clearNativeSessionToken() }),
   me: () => request<{ user: ApiUser }>('/auth/me'),
+  updateProfile: (body: { fullName: string, mobile: string }) =>
+    request<{ user: ApiUser }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
   forgotPassword: (email: string) => request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>
     request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
+  listAddresses: () => request<{ addresses: ApiAddress[] }>('/account/addresses'),
+  createAddress: (body: ApiAddressInput) =>
+    request<{ address: ApiAddress }>('/account/addresses', { method: 'POST', body: JSON.stringify(body) }),
+  updateAddress: (id: string, body: ApiAddressInput) =>
+    request<{ address: ApiAddress }>(`/account/addresses/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  setDefaultAddress: (id: string) =>
+    request<{ address: ApiAddress }>(`/account/addresses/${encodeURIComponent(id)}/default`, { method: 'POST' }),
+  deleteAddress: (id: string) => request<void>(`/account/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listFavorites: () => request<{ favorites: ApiProduct[] }>('/account/favorites'),
+  addFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'POST' }),
+  removeFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
+  listFrequentlyPurchased: () => request<{ products: ApiProduct[] }>('/account/frequently-purchased'),
+  // تتبّع طلب زائر — لازم التوكن الصحيح، مفيش أي طريقة تانية تفتح بيها تفاصيل طلب حد تاني.
+  trackGuestOrder: (orderNumber: string, token: string) =>
+    request<{ order: ApiOrder }>(`/track/${encodeURIComponent(orderNumber)}${buildQuery({ t: token })}`),
   listCategories: () => request<{ categories: ApiCategory[] }>('/categories'),
   // كل الفلترة/الفرز/التقسيم لصفحات بيحصل في السيرفر — الواجهة الأمامية مبتحملش الكتالوج
   // كامل أبداً ولا بتعمل أي فلترة بنفسها.

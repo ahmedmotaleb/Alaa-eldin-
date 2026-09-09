@@ -33,6 +33,10 @@ import { adminSettlementsRouter } from './routes/adminSettlements.js'
 import { adminAuditLogsRouter } from './routes/adminAuditLogs.js'
 import { adminPagesRouter } from './routes/adminPages.js'
 import { pagesRouter } from './routes/pages.js'
+import { trackRouter } from './routes/track.js'
+import { addressesRouter } from './routes/addresses.js'
+import { favoritesRouter } from './routes/favorites.js'
+import { frequentlyPurchasedRouter } from './routes/frequentlyPurchased.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
@@ -98,6 +102,10 @@ app.use('/api', (_req, res, next) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/orders', ordersRouter)
+app.use('/api/track', trackRouter)
+app.use('/api/account/addresses', addressesRouter)
+app.use('/api/account/favorites', favoritesRouter)
+app.use('/api/account/frequently-purchased', frequentlyPurchasedRouter)
 app.use('/api', catalogRouter)
 app.use('/api', discountsRouter)
 app.use('/api', bannersRouter)
