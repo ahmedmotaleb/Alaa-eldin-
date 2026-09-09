@@ -8,8 +8,16 @@ const CATEGORY_B = 'test-cat-catalog-b'
 async function resetFixtures() {
   await pool.query('DELETE FROM product_alternatives')
   await pool.query('DELETE FROM product_images')
+  await pool.query('DELETE FROM stock_movements')
+  await pool.query('DELETE FROM order_items')
+  await pool.query('DELETE FROM orders')
   await pool.query('DELETE FROM products')
   await pool.query('DELETE FROM categories')
+  await pool.query(
+    `INSERT INTO store_settings (id, name, whatsapp_number, currency, minimum_order, free_shipping_threshold, delivery_fee, show_exact_low_stock)
+     VALUES (1, 'متجر تجريبي', '01000000000', 'ج.م', 100, 500, 30, 0)
+     ON CONFLICT (id) DO UPDATE SET show_exact_low_stock = 0`
+  )
   await pool.query(
     `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'خضروات', '🥦', '#fff', 1), ($2, 'مخبوزات', '🍞', '#eee', 2)`,
     [CATEGORY_A, CATEGORY_B]
@@ -84,6 +92,19 @@ describe('listProducts', () => {
     expect(products.find(p => p.id === 'cat-p2')?.stockState).toBe('low_stock')
     expect(products.find(p => p.id === 'cat-p3')?.stockState).toBe('out_of_stock')
     expect(products.find(p => p.id === 'cat-p1')?.stockState).toBe('in_stock')
+  })
+
+  it('never exposes the exact low-stock count unless showExactLowStock is enabled', async () => {
+    const { products } = await listProducts({ limit: 100 })
+    expect(products.find(p => p.id === 'cat-p2')?.lowStockRemaining).toBeUndefined()
+  })
+
+  it('exposes the exact remaining count only for low_stock items once showExactLowStock is enabled', async () => {
+    await pool.query('UPDATE store_settings SET show_exact_low_stock = 1 WHERE id = 1')
+    const { products } = await listProducts({ limit: 100 })
+    expect(products.find(p => p.id === 'cat-p2')?.lowStockRemaining).toBe(3)
+    expect(products.find(p => p.id === 'cat-p1')?.lowStockRemaining).toBeUndefined()
+    expect(products.find(p => p.id === 'cat-p3')?.lowStockRemaining).toBeUndefined()
   })
 
   it('sorts by price ascending and descending', async () => {
@@ -168,5 +189,15 @@ describe('getProductBySlug', () => {
 
   it('returns null for an unknown slug', async () => {
     expect(await getProductBySlug('does-not-exist')).toBeNull()
+  })
+
+  it('exposes the exact low-stock count on the detail endpoint only when the setting is enabled', async () => {
+    const before = await getProductBySlug('cat-p2')
+    expect(before?.lowStockRemaining).toBeUndefined()
+
+    await pool.query('UPDATE store_settings SET show_exact_low_stock = 1 WHERE id = 1')
+    const after = await getProductBySlug('cat-p2')
+    expect(after?.stockState).toBe('low_stock')
+    expect(after?.lowStockRemaining).toBe(3)
   })
 })

@@ -67,6 +67,9 @@ export const ar = {
     available: 'متوفر',
     unavailable: 'غير متوفر',
     unavailableNow: 'غير متوفر حالياً',
+    lowStock: 'مخزون منخفض',
+    outOfStock: 'نفد من المخزون',
+    lowStockRemaining: (count: number) => `متبقي ${count} فقط`,
     pricePerUnit: (unit: string, category: string) => `السعر لكل ${unit} · ${category}`,
     deliveryToday: 'توصيل اليوم',
     exchange24h: 'استبدال خلال 24س',
@@ -108,7 +111,10 @@ export const ar = {
     discountApply: 'تطبيق',
     discountApplying: 'جاري التحقق...',
     discountRemove: 'إزالة',
-    discountApplied: (code: string) => `تم تطبيق كود "${code}"`
+    discountApplied: (code: string) => `تم تطبيق كود "${code}"`,
+    itemUnavailable: 'هذا المنتج غير متوفر حالياً — احذفه من السلة للمتابعة',
+    itemInsufficientStock: (available: number) => `الكمية المتاحة الآن ${available} فقط — عدّل الكمية للمتابعة`,
+    resolveIssuesCta: 'راجع السلة قبل إتمام الطلب'
   },
 
   checkout: {

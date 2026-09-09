@@ -10,12 +10,18 @@ const SELECT_SETTINGS = `
   SELECT name, whatsapp_number as "whatsappNumber", currency, minimum_order as "minimumOrder",
          free_shipping_threshold as "freeShippingThreshold", delivery_fee as "deliveryFee",
          show_todays_offers as "showTodaysOffers", show_best_sellers as "showBestSellers",
-         cod_enabled as "codEnabled"
+         cod_enabled as "codEnabled", show_exact_low_stock as "showExactLowStock"
   FROM store_settings WHERE id = 1
 `
 
 function serialize(row: Record<string, unknown>) {
-  return { ...row, showTodaysOffers: !!row.showTodaysOffers, showBestSellers: !!row.showBestSellers, codEnabled: !!row.codEnabled }
+  return {
+    ...row,
+    showTodaysOffers: !!row.showTodaysOffers,
+    showBestSellers: !!row.showBestSellers,
+    codEnabled: !!row.codEnabled,
+    showExactLowStock: !!row.showExactLowStock
+  }
 }
 
 adminSettingsRouter.get('/', async (_req, res) => {
@@ -36,7 +42,7 @@ adminSettingsRouter.patch('/', async (req, res) => {
     typeof b.freeShippingThreshold !== 'number' || b.freeShippingThreshold < 0 ||
     typeof b.deliveryFee !== 'number' || b.deliveryFee < 0 ||
     typeof b.showTodaysOffers !== 'boolean' || typeof b.showBestSellers !== 'boolean' ||
-    typeof b.codEnabled !== 'boolean'
+    typeof b.codEnabled !== 'boolean' || typeof b.showExactLowStock !== 'boolean'
   ) {
     res.status(400).json({ error: 'missing_fields' })
     return
@@ -45,11 +51,11 @@ adminSettingsRouter.patch('/', async (req, res) => {
   await pool.query(
     `UPDATE store_settings SET name=$1, whatsapp_number=$2, currency=$3,
        minimum_order=$4, free_shipping_threshold=$5, delivery_fee=$6,
-       show_todays_offers=$7, show_best_sellers=$8, cod_enabled=$9
+       show_todays_offers=$7, show_best_sellers=$8, cod_enabled=$9, show_exact_low_stock=$10
      WHERE id = 1`,
     [
       b.name, b.whatsappNumber, b.currency, b.minimumOrder, b.freeShippingThreshold, b.deliveryFee,
-      b.showTodaysOffers ? 1 : 0, b.showBestSellers ? 1 : 0, b.codEnabled ? 1 : 0
+      b.showTodaysOffers ? 1 : 0, b.showBestSellers ? 1 : 0, b.codEnabled ? 1 : 0, b.showExactLowStock ? 1 : 0
     ]
   )
 

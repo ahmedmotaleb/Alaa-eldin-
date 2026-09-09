@@ -33,6 +33,7 @@ export interface ProductCard {
   emoji: string
   available: boolean
   stockState: StockState
+  lowStockRemaining?: number
   bestseller: boolean
   offer: boolean
   orderCount: number
@@ -53,6 +54,7 @@ interface ProductCardRow {
   adminAvailable: number
   stock: number
   alertThreshold: number
+  showExactLowStock: number
   bestseller: number
   offer: number
   orderCount: number
@@ -74,6 +76,7 @@ function stockStateOf(stock: number, alertThreshold: number): StockState {
 }
 
 function serializeCard(row: ProductCardRow): ProductCard {
+  const stockState = stockStateOf(row.stock, row.alertThreshold)
   return {
     id: row.id,
     slug: row.slug,
@@ -84,7 +87,10 @@ function serializeCard(row: ProductCardRow): ProductCard {
     unit: row.unit,
     emoji: row.emoji,
     available: !!row.adminAvailable && row.stock > 0,
-    stockState: stockStateOf(row.stock, row.alertThreshold),
+    stockState,
+    // إعداد "showExactLowStock" اختياري من الإدارة — لو متفعّل بيظهر "متبقي X فقط" بدل
+    // رسالة "مخزون منخفض" العامة؛ الرقم الدقيق ما بيتكشفش أبداً لغير حالة low_stock.
+    lowStockRemaining: (row.showExactLowStock && stockState === 'low_stock') ? row.stock : undefined,
     bestseller: !!row.bestseller,
     offer: !!row.offer,
     orderCount: row.orderCount,
@@ -106,6 +112,7 @@ const PRIMARY_IMAGE_JOIN = `
 const CARD_SELECT = `
   SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.price, p.old_price as "oldPrice",
          p.unit, p.emoji, p.available as "adminAvailable", p.stock, p.alert_threshold as "alertThreshold",
+         (SELECT show_exact_low_stock FROM store_settings WHERE id = 1) as "showExactLowStock",
          p.bestseller, p.offer, p.order_count as "orderCount", p.brand,
          img.image_url as "primaryImage", img.alt_text as "primaryImageAlt"
 `
@@ -232,13 +239,15 @@ interface ProductDetailRow {
   adminAvailable: number
   stock: number
   alertThreshold: number
+  showExactLowStock: number
 }
 
 export async function getProductBySlug(slug: string) {
   const { rows } = await pool.query<ProductDetailRow>(
     `SELECT p.id, p.slug, p.category_id as "categoryId", c.name as "categoryName", p.name, p.description,
             p.price, p.old_price as "oldPrice", p.unit, p.emoji, p.brand,
-            p.available as "adminAvailable", p.stock, p.alert_threshold as "alertThreshold"
+            p.available as "adminAvailable", p.stock, p.alert_threshold as "alertThreshold",
+            (SELECT show_exact_low_stock FROM store_settings WHERE id = 1) as "showExactLowStock"
      FROM products p
      JOIN categories c ON c.id = p.category_id
      WHERE p.slug = $1`,
@@ -258,6 +267,7 @@ export async function getProductBySlug(slug: string) {
   ])
 
   const similarProducts = similarRes.products.filter(p => p.id !== product.id).slice(0, SIMILAR_LIMIT)
+  const stockState = stockStateOf(product.stock, product.alertThreshold)
 
   return {
     id: product.id,
@@ -272,7 +282,8 @@ export async function getProductBySlug(slug: string) {
     emoji: product.emoji,
     brand: product.brand,
     available: !!product.adminAvailable && product.stock > 0,
-    stockState: stockStateOf(product.stock, product.alertThreshold),
+    stockState,
+    lowStockRemaining: (product.showExactLowStock && stockState === 'low_stock') ? product.stock : undefined,
     gallery: images.map(img => ({
       id: img.id,
       url: img.url,

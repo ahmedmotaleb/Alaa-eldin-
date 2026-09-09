@@ -243,6 +243,7 @@ export interface AdminSettings {
   showTodaysOffers: boolean
   showBestSellers: boolean
   codEnabled: boolean
+  showExactLowStock: boolean
 }
 
 export const api = {

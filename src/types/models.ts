@@ -22,6 +22,7 @@ export interface Product {
   unit: ProductUnit
   available: boolean
   stockState: StockState
+  lowStockRemaining?: number
   emoji: string
   bestseller?: boolean
   offer?: boolean
@@ -53,6 +54,7 @@ export interface ProductDetail {
   brand: string
   available: boolean
   stockState: StockState
+  lowStockRemaining?: number
   gallery: ProductGalleryImage[]
   similarProducts: Product[]
 }

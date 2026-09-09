@@ -43,6 +43,9 @@ export function ProductArt({
         product.emoji
       )}
       {showBadge && discount > 0 && <span className="discount-badge">−{discount}%</span>}
+      {showBadge && product.available && product.stockState === 'low_stock' && (
+        <span className="low-stock-chip">{typeof product.lowStockRemaining === 'number' ? ar.product.lowStockRemaining(product.lowStockRemaining) : ar.product.lowStock}</span>
+      )}
       {showUnavailable && !product.available && <span className="unavailable-overlay">{ar.product.unavailableNow}</span>}
     </div>
   )

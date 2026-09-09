@@ -215,6 +215,9 @@ h1, h2, h3, p { margin: 0; }
 .stock-badge { flex: none; border-radius: 999px; padding: 6px 11px; font-weight: 800; font-size: 11.5px; }
 .stock-badge.available { background: var(--green-soft); color: var(--green-dark); }
 .stock-badge.unavailable { background: #fff0ef; color: var(--danger); }
+.stock-badge.low-stock { background: #FEF3C7; color: #92400E; }
+.low-stock-chip { position: absolute; top: 8px; inset-inline-end: 8px; background: #FEF3C7; color: #92400E; border-radius: 999px; padding: 3px 8px; font-weight: 800; font-size: 10.5px; }
+.cart-item-issue { display: block; margin-top: 4px; font-size: 11.5px; font-weight: 700; color: var(--danger); }
 .product-detail-meta { font-weight: 500; font-size: 12.5px; color: var(--muted); }
 .product-detail-price { display: flex; align-items: baseline; gap: 9px; }
 .product-detail-price span:first-child { font-weight: 900; font-size: 28px; color: var(--green-dark); }
@@ -274,6 +277,7 @@ h1, h2, h3, p { margin: 0; }
 .progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#22B95A,#12813C); }
 .cart-list { display: flex; flex-direction: column; gap: 10px; }
 .cart-item { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 10px; display: flex; align-items: center; gap: 11px; }
+.cart-item.has-issue { border-color: var(--danger); background: #fff8f8; }
 .cart-item-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .cart-item-content > strong { font-weight: 800; font-size: 13.5px; color: #1c2b20; }
 .cart-item-content > span { font-weight: 500; font-size: 11.5px; color: var(--muted); }

@@ -5,11 +5,16 @@ import type { CartItem, Product } from '../types/models'
 
 interface DetailedCartItem extends CartItem {
   product: Product
+  // العنصر لسه معروض في السلة (يقدر العميل يشوفه/يعدّل كميته/يشيله)، لكنه ما بيتحسبش في
+  // الإجمالي ولا ينفع يتم الدفع بيه لحد ما يتحل — إما المنتج بقى غير متوفر خالص، أو
+  // الكمية المطلوبة بقت أكتر من المتاح المعروض (لو الإعداد ده مفعّل من الإدارة).
+  blockingIssue: 'unavailable' | 'insufficient_stock' | null
 }
 
 interface CartContextValue {
   items: CartItem[]
   detailedItems: DetailedCartItem[]
+  hasBlockingIssues: boolean
   totalQuantity: number
   subtotal: number
   deliveryFee: number
@@ -68,12 +73,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return items
       .map(item => {
         const product = resolved[item.productId]
-        return product ? { ...item, product } : null
+        if (!product) return null
+        const blockingIssue: DetailedCartItem['blockingIssue'] = !product.available
+          ? 'unavailable'
+          : (typeof product.lowStockRemaining === 'number' && item.quantity > product.lowStockRemaining)
+            ? 'insufficient_stock'
+            : null
+        return { ...item, product, blockingIssue }
       })
       .filter(Boolean) as DetailedCartItem[]
   }, [items, resolved])
 
-  const subtotal = detailedItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  const hasBlockingIssues = detailedItems.some(item => item.blockingIssue !== null)
+  // بنود فيها مشكلة (غير متوفر، أو الكمية أكتر من المتاح) ما بتتحسبش في الإجمالي —
+  // ما ينفعش نعرض إجمالي بيتضمن حاجة مش هتتشحن فعلياً.
+  const subtotal = detailedItems.reduce((sum, item) => sum + (item.blockingIssue ? 0 : item.product.price * item.quantity), 0)
   const deliveryFee = subtotal >= getSettings().freeShippingThreshold || subtotal === 0 ? 0 : getSettings().deliveryFee
   const total = Math.max(0, subtotal - (discount?.amount ?? 0)) + deliveryFee
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0)
@@ -129,7 +143,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   return (
     <CartContext.Provider value={{
-      items, detailedItems, totalQuantity, subtotal, deliveryFee, discount, total,
+      items, detailedItems, hasBlockingIssues, totalQuantity, subtotal, deliveryFee, discount, total,
       addItem, setQuantity, removeItem, clearCart, applyDiscount, removeDiscount
     }}>
       {children}

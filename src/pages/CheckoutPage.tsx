@@ -16,7 +16,7 @@ const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { detailedItems, subtotal, deliveryFee, discount, total, clearCart } = useCart()
+  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, total, clearCart } = useCart()
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
   const [slot, setSlot] = useState<DeliverySlotId>('now')
@@ -41,9 +41,12 @@ export function CheckoutPage() {
   // عشان لو نفس الطلب وصل السيرفر فعلاً قبل كده، يرجع نفس الطلب بدل ما يتكرر (idempotency).
   const [idempotencyKey] = useState(() => crypto.randomUUID())
 
+  // لو العميل رجع للـ checkout مباشرة (زر الرجوع/رابط محفوظ) وفي السلة عنصر بقى غير متاح
+  // أو الكمية بقت أكتر من المتاح — نرجّعه للسلة عشان يحل المشكلة الأول، مش نسيبه يكمل دفع
+  // بمنتج مش هيتشحن فعلياً.
   useEffect(() => {
-    if (cartWasEmptyOnEntry) navigate('/cart', { replace: true })
-  }, [cartWasEmptyOnEntry, navigate])
+    if (cartWasEmptyOnEntry || hasBlockingIssues) navigate('/cart', { replace: true })
+  }, [cartWasEmptyOnEntry, hasBlockingIssues, navigate])
 
   function update<K extends keyof CustomerDetails>(key: K, value: CustomerDetails[K]) {
     setCustomer(current => ({ ...current, [key]: value }))

@@ -112,6 +112,7 @@ export interface ApiProduct {
   emoji: string
   available: boolean
   stockState: ApiStockState
+  lowStockRemaining?: number
   bestseller: boolean
   offer: boolean
   orderCount: number
@@ -149,6 +150,7 @@ export interface ApiProductDetail {
   brand: string
   available: boolean
   stockState: ApiStockState
+  lowStockRemaining?: number
   gallery: ApiProductGalleryImage[]
   alternatives: ApiAlternativeProduct[]
   similarProducts: ApiProduct[]

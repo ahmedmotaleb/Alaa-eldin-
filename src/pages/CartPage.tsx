@@ -11,7 +11,7 @@ import { ar } from '../i18n/ar'
 
 export function CartPage() {
   const navigate = useNavigate()
-  const { detailedItems, subtotal, deliveryFee, discount, total, setQuantity, removeItem, applyDiscount, removeDiscount } = useCart()
+  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, total, setQuantity, removeItem, applyDiscount, removeDiscount } = useCart()
   const flash = useToast()
   const [discountInput, setDiscountInput] = useState('')
   const [discountApplying, setDiscountApplying] = useState(false)
@@ -66,7 +66,7 @@ export function CartPage() {
 
       <div className="cart-list">
         {detailedItems.map(item => (
-          <article className="cart-item" key={item.productId}>
+          <article className={`cart-item ${item.blockingIssue ? 'has-issue' : ''}`} key={item.productId}>
             <ProductArt product={item.product} height={64} width={64} fontSize={30} radius={16} showBadge={false} showUnavailable={false} />
             <div className="cart-item-content">
               <strong>{item.product.name}</strong>
@@ -79,6 +79,10 @@ export function CartPage() {
                 </div>
                 <span className="cart-item-line-total">{formatMoney(item.product.price * item.quantity)}</span>
               </div>
+              {item.blockingIssue === 'unavailable' && <span className="cart-item-issue">{ar.cart.itemUnavailable}</span>}
+              {item.blockingIssue === 'insufficient_stock' && typeof item.product.lowStockRemaining === 'number' && (
+                <span className="cart-item-issue">{ar.cart.itemInsufficientStock(item.product.lowStockRemaining)}</span>
+              )}
             </div>
             <button className="delete-button" onClick={() => removeItem(item.productId)} aria-label={ar.common.remove(item.product.name)}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13" stroke="#B42318" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -123,10 +127,11 @@ export function CartPage() {
       </div>
 
       <StickyActionBar
-        label={subtotal < settings.minimumOrder ? ar.cart.minOrderCta(formatMoney(settings.minimumOrder)) : ar.cart.checkout}
-        meta={formatMoney(total)}
-        muted={subtotal < settings.minimumOrder}
+        label={hasBlockingIssues ? ar.cart.resolveIssuesCta : subtotal < settings.minimumOrder ? ar.cart.minOrderCta(formatMoney(settings.minimumOrder)) : ar.cart.checkout}
+        meta={hasBlockingIssues ? undefined : formatMoney(total)}
+        muted={hasBlockingIssues || subtotal < settings.minimumOrder}
         onClick={() => {
+          if (hasBlockingIssues) return
           if (subtotal < settings.minimumOrder) {
             flash(ar.cart.minOrderToast(formatMoney(settings.minimumOrder)))
             return

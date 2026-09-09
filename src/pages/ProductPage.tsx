@@ -66,8 +66,12 @@ export function ProductPage() {
       <div className="product-detail-sheet">
         <div className="product-detail-head">
           <h1>{product.name}</h1>
-          <span className={`stock-badge ${product.available ? 'available' : 'unavailable'}`}>
-            {product.available ? ar.product.available : ar.product.unavailable}
+          <span className={`stock-badge ${product.available ? (product.stockState === 'low_stock' ? 'low-stock' : 'available') : 'unavailable'}`}>
+            {product.available
+              ? (product.stockState === 'low_stock'
+                ? (typeof product.lowStockRemaining === 'number' ? ar.product.lowStockRemaining(product.lowStockRemaining) : ar.product.lowStock)
+                : ar.product.available)
+              : ar.product.unavailable}
           </span>
         </div>
         <div className="product-detail-meta">{ar.product.pricePerUnit(product.unit, product.categoryName)}</div>

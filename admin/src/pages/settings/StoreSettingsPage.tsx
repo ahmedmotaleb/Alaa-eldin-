@@ -77,6 +77,19 @@ export function StoreSettingsPage() {
           />
           <span className="admin-form-help">بالصيغة المحلية المصرية فقط — مثال: 01012345678 (بدون +20)</span>
         </label>
+      </div>
+
+      <div className="admin-form-card">
+        <div>
+          <div className="admin-form-card-title">عرض المخزون للعميل</div>
+          <div className="admin-form-card-sub">لما المخزون يبقى منخفض، هل نعرض الكمية الدقيقة المتبقية للعميل؟</div>
+        </div>
+        <label>الكمية الدقيقة عند المخزون المنخفض
+          <span className="admin-form-chips">
+            <button type="button" className={`admin-form-chip ${form.showExactLowStock ? 'active' : ''}`} onClick={() => set('showExactLowStock', true)}>نعم — "متبقي 3 فقط"</button>
+            <button type="button" className={`admin-form-chip ${!form.showExactLowStock ? 'active' : ''}`} onClick={() => set('showExactLowStock', false)}>لا — "مخزون منخفض" فقط</button>
+          </span>
+        </label>
 
         {error && <div className="admin-form-error">{error}</div>}
         {success && <div className="admin-form-success">{success}</div>}
