@@ -141,7 +141,13 @@ if (isProduction) {
   app.use('/admin', express.static(adminDir, staticOptions))
   app.use(express.static(clientDir, staticOptions))
   app.use((req, res, next) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+    // بيسمح بس بمسارات التنقل جوه الـ SPA (زي /product/tomato) ترجع index.html.
+    // أي مسار بامتداد ملف (.js, .css, .png...) يبقى أكيد طلب أصل ثابت مش موجود —
+    // لازم يرجع 404 حقيقي، عشان لو الملف مش موجود (نسخة قديمة متخزنة في الموبايل/service
+    // worker بتشاور على hash قديم بعد نشر جديد مثلاً) الفرونت إند ياخد خطأ واضح بدل ما
+    // ياخد صفحة HTML كاملة بـ 200 مكان الملف ويحصله خطأ تشغيل غامض.
+    const lastSegment = req.path.split('/').pop() ?? ''
+    if (req.method !== 'GET' || req.path.startsWith('/api') || lastSegment.includes('.')) {
       next()
       return
     }
@@ -151,6 +157,10 @@ if (isProduction) {
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'not_found' })
+})
+
+app.use((_req, res) => {
+  res.status(404).send('Not Found')
 })
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
