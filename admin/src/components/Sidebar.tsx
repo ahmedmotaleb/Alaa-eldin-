@@ -31,21 +31,27 @@ export function Sidebar() {
 
       <nav className="sidebar-nav">
         {NAV.map(group => {
+          // أقسام 'admin' الكامل بس (زي إدارة المستخدمين وسجل النشاط والمصروفات والتسويات)
+          // مخفية عن مدير 'staff' التشغيلي هنا — السيرفر برضه بيرفضها بـ 403 لو حد وصل
+          // لرابطها مباشرة، فده مجرد تحسين لتجربة الاستخدام مش خط الدفاع الوحيد.
+          const visibleChildren = group.children.filter(c => !c.adminOnly || user?.role === 'admin')
+          if (group.children.length > 0 && visibleChildren.length === 0) return null
+
           const isActiveGroup = activeGroup === group.id
           const isOpen = openGroups[group.id] ?? isActiveGroup
           return (
             <div className="sidebar-group" key={group.id}>
               <button
                 className={`sidebar-group-btn ${isActiveGroup && group.children.length === 0 ? 'active' : ''}`}
-                onClick={() => group.children.length ? toggle(group.id) : navigate(group.id === 'home' ? '/' : `/${group.id}`)}
+                onClick={() => visibleChildren.length ? toggle(group.id) : navigate(group.id === 'home' ? '/' : `/${group.id}`)}
               >
                 <span className="sidebar-group-icon">{group.icon}</span>
                 <span className="sidebar-group-label">{group.label}</span>
-                {group.children.length > 0 && <span className="sidebar-group-caret">{isOpen ? '▾' : '◂'}</span>}
+                {visibleChildren.length > 0 && <span className="sidebar-group-caret">{isOpen ? '▾' : '◂'}</span>}
               </button>
-              {group.children.length > 0 && isOpen && (
+              {visibleChildren.length > 0 && isOpen && (
                 <div className="sidebar-children">
-                  {group.children.map(child => {
+                  {visibleChildren.map(child => {
                     const path = `/${group.id}/${child.id}`
                     const isActive = location.pathname === path
                     return (
@@ -69,7 +75,7 @@ export function Sidebar() {
         <div className="sidebar-account-avatar">{(user?.fullName ?? '؟').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join(' ')}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="sidebar-account-name">{user?.fullName}</div>
-          <div className="sidebar-account-role">مدير المتجر</div>
+          <div className="sidebar-account-role">{user?.role === 'admin' ? 'مدير كامل' : 'مدير تشغيلي'}</div>
         </div>
       </div>
       <button className="sidebar-logout" onClick={handleLogout}>تسجيل الخروج</button>

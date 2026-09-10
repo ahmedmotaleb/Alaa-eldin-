@@ -29,12 +29,31 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T
 }
 
+export type UserRole = 'staff' | 'admin'
+
 export interface AdminUser {
   id: string
   email: string
   fullName: string
   createdAt: string
   isAdmin: boolean
+  role: UserRole
+}
+
+export interface PageInfo {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') qs.set(key, String(value))
+  }
+  const query = qs.toString()
+  return query ? `?${query}` : ''
 }
 
 export interface AdminOrderItem {
@@ -358,7 +377,8 @@ export const api = {
     request<void>(`/admin/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   setOrderRider: (id: string, riderId: string | null) =>
     request<void>(`/admin/orders/${encodeURIComponent(id)}/rider`, { method: 'PATCH', body: JSON.stringify({ riderId }) }),
-  listProducts: () => request<{ products: AdminProduct[] }>('/admin/products'),
+  listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string } = {}) =>
+    request<{ products: AdminProduct[] } & Partial<PageInfo>>(`/admin/products${buildQuery(params)}`),
   getProduct: (id: string) => request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`),
   createProduct: (body: AdminProductInput) =>
     request<{ product: AdminProduct }>('/admin/products', { method: 'POST', body: JSON.stringify(body) }),
@@ -436,20 +456,26 @@ export const api = {
   },
   deleteCategoryImage: (categoryId: string) =>
     request<void>(`/admin/categories/${encodeURIComponent(categoryId)}/image`, { method: 'DELETE' }),
-  listCustomers: () => request<{ customers: AdminCustomer[] }>('/admin/customers'),
+  listCustomers: (params: { page?: number, limit?: number, search?: string } = {}) =>
+    request<{ customers: AdminCustomer[] } & Partial<PageInfo>>(`/admin/customers${buildQuery(params)}`),
   getCustomer: (id: string) =>
     request<{ customer: AdminCustomer, orders: AdminCustomerOrder[] }>(`/admin/customers/${encodeURIComponent(id)}`),
-  listDiscounts: () => request<{ discounts: AdminDiscount[] }>('/admin/discounts'),
+  listDiscounts: (params: { page?: number, limit?: number, search?: string } = {}) =>
+    request<{ discounts: AdminDiscount[] } & Partial<PageInfo>>(`/admin/discounts${buildQuery(params)}`),
   createDiscount: (body: AdminDiscountInput) =>
     request<{ discount: AdminDiscount }>('/admin/discounts', { method: 'POST', body: JSON.stringify(body) }),
   updateDiscount: (code: string, body: Partial<AdminDiscountInput>) =>
     request<{ discount: AdminDiscount }>(`/admin/discounts/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  listStockMovements: () => request<{ movements: AdminStockMovement[] }>('/admin/stock-movements'),
+  listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
+    request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
-  listUsers: () => request<{ users: AdminUser[] }>('/admin/users'),
+  listUsers: (params: { page?: number, limit?: number, search?: string } = {}) =>
+    request<{ users: AdminUser[] } & Partial<PageInfo>>(`/admin/users${buildQuery(params)}`),
   setUserAdmin: (id: string, isAdmin: boolean) =>
     request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/admin`, { method: 'PATCH', body: JSON.stringify({ isAdmin }) }),
+  setUserRole: (id: string, role: UserRole) =>
+    request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   listBanners: () => request<{ banners: AdminBanner[] }>('/admin/banners'),
   getBanner: (id: number) => request<{ banner: AdminBanner }>(`/admin/banners/${id}`),
   createBanner: (body: AdminBannerInput) =>
@@ -493,10 +519,12 @@ export const api = {
     request<{ rider: AdminRider }>('/admin/riders', { method: 'POST', body: JSON.stringify(body) }),
   updateRider: (id: string, body: Partial<Pick<AdminRider, 'name' | 'phone' | 'active'>>) =>
     request<{ rider: AdminRider }>(`/admin/riders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  listSettlements: () => request<{ settlements: AdminSettlement[] }>('/admin/settlements'),
+  listSettlements: (params: { page?: number, limit?: number } = {}) =>
+    request<{ settlements: AdminSettlement[] } & Partial<PageInfo>>(`/admin/settlements${buildQuery(params)}`),
   createSettlement: (riderId: string) =>
     request<{ settlement: AdminSettlement }>('/admin/settlements', { method: 'POST', body: JSON.stringify({ riderId }) }),
-  listExpenses: () => request<{ expenses: AdminExpense[] }>('/admin/expenses'),
+  listExpenses: (params: { page?: number, limit?: number } = {}) =>
+    request<{ expenses: AdminExpense[] } & Partial<PageInfo>>(`/admin/expenses${buildQuery(params)}`),
   createExpense: (body: AdminExpenseInput) =>
     request<{ expense: AdminExpense }>('/admin/expenses', { method: 'POST', body: JSON.stringify(body) }),
   updateExpense: (id: number, body: Partial<AdminExpenseInput>) =>

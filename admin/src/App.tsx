@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminLayout } from './components/AdminLayout'
+import { RequireAdminRole } from './components/RequireAdminRole'
 import { AuthProvider } from './store/AuthContext'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -55,17 +56,17 @@ export default function App() {
             <Route path="/wallet/overview" element={<WalletPage tab="overview" />} />
             <Route path="/wallet/txns" element={<WalletPage tab="txns" />} />
             <Route path="/wallet/collect" element={<WalletPage tab="collect" />} />
-            <Route path="/wallet/expenses" element={<WalletPage tab="expenses" />} />
-            <Route path="/wallet/settle" element={<WalletPage tab="settle" />} />
+            <Route path="/wallet/expenses" element={<RequireAdminRole><WalletPage tab="expenses" /></RequireAdminRole>} />
+            <Route path="/wallet/settle" element={<RequireAdminRole><WalletPage tab="settle" /></RequireAdminRole>} />
             <Route path="/discounts" element={<Navigate to="/discounts/all" replace />} />
             <Route path="/discounts/all" element={<DiscountsListPage />} />
             <Route path="/discounts/new" element={<DiscountFormPage />} />
             <Route path="/discounts/edit/:code" element={<DiscountFormPage />} />
-            <Route path="/settings/users" element={<UsersPage />} />
+            <Route path="/settings/users" element={<RequireAdminRole><UsersPage /></RequireAdminRole>} />
             <Route path="/settings/store" element={<StoreSettingsPage />} />
             <Route path="/settings/delivery" element={<DeliverySettingsPage />} />
             <Route path="/settings/payment" element={<PaymentSettingsPage />} />
-            <Route path="/settings/audit" element={<AuditLogPage />} />
+            <Route path="/settings/audit" element={<RequireAdminRole><AuditLogPage /></RequireAdminRole>} />
             <Route path="/pages" element={<PagesListPage />} />
             <Route path="/pages/edit/:id" element={<PageEditorPage />} />
             <Route path="/marketing/home" element={<HomeSectionsPage />} />

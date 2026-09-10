@@ -26,9 +26,50 @@ const SELECT_CUSTOMER = `
   WHERE u.is_admin = 0
 `
 
-adminCustomersRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<CustomerRow>(`${SELECT_CUSTOMER} GROUP BY u.id ORDER BY "totalSpent" DESC`)
-  res.json({ customers: rows })
+const MAX_LIMIT = 100
+const DEFAULT_LIMIT = 20
+
+adminCustomersRouter.get('/', async (req, res) => {
+  // الترقيم والبحث اختياريان (opt-in) — لو مفيش page/limit، بيرجع كل العملاء زي ما كان
+  // الحال دايماً، عشان أي استدعاء قديم ما ينكسرش بصمت.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1)
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(String(req.query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT))
+  const offset = (page - 1) * limit
+
+  const params: unknown[] = []
+  let searchClause = ''
+  if (typeof req.query.search === 'string' && req.query.search.trim()) {
+    params.push(`%${req.query.search.trim()}%`)
+    searchClause = `AND (u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length})`
+  }
+
+  if (!paginationRequested) {
+    const { rows } = await pool.query<CustomerRow>(
+      `${SELECT_CUSTOMER} ${searchClause} GROUP BY u.id ORDER BY "totalSpent" DESC`,
+      params
+    )
+    res.json({ customers: rows })
+    return
+  }
+
+  const { rows: countRows } = await pool.query<{ n: string }>(
+    `SELECT COUNT(*) as n FROM users u WHERE u.is_admin = 0 ${searchClause}`,
+    params
+  )
+  const total = Number(countRows[0].n)
+
+  const { rows } = await pool.query<CustomerRow>(
+    `${SELECT_CUSTOMER} ${searchClause} GROUP BY u.id ORDER BY "totalSpent" DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  )
+  res.json({
+    customers: rows,
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  })
 })
 
 adminCustomersRouter.get('/:id', async (req, res) => {

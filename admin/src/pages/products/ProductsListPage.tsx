@@ -1,50 +1,64 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminCategory, type AdminProduct } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
+import { useDebouncedValue } from '../../utils/useDebouncedValue'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const COLS = '2fr 1fr .8fr .8fr .7fr .9fr .8fr'
+const LIMIT = 20
 
 export function ProductsListPage() {
   const navigate = useNavigate()
   const { setHeader } = useOutletContext<LayoutContext>()
   const [products, setProducts] = useState<AdminProduct[] | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [categories, setCategories] = useState<AdminCategory[]>([])
+  const [statsProducts, setStatsProducts] = useState<AdminProduct[]>([])
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState('الكل')
+  const debouncedQuery = useDebouncedValue(query)
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'جميع المنتجات', action: { label: 'إضافة منتج', onClick: () => navigate('/products/add') } })
   }, [setHeader, navigate])
 
+  // إحصائيات الكتالوج بتتحسب من كل المنتجات (بدون ترقيم) عشان تفضل صحيحة بغض النظر
+  // عن الصفحة الحالية أو البحث/الفلتر المطبّق على الجدول.
   useEffect(() => {
     Promise.all([api.listProducts(), api.listCategories()])
-      .then(([p, c]) => { setProducts(p.products); setCategories(c.categories) })
-      .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل المنتجات' : 'حدث خطأ، حاول مرة أخرى'))
+      .then(([p, c]) => { setStatsProducts(p.products); setCategories(c.categories) })
+      .catch(() => {})
   }, [])
 
-  const filtered = useMemo(() => {
-    if (!products) return []
-    const q = query.trim()
-    return products
-      .filter(p => !q || p.name.includes(q) || p.id.includes(q) || p.barcode.includes(q))
-      .filter(p => chip === 'الكل' || categories.find(c => c.id === p.categoryId)?.name === chip)
-  }, [products, categories, query, chip])
+  useEffect(() => { setPage(1) }, [debouncedQuery, chip])
+
+  useEffect(() => {
+    const categoryId = chip === 'الكل' ? undefined : categories.find(c => c.name === chip)?.id
+    api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId })
+      .then(({ products, totalPages, total }) => {
+        setProducts(products)
+        setTotalPages(totalPages ?? 1)
+        setTotal(total ?? products.length)
+      })
+      .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل المنتجات' : 'حدث خطأ، حاول مرة أخرى'))
+  }, [page, debouncedQuery, chip, categories])
 
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!products) return null
 
-  const lowStock = products.filter(p => p.stock <= p.alertThreshold).length
-  const avgMargin = products.length ? products.reduce((a, p) => a + (p.price - p.cost) / p.price, 0) / products.length : 0
+  const lowStock = statsProducts.filter(p => p.stock <= p.alertThreshold).length
+  const avgMargin = statsProducts.length ? statsProducts.reduce((a, p) => a + (p.price - p.cost) / p.price, 0) / statsProducts.length : 0
 
   return (
     <>
       <StatsGrid stats={[
-        { label: 'عدد المنتجات', value: String(products.length), note: 'في الكتالوج', icon: '📦', tint: '#EAF2FF' },
-        { label: 'منتجات معروضة', value: String(products.filter(p => p.available).length), note: 'ظاهرة للعملاء', icon: '✅', tint: '#EAF8EF' },
+        { label: 'عدد المنتجات', value: String(statsProducts.length), note: 'في الكتالوج', icon: '📦', tint: '#EAF2FF' },
+        { label: 'منتجات معروضة', value: String(statsProducts.filter(p => p.available).length), note: 'ظاهرة للعملاء', icon: '✅', tint: '#EAF8EF' },
         { label: 'منخفضة المخزون', value: String(lowStock), note: 'تحت حد التنبيه', icon: '⚠️', tint: '#FFF3E3', noteColor: '#B45309' },
         { label: 'متوسط الهامش', value: `${Math.round(avgMargin * 100)}%`, note: 'على مستوى الكتالوج', icon: '📈', tint: '#FFECEC' }
       ]} />
@@ -66,7 +80,7 @@ export function ProductsListPage() {
             <div className="admin-table-head" style={{ gridTemplateColumns: COLS }}>
               <div>المنتج</div><div>القسم</div><div>سعر البيع</div><div>التكلفة</div><div>الهامش</div><div>المخزون</div><div>الحالة</div>
             </div>
-            {filtered.map(p => {
+            {products.map(p => {
               const margin = (p.price - p.cost) / p.price
               const low = p.stock <= p.alertThreshold
               const categoryName = categories.find(c => c.id === p.categoryId)?.name ?? ''
@@ -90,12 +104,16 @@ export function ProductsListPage() {
                 </div>
               )
             })}
-            {filtered.length === 0 && <div className="admin-table-empty">مفيش بيانات في هذا العرض</div>}
+            {products.length === 0 && <div className="admin-table-empty">مفيش بيانات في هذا العرض</div>}
           </div>
         </div>
         <div className="admin-table-footer">
-          <span>{filtered.length} منتج</span>
-          <span>اضغط على أي منتج لتعديله</span>
+          <span>{total} منتج</span>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>صفحة {page} من {totalPages}</span>
+            <button className="admin-form-chip" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>السابق</button>
+            <button className="admin-form-chip" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>التالي</button>
+          </span>
         </div>
       </div>
     </>

@@ -16,9 +16,44 @@ function serialize(row: DiscountRow) {
   return { ...row, active: !!row.active }
 }
 
-adminDiscountsRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} ORDER BY created_at DESC`)
-  res.json({ discounts: rows.map(serialize) })
+const MAX_LIMIT = 100
+const DEFAULT_LIMIT = 20
+
+adminDiscountsRouter.get('/', async (req, res) => {
+  // الترقيم والبحث اختياريان (opt-in) — لو مفيش page/limit، بيرجع كل أكواد الخصم زي ما
+  // كان الحال دايماً، عشان أي استدعاء قديم ما ينكسرش بصمت.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1)
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(String(req.query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT))
+  const offset = (page - 1) * limit
+
+  const params: unknown[] = []
+  let whereClause = ''
+  if (typeof req.query.search === 'string' && req.query.search.trim()) {
+    params.push(`%${req.query.search.trim().toUpperCase()}%`)
+    whereClause = `WHERE code ILIKE $${params.length}`
+  }
+
+  if (!paginationRequested) {
+    const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} ${whereClause} ORDER BY created_at DESC`, params)
+    res.json({ discounts: rows.map(serialize) })
+    return
+  }
+
+  const { rows: countRows } = await pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM discounts ${whereClause}`, params)
+  const total = Number(countRows[0].n)
+
+  const { rows } = await pool.query<DiscountRow>(
+    `${SELECT_DISCOUNT} ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  )
+  res.json({
+    discounts: rows.map(serialize),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  })
 })
 
 function validateBody(body: unknown) {

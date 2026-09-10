@@ -61,9 +61,49 @@ function serialize(row: ProductRow) {
   }
 }
 
-adminProductsRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT_WITH_IMAGE} ORDER BY p.name`)
-  res.json({ products: rows.map(serialize) })
+const MAX_LIMIT = 100
+const DEFAULT_LIMIT = 20
+
+adminProductsRouter.get('/', async (req, res) => {
+  // الترقيم والبحث اختياريان (opt-in) — لو مفيش page/limit، بيرجع كل المنتجات زي ما كان
+  // الحال دايماً، عشان أي استدعاء قديم ما ينكسرش بصمت.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1)
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(String(req.query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT))
+  const offset = (page - 1) * limit
+
+  const conditions: string[] = []
+  const params: unknown[] = []
+  if (typeof req.query.search === 'string' && req.query.search.trim()) {
+    params.push(`%${req.query.search.trim()}%`)
+    conditions.push(`(p.name ILIKE $${params.length} OR p.id ILIKE $${params.length} OR p.barcode ILIKE $${params.length})`)
+  }
+  if (typeof req.query.categoryId === 'string' && req.query.categoryId.trim()) {
+    params.push(req.query.categoryId.trim())
+    conditions.push(`p.category_id = $${params.length}`)
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  if (!paginationRequested) {
+    const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT_WITH_IMAGE} ${whereClause} ORDER BY p.name`, params)
+    res.json({ products: rows.map(serialize) })
+    return
+  }
+
+  const { rows: countRows } = await pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products p ${whereClause}`, params)
+  const total = Number(countRows[0].n)
+
+  const { rows } = await pool.query<ProductRow>(
+    `${SELECT_PRODUCT_WITH_IMAGE} ${whereClause} ORDER BY p.name LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  )
+  res.json({
+    products: rows.map(serialize),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  })
 })
 
 adminProductsRouter.get('/:id', async (req, res) => {

@@ -1,9 +1,11 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requireRole } from '../auth.js'
 import { listAuditLogs } from '../services/auditLogService.js'
 
+// سجل النشاط بيكشف كل إجراءات المديرين (بما فيها بعض) — مقصور على دور 'admin' الكامل بس.
 export const adminAuditLogsRouter = Router()
 adminAuditLogsRouter.use(requireAdmin)
+adminAuditLogsRouter.use(requireRole('admin'))
 
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 20

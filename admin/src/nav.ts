@@ -1,6 +1,8 @@
 export interface NavChild {
   id: string
   label: string
+  // مقصور على دور 'admin' الكامل بس (راجع server/src/auth.ts) — مخفي عن 'staff' التشغيلي.
+  adminOnly?: boolean
 }
 
 export interface NavGroup {
@@ -59,8 +61,8 @@ export const NAV: NavGroup[] = [
       { id: 'overview', label: 'نظرة عامة' },
       { id: 'txns', label: 'الحركات المالية' },
       { id: 'collect', label: 'التحصيلات' },
-      { id: 'expenses', label: 'المصروفات' },
-      { id: 'settle', label: 'التسويات' }
+      { id: 'expenses', label: 'المصروفات', adminOnly: true },
+      { id: 'settle', label: 'التسويات', adminOnly: true }
     ]
   },
   {
@@ -76,8 +78,8 @@ export const NAV: NavGroup[] = [
       { id: 'store', label: 'المتجر' },
       { id: 'delivery', label: 'التوصيل' },
       { id: 'payment', label: 'الدفع' },
-      { id: 'users', label: 'المستخدمون والصلاحيات' },
-      { id: 'audit', label: 'سجل النشاط' }
+      { id: 'users', label: 'المستخدمون والصلاحيات', adminOnly: true },
+      { id: 'audit', label: 'سجل النشاط', adminOnly: true }
     ]
   }
 ]

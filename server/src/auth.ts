@@ -54,6 +54,8 @@ export async function consumePasswordResetToken(token: string) {
   return row.userId
 }
 
+export type UserRole = 'staff' | 'admin'
+
 export interface AuthedUser {
   id: string
   email: string
@@ -61,11 +63,12 @@ export interface AuthedUser {
   mobile?: string
   createdAt: string
   isAdmin: boolean
+  role: UserRole
 }
 
 async function getUserBySession(token: string): Promise<AuthedUser | null> {
   const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null }>(`
-    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin"
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role"
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = $1 AND s.expires_at > $2
   `, [token, new Date().toISOString()])
@@ -126,4 +129,21 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     return
   }
   next()
+}
+
+// بوابة أدق من requireAdmin: تسمح لأي دور من الأدوار المُمرَّرة بس. تُستخدم لتقييد إجراءات
+// حساسة مالياً/إدارياً (زي إدارة المستخدمين والصلاحيات، أو تسوية الدليفري) على 'admin' بس،
+// بينما باقي لوحة التحكم تفضل متاحة لأي مستخدم isAdmin (سواء 'staff' أو 'admin').
+export function requireRole(...allowed: UserRole[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    if (!allowed.includes(req.user.role)) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+    next()
+  }
 }

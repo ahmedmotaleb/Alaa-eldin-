@@ -1,9 +1,12 @@
 import { Router } from 'express'
 import { pool, withTransaction } from '../db.js'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requireRole } from '../auth.js'
 
 export const adminSettlementsRouter = Router()
 adminSettlementsRouter.use(requireAdmin)
+
+const MAX_LIMIT = 100
+const DEFAULT_LIMIT = 20
 
 interface SettlementRow {
   id: number
@@ -20,12 +23,38 @@ const SELECT_SETTLEMENT = `
   FROM settlements s JOIN riders r ON r.id = s.rider_id
 `
 
-adminSettlementsRouter.get('/', async (_req, res) => {
-  const { rows } = await pool.query<SettlementRow>(`${SELECT_SETTLEMENT} ORDER BY s.created_at DESC, s.id DESC`)
-  res.json({ settlements: rows })
+adminSettlementsRouter.get('/', async (req, res) => {
+  // الترقيم اختياري (opt-in) — لو مفيش page/limit في الطلب، بيرجع كل التسويات زي ما كان
+  // الحال دايماً، عشان صفحة المحفظة اللي بتحسب إجماليات من كل السجل التاريخي ما تنكسرش.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1)
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(String(req.query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT))
+  const offset = (page - 1) * limit
+
+  if (!paginationRequested) {
+    const { rows } = await pool.query<SettlementRow>(`${SELECT_SETTLEMENT} ORDER BY s.created_at DESC, s.id DESC`)
+    res.json({ settlements: rows })
+    return
+  }
+
+  const { rows: countRows } = await pool.query<{ n: string }>('SELECT COUNT(*) as n FROM settlements')
+  const total = Number(countRows[0].n)
+
+  const { rows } = await pool.query<SettlementRow>(
+    `${SELECT_SETTLEMENT} ORDER BY s.created_at DESC, s.id DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  )
+  res.json({
+    settlements: rows,
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  })
 })
 
-adminSettlementsRouter.post('/', async (req, res) => {
+// تسوية الدليفري بتحرك فلوس فعلية بين المتجر والمندوب — مقصورة على دور 'admin' الكامل بس.
+adminSettlementsRouter.post('/', requireRole('admin'), async (req, res) => {
   const { riderId } = req.body ?? {}
   if (typeof riderId !== 'string' || !riderId.trim()) {
     res.status(400).json({ error: 'missing_fields' })

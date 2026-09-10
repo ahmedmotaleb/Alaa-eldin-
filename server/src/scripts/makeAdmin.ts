@@ -7,7 +7,7 @@ if (!email) {
   process.exit(1)
 }
 
-const result = await pool.query('UPDATE users SET is_admin = 1 WHERE email = $1', [email])
+const result = await pool.query("UPDATE users SET is_admin = 1, role = 'admin' WHERE email = $1", [email])
 
 if (result.rowCount === 0) {
   console.error(`No user found with email "${email}". Register the account first via the customer app, then rerun this script.`)

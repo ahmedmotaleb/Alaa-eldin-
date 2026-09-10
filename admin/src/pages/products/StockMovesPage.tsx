@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminProduct, type AdminStockMovement, type StockMovementType } from '../../utils/api'
 import { formatDateTime } from '../../utils/format'
+import { useDebouncedValue } from '../../utils/useDebouncedValue'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const TYPE_LABEL: Record<StockMovementType, string> = {
@@ -18,12 +19,20 @@ const TYPE_LABEL: Record<StockMovementType, string> = {
 const TYPE_OPTIONS: StockMovementType[] = ['restock', 'return', 'damage', 'loss', 'adjustment']
 const INCREASE_TYPES: StockMovementType[] = ['restock', 'return']
 const DECREASE_TYPES: StockMovementType[] = ['damage', 'loss']
+const LIMIT = 20
 
 export function StockMovesPage() {
   const { setHeader } = useOutletContext<LayoutContext>()
   const [movements, setMovements] = useState<AdminStockMovement[] | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [statsMovements, setStatsMovements] = useState<AdminStockMovement[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const debouncedQuery = useDebouncedValue(query)
   const [showCreate, setShowCreate] = useState(false)
 
   const [productId, setProductId] = useState('')
@@ -34,17 +43,30 @@ export function StockMovesPage() {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  function load() {
-    Promise.all([api.listStockMovements(), api.listProducts()])
-      .then(([m, p]) => {
-        setMovements(m.movements)
-        setProducts(p.products)
-        setProductId(current => current || p.products[0]?.id || '')
+  useEffect(() => {
+    api.listProducts().then(({ products }) => {
+      setProducts(products)
+      setProductId(current => current || products[0]?.id || '')
+    }).catch(() => {})
+  }, [])
+
+  // الإحصائيات بتتحسب من كل الحركات (بدون ترقيم) عشان تفضل صحيحة بغض النظر عن الصفحة
+  // الحالية أو البحث المطبّق على الجدول.
+  useEffect(() => {
+    api.listStockMovements().then(({ movements }) => setStatsMovements(movements)).catch(() => {})
+  }, [refreshKey])
+
+  useEffect(() => { setPage(1) }, [debouncedQuery])
+
+  useEffect(() => {
+    api.listStockMovements({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined })
+      .then(({ movements, totalPages, total }) => {
+        setMovements(movements)
+        setTotalPages(totalPages ?? 1)
+        setTotal(total ?? movements.length)
       })
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل حركات المخزون' : 'حدث خطأ، حاول مرة أخرى'))
-  }
-
-  useEffect(() => { load() }, [])
+  }, [page, debouncedQuery, refreshKey])
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'تحويلات المخزون', action: { label: 'تسجيل حركة', onClick: () => setShowCreate(v => !v) } })
@@ -68,7 +90,8 @@ export function StockMovesPage() {
       setAmount(1)
       setNote('')
       setShowCreate(false)
-      load()
+      setPage(1)
+      setRefreshKey(k => k + 1)
     } catch (err) {
       setFormError(err instanceof ApiError && err.code === 'insufficient_stock' ? 'الكمية أكبر من المخزون المتاح لهذا المنتج' : 'تعذر تسجيل الحركة')
     } finally {
@@ -79,9 +102,9 @@ export function StockMovesPage() {
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!movements) return null
 
-  const totalIn = movements.filter(m => m.quantityChange > 0).reduce((a, m) => a + m.quantityChange, 0)
-  const totalOut = movements.filter(m => m.quantityChange < 0).reduce((a, m) => a + Math.abs(m.quantityChange), 0)
-  const affectedProducts = new Set(movements.map(m => m.productId)).size
+  const totalIn = statsMovements.filter(m => m.quantityChange > 0).reduce((a, m) => a + m.quantityChange, 0)
+  const totalOut = statsMovements.filter(m => m.quantityChange < 0).reduce((a, m) => a + Math.abs(m.quantityChange), 0)
+  const affectedProducts = new Set(statsMovements.map(m => m.productId)).size
 
   return (
     <>
@@ -122,13 +145,19 @@ export function StockMovesPage() {
       )}
 
       <StatsGrid stats={[
-        { label: 'عدد الحركات', value: String(movements.length), note: 'منذ البداية', icon: '📋', tint: '#EAF2FF' },
+        { label: 'عدد الحركات', value: String(statsMovements.length), note: 'منذ البداية', icon: '📋', tint: '#EAF2FF' },
         { label: 'إجمالي الإضافات', value: `+${totalIn}`, note: 'وحدة مضافة', icon: '📥', tint: '#EAF8EF' },
         { label: 'إجمالي الخصومات', value: `-${totalOut}`, note: 'وحدة مخصومة', icon: '📤', tint: '#FFECEC', noteColor: '#B42318' },
         { label: 'منتجات متأثرة', value: String(affectedProducts), note: 'منتج له حركة واحدة على الأقل', icon: '📦', tint: '#FFF3E3' }
       ]} />
 
       <div className="admin-table-card">
+        <div className="admin-table-tools">
+          <div className="admin-search">
+            <span style={{ color: '#8A948C', fontSize: 13 }}>🔎</span>
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث باسم المنتج أو الملاحظة..." />
+          </div>
+        </div>
         <div className="admin-table-scroll">
           <div style={{ minWidth: 780 }}>
             <div className="admin-table-head" style={{ gridTemplateColumns: '1fr 2fr 1fr .8fr 1.4fr' }}>
@@ -152,8 +181,12 @@ export function StockMovesPage() {
           </div>
         </div>
         <div className="admin-table-footer">
-          <span>{movements.length} حركة</span>
-          <span>أحدث الحركات أولاً</span>
+          <span>{total} حركة</span>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>صفحة {page} من {totalPages}</span>
+            <button className="admin-form-chip" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>السابق</button>
+            <button className="admin-form-chip" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>التالي</button>
+          </span>
         </div>
       </div>
     </>

@@ -62,7 +62,7 @@ authRouter.post('/register', async (req, res) => {
   const { token, expires } = await createSession(id)
   setSessionCookie(res, token, expires)
   res.status(201).json({
-    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false },
+    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const },
     ...(isNativeClient(req) ? { token } : {})
   })
 })
@@ -74,8 +74,8 @@ authRouter.post('/login', async (req, res) => {
     return
   }
 
-  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number }>(
-    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin" FROM users WHERE email = $1',
+  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin' }>(
+    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role as "role" FROM users WHERE email = $1',
     [email.toLowerCase()]
   )
   const row = rows[0]
@@ -90,7 +90,7 @@ authRouter.post('/login', async (req, res) => {
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin },
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role },
     ...(isNativeClient(req) ? { token } : {})
   })
 })
