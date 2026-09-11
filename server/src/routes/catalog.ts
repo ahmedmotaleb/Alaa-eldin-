@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
 import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, type SortOption } from '../services/catalogService.js'
+import { setShortPublicCache } from '../publicCache.js'
 
 export const catalogRouter = Router()
 
@@ -23,6 +24,9 @@ function parseBool(value: unknown): boolean | undefined {
 }
 
 catalogRouter.get('/categories', async (_req, res) => {
+  // الأقسام بطيئة التغيّر جداً (إدارة يدوية نادرة) — كاش قصير + stale-while-revalidate
+  // بيقلل الطلبات المتكررة من غير ما يعرّض العميل لبيانات قديمة لمدة محسوسة.
+  setShortPublicCache(res, 60, 300)
   const { rows } = await pool.query<CategoryRow>(`
     SELECT c.id, c.name, c.emoji, c.tint, c.image_url as "imageUrl",
            (SELECT count(*) FROM products p WHERE p.category_id = c.id) as "productCount"

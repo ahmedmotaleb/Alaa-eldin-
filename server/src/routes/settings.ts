@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
+import { setShortPublicCache } from '../publicCache.js'
 
 export const settingsRouter = Router()
 
@@ -12,6 +13,7 @@ const SELECT_SETTINGS = `
 `
 
 settingsRouter.get('/settings', async (_req, res) => {
+  setShortPublicCache(res, 60)
   const { rows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
   const row = rows[0]
   res.json({ settings: { ...row, showTodaysOffers: !!row.showTodaysOffers, showBestSellers: !!row.showBestSellers, codEnabled: !!row.codEnabled } })

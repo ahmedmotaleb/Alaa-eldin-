@@ -5,6 +5,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
 import { createOrder, cancelOrder, getOrderByNumberForGuestToken } from './orderService.js'
+import { listOrderStatusHistory } from './orderStatusHistoryService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
 
 const CATEGORY_ID = 'test-cat'
@@ -338,5 +339,37 @@ describe('guest order tracking token', () => {
 
   it('returns null for an order number that does not exist', async () => {
     expect(await getOrderByNumberForGuestToken('ALA-000000', 'anything')).toBeNull()
+  })
+})
+
+describe('order status history', () => {
+  it('records a single system-sourced row on order creation, with no prior status', async () => {
+    const { order } = await createOrder(baseInput(), USER_ID, nextKey())
+    const history = await listOrderStatusHistory(order.id)
+    expect(history).toHaveLength(1)
+    expect(history[0]).toMatchObject({ fromStatus: null, toStatus: 'placed', source: 'system' })
+  })
+
+  it('appends an admin-sourced row on cancellation, preserving the creation row', async () => {
+    const { order } = await createOrder(baseInput(), USER_ID, nextKey())
+    await cancelOrder(order.id, USER_ID)
+    const history = await listOrderStatusHistory(order.id)
+    expect(history).toHaveLength(2)
+    expect(history[1]).toMatchObject({ fromStatus: 'placed', toStatus: 'cancelled', source: 'admin' })
+  })
+
+  it('does not append a duplicate row when cancelling an already-cancelled order', async () => {
+    const { order } = await createOrder(baseInput(), USER_ID, nextKey())
+    await cancelOrder(order.id, USER_ID)
+    await cancelOrder(order.id, USER_ID)
+    const history = await listOrderStatusHistory(order.id)
+    expect(history).toHaveLength(2)
+  })
+
+  it('attaches statusHistory to an order resolved via the guest-token tracking path', async () => {
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    const resolved = await getOrderByNumberForGuestToken(order.orderNumber, order.guestTrackingToken!)
+    expect(resolved?.statusHistory).toHaveLength(1)
+    expect(resolved?.statusHistory?.[0]).toMatchObject({ fromStatus: null, toStatus: 'placed' })
   })
 })

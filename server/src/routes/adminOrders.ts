@@ -1,9 +1,10 @@
 import { Router } from 'express'
-import { pool } from '../db.js'
+import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { isValidOrderStatus, canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { cancelOrder } from '../services/orderService.js'
+import { recordOrderStatusChange, listOrderStatusHistoryForOrders } from '../services/orderStatusHistoryService.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 
@@ -143,7 +144,7 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
 
   // إلغاء الطلب مسار خاص: بيرجّع المخزون idempotent وبيتحقق من صحة الانتقال جوه نفس المعاملة.
   if (status === 'cancelled') {
-    const result = await cancelOrder(String(req.params.id))
+    const result = await cancelOrder(String(req.params.id), req.user!.id)
     if (!result.ok) {
       res.status(result.error === 'order_not_found' ? 404 : 409).json({ error: result.error })
       return
@@ -158,18 +159,22 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
     return
   }
 
-  const { rows: currentRows } = await pool.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id = $1', [req.params.id])
-  const current = currentRows[0]
-  if (!current) {
-    res.status(404).json({ error: 'order_not_found' })
-    return
-  }
-  if (!canTransitionOrderStatus(current.status, status)) {
-    res.status(409).json({ error: 'invalid_status_transition' })
+  const result = await withTransaction(async client => {
+    const { rows: currentRows } = await client.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id = $1 FOR UPDATE', [req.params.id])
+    const current = currentRows[0]
+    if (!current) return { ok: false as const, error: 'order_not_found' as const }
+    if (!canTransitionOrderStatus(current.status, status)) return { ok: false as const, error: 'invalid_status_transition' as const }
+
+    await client.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
+    await recordOrderStatusChange(client, { orderId: String(req.params.id), fromStatus: current.status, toStatus: status, changedByUserId: req.user!.id, source: 'admin' })
+    return { ok: true as const }
+  })
+
+  if (!result.ok) {
+    res.status(result.error === 'order_not_found' ? 404 : 409).json({ error: result.error })
     return
   }
 
-  await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id])
   if (status === 'delivered') logEvent('order_delivered', { orderId: String(req.params.id) })
   res.status(204).end()
 })

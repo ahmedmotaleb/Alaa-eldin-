@@ -115,6 +115,7 @@ export function WalletPage({ tab: tabProp }: { tab?: string } = {}) {
       await api.updateOrderStatus(order.id, status)
     } catch {
       load()
+      window.alert('تعذر تحديث حالة الطلب — من المحتمل إن حد تاني حدّثها في نفس الوقت. جرّب تاني.')
     }
   }
 

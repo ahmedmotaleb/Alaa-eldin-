@@ -105,6 +105,9 @@ export interface ApiOrder {
   discountCode?: string
   discountAmount: number
   guestTrackingToken?: string
+  // بيتحدد بس في رد تتبّع الطلب (GET /orders/:orderNumber أو /track/:orderNumber) — راجع
+  // TrackingPage.tsx. صف واحد لكل انتقال حالة فعلي، بترتيب زمني تصاعدي.
+  statusHistory?: { fromStatus: string | null, toStatus: string, source: string, createdAt: string }[]
 }
 
 export interface ApiAddress {

@@ -1,7 +1,7 @@
 import type { AdminOrder, AdminOrderStatus, AdminRider } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
-import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from '../orderStatus'
+import { ALLOWED_NEXT_STATUSES, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '../orderStatus'
 
 export function OrderDrawer({
   order,
@@ -82,17 +82,23 @@ export function OrderDrawer({
 
         <div className="admin-drawer-card">
           <div className="admin-drawer-card-title">تحديث حالة الطلب</div>
-          <div className="admin-drawer-actions-grid">
-            {ORDER_STATUS_ORDER.map(status => (
-              <button
-                key={status}
-                className={`admin-drawer-status-btn ${order.status === status ? 'active' : ''}`}
-                onClick={() => onSetStatus(status)}
-              >
-                {ORDER_STATUS_LABEL[status]}
-              </button>
-            ))}
-          </div>
+          {ALLOWED_NEXT_STATUSES[order.status].length > 0 ? (
+            <div className="admin-drawer-actions-grid">
+              {ALLOWED_NEXT_STATUSES[order.status].map(status => (
+                <button
+                  key={status}
+                  className="admin-drawer-status-btn"
+                  onClick={() => onSetStatus(status)}
+                >
+                  {ORDER_STATUS_LABEL[status]}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#8A948C' }}>
+              الطلب في حالة نهائية ({ORDER_STATUS_LABEL[order.status]}) — مفيش إجراء إضافي متاح.
+            </div>
+          )}
         </div>
       </div>
     </div>

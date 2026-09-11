@@ -1,10 +1,11 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
+import { publicOrigin } from '../publicUrl.js'
 
-// PUBLIC_APP_URL هو نفسه المستخدم في رابط استعادة كلمة المرور (auth.ts) — نفس مصدر الحقيقة
-// لدومين المتجر العام. لو صاحب المتجر ربط دومين مخصص لاحقاً، تغيير القيمة دي بس كفاية عشان
-// sitemap.xml وrobots.txt يشاورا على الدومين الصح تلقائياً، من غير أي تعديل كود.
-const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'http://localhost:5173'
+// نفس مصدر الحقيقة المستخدم في رابط استعادة كلمة المرور (auth.ts) والوسوم الاجتماعية —
+// لو صاحب المتجر ربط دومين مخصص لاحقاً، تغيير PUBLIC_APP_URL بس كفاية عشان sitemap.xml
+// وrobots.txt يشاورا على الدومين الصح تلقائياً، من غير أي تعديل كود.
+const PUBLIC_APP_URL = publicOrigin()
 
 export const seoRouter = Router()
 

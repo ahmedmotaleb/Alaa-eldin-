@@ -427,11 +427,13 @@ h1, h2, h3, p { margin: 0; }
 .tracking-step-rail { display: flex; flex-direction: column; align-items: center; width: 22px; flex: none; }
 .tracking-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid #e3e9e5; flex: none; }
 .tracking-dot.done { background: var(--green); border-color: #d6f0df; }
+.tracking-dot.cancelled { background: var(--danger); border-color: #f6c9c4; }
 .tracking-line { flex: 1; width: 2px; min-height: 26px; background: #e3e9e5; }
 .tracking-line.done { background: var(--green); }
 .tracking-step-body { padding-bottom: 16px; }
 .tracking-step-title { font-weight: 800; font-size: 13.5px; color: #98a29a; }
 .tracking-step-title.done { color: #17221a; }
+.tracking-step-title.cancelled { color: var(--danger); }
 .tracking-step-time { font-weight: 500; font-size: 11.5px; color: #8a948c; margin-top: 3px; }
 
 /* ---------- account ---------- */

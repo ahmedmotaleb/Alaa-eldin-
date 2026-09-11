@@ -18,6 +18,8 @@
     "db:seed:dev": "tsx src/seed.ts",
     "db:status": "node dist/dbStatus.js",
     "db:status:dev": "tsx src/dbStatus.ts",
+    "db:cleanup": "node dist/cleanup.js",
+    "db:cleanup:dev": "tsx src/cleanup.ts",
     "test": "vitest run"
   },
   "keywords": [],

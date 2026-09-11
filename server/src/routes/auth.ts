@@ -1,15 +1,25 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
 import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, requireAuth, SESSION_COOKIE } from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
 import { isValidEgyptianMobile } from '../phone.js'
+import { publicOrigin } from '../publicUrl.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export const authRouter = Router()
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? 'http://localhost:5173'
+const PUBLIC_APP_URL = publicOrigin()
+
+// تسجيل الدخول: 10 محاولات كل 15 دقيقة لكل IP، ومحاولة ناجحة ما بتتحسبش من الحد ده —
+// عميل حقيقي عادي (حتى لو غلط كلمة السر مرة أو اتنين) ما بيتأثرش، والحماية موجّهة لمحاولات
+// التخمين الآلي (brute force). الرد نفسه فاضل عام زي ما هو (لا يكشف وجود الإيميل من عدمه)
+// — الـ rate limit طبقة إضافية قبل الـ route نفسه، مش بديل عنه.
+const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true })
+const forgotPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false })
+const resetPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
 
 function setSessionCookie(res: import('express').Response, token: string, expires: Date) {
   res.cookie(SESSION_COOKIE, token, {
@@ -67,7 +77,7 @@ authRouter.post('/register', async (req, res) => {
   })
 })
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', loginRateLimit, async (req, res) => {
   const { email, password } = req.body ?? {}
   if (typeof email !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'missing_fields' })
@@ -97,7 +107,7 @@ authRouter.post('/login', async (req, res) => {
 
 // نفس الرد بالظبط سواء كان الإيميل مسجّل أو لأ، عشان محدش يقدر يكتشف إيميلات عملاء حقيقيين
 // عن طريق تجربة إيميلات عشوائية على الـ endpoint ده (user enumeration).
-authRouter.post('/forgot-password', async (req, res) => {
+authRouter.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
   const { email } = req.body ?? {}
   if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
     res.status(400).json({ error: 'invalid_email' })
@@ -114,7 +124,7 @@ authRouter.post('/forgot-password', async (req, res) => {
   res.status(204).end()
 })
 
-authRouter.post('/reset-password', async (req, res) => {
+authRouter.post('/reset-password', resetPasswordRateLimit, async (req, res) => {
   const { token, password } = req.body ?? {}
   if (typeof token !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'missing_fields' })

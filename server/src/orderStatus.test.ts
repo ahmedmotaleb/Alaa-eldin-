@@ -15,13 +15,32 @@ describe('isValidOrderStatus', () => {
 })
 
 describe('canTransitionOrderStatus', () => {
-  it('allows normal forward progress', () => {
+  it('allows every step of the normal forward flow', () => {
     expect(canTransitionOrderStatus('placed', 'preparing')).toBe(true)
-    expect(canTransitionOrderStatus('preparing', 'out_for_delivery')).toBe(true)
+    expect(canTransitionOrderStatus('preparing', 'ready_for_delivery')).toBe(true)
+    expect(canTransitionOrderStatus('ready_for_delivery', 'out_for_delivery')).toBe(true)
+    expect(canTransitionOrderStatus('out_for_delivery', 'delivered')).toBe(true)
   })
 
-  it('allows cancelling an active order', () => {
+  it('blocks skipping a stage in the forward flow', () => {
+    expect(canTransitionOrderStatus('preparing', 'out_for_delivery')).toBe(false)
+    expect(canTransitionOrderStatus('placed', 'ready_for_delivery')).toBe(false)
+    expect(canTransitionOrderStatus('placed', 'out_for_delivery')).toBe(false)
+    expect(canTransitionOrderStatus('placed', 'delivered')).toBe(false)
+  })
+
+  it('blocks any backwards transition', () => {
+    expect(canTransitionOrderStatus('out_for_delivery', 'preparing')).toBe(false)
+    expect(canTransitionOrderStatus('ready_for_delivery', 'placed')).toBe(false)
+    expect(canTransitionOrderStatus('preparing', 'placed')).toBe(false)
+    expect(canTransitionOrderStatus('delivered', 'preparing')).toBe(false)
+  })
+
+  it('allows cancelling from any active pre-delivery state, including out_for_delivery', () => {
     expect(canTransitionOrderStatus('placed', 'cancelled')).toBe(true)
+    expect(canTransitionOrderStatus('preparing', 'cancelled')).toBe(true)
+    expect(canTransitionOrderStatus('ready_for_delivery', 'cancelled')).toBe(true)
+    expect(canTransitionOrderStatus('out_for_delivery', 'cancelled')).toBe(true)
   })
 
   it('blocks leaving a delivered order to any other state', () => {
@@ -34,8 +53,9 @@ describe('canTransitionOrderStatus', () => {
     expect(canTransitionOrderStatus('cancelled', 'placed')).toBe(false)
   })
 
-  it('allows a no-op transition to the same terminal state', () => {
+  it('allows a no-op transition to the same state, including terminal states', () => {
     expect(canTransitionOrderStatus('cancelled', 'cancelled')).toBe(true)
     expect(canTransitionOrderStatus('delivered', 'delivered')).toBe(true)
+    expect(canTransitionOrderStatus('preparing', 'preparing')).toBe(true)
   })
 })

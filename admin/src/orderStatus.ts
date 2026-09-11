@@ -19,3 +19,15 @@ export const ORDER_STATUS_COLOR: Record<AdminOrderStatus, [string, string]> = {
 }
 
 export const ORDER_STATUS_ORDER: AdminOrderStatus[] = ['placed', 'preparing', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'cancelled']
+
+// نسخة طرفية (frontend) من نفس آلة الحالات الصريحة في السيرفر (server/src/orderStatus.ts)
+// — تحكم بس في أي أزرار تتعرض للمستخدم؛ السيرفر يفضل هو المرجع الوحيد اللي بيتحقق فعلياً
+// من صحة الانتقال. مفيش تخطي خطوة (زي preparing لـ out_for_delivery مباشرة) ومفيش رجوع للخلف.
+export const ALLOWED_NEXT_STATUSES: Record<AdminOrderStatus, AdminOrderStatus[]> = {
+  placed: ['preparing', 'cancelled'],
+  preparing: ['ready_for_delivery', 'cancelled'],
+  ready_for_delivery: ['out_for_delivery', 'cancelled'],
+  out_for_delivery: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: []
+}

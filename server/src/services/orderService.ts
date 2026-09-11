@@ -11,6 +11,7 @@ import {
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { getActiveDeliveryZoneFee, isActiveDeliverySlot } from './deliveryService.js'
+import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
@@ -64,6 +65,9 @@ export interface SerializedOrder {
   // بيتحدد بس لو الطلب من غير تسجيل دخول (guest) — العميل المسجّل بيستخدم ownership العادي
   // بدل التوكن ده. راجع getOrderByNumberForGuestToken.
   guestTrackingToken?: string
+  // بيتحدد بس في مسارات التتبع (getOrderByNumberForUser/getOrderByNumberForGuestToken) —
+  // مش في كل استدعاء لـ serializeOrderRow، عشان قائمة الطلبات العادية ما تحتاجش التاريخ الكامل.
+  statusHistory?: OrderStatusHistoryEntry[]
 }
 
 const SELECT_ORDER_FIELDS = `
@@ -256,6 +260,8 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         )
       }
 
+      await recordOrderStatusChange(client, { orderId: id, fromStatus: null, toStatus: 'placed', source: 'system' })
+
       for (const item of input.items) {
         await deductStockForOrder(client, item.productId, item.quantity, id)
         logEvent('stock_deducted', { orderId: id, productId: item.productId, quantity: item.quantity })
@@ -294,7 +300,10 @@ export async function getOrderByNumberForUser(orderNumber: string, userId: strin
     `SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE order_number = $1 AND user_id = $2`,
     [orderNumber, userId]
   )
-  return rows[0] ? serializeOrderRow(rows[0]) : null
+  if (!rows[0]) return null
+  const order = await serializeOrderRow(rows[0])
+  order.statusHistory = await listOrderStatusHistory(order.id)
+  return order
 }
 
 // تتبّع طلب زائر آمن: رقم الطلب لوحده مش كفاية أبداً — لازم التوكن الصحيح يتطابق حرفياً
@@ -313,7 +322,9 @@ export async function getOrderByNumberForGuestToken(orderNumber: string, token: 
   const provided = Buffer.from(token)
   if (expected.length !== provided.length || !crypto.timingSafeEqual(expected, provided)) return null
 
-  return serializeOrderRow(row)
+  const order = await serializeOrderRow(row)
+  order.statusHistory = await listOrderStatusHistory(order.id)
+  return order
 }
 
 export interface Pagination {
@@ -360,7 +371,7 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
 
 // إلغاء طلب من لوحة التحكم: بيرجّع المخزون (idempotent، مش هيتكرر لو الطلب ملغى بالفعل)
 // وبيتحقق إن الانتقال مسموح (مش هيسمح مثلاً بإلغاء طلب "تم التسليم" بالفعل).
-export async function cancelOrder(orderId: string): Promise<{ ok: true } | { ok: false, error: 'order_not_found' | 'invalid_status_transition' }> {
+export async function cancelOrder(orderId: string, changedByUserId: string | null = null): Promise<{ ok: true } | { ok: false, error: 'order_not_found' | 'invalid_status_transition' }> {
   return withTransaction(async client => {
     const { rows } = await client.query<{ status: OrderStatus }>('SELECT status FROM orders WHERE id = $1 FOR UPDATE', [orderId])
     const current = rows[0]
@@ -371,6 +382,7 @@ export async function cancelOrder(orderId: string): Promise<{ ok: true } | { ok:
     }
 
     await client.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId])
+    await recordOrderStatusChange(client, { orderId, fromStatus: current.status, toStatus: 'cancelled', changedByUserId, source: 'admin' })
     const restoreResult = await restoreStockForCancelledOrder(client, orderId)
     logEvent('order_cancelled', { orderId })
     if (restoreResult === 'restored') logEvent('stock_restored', { orderId })
