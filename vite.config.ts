@@ -17,7 +17,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['images/app-icon.svg', 'images/logo.png', 'images/apple-touch-icon.png', 'images/favicon-32.png'],
       workbox: {
-        navigateFallbackDenylist: [/^\/admin/, /^\/api/],
+        navigateFallbackDenylist: [/^\/admin/, /^\/api/, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
         // Cloudinary صور المنتجات: cache-first مع حد أقصى لعدد العناصر وعمر الكاش — بيمنع
         // نمو غير محدود لكاش الـ service worker. أعدادات المتجر/الأقسام/البنرات: بيانات
         // إعداد خفيفة التغيّر فمناسب لها stale-while-revalidate. باقي endpoints الـ API

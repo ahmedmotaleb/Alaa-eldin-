@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, ApiError, type ApiContentPage } from '../utils/api'
+import { setPageMeta } from '../utils/pageMeta'
 import { ar } from '../i18n/ar'
 
 // صفحة محتوى عامة (سياسة الاسترجاع والاستبدال، وأي صفحة مشابهة لاحقاً) — المحتوى بييجي
@@ -23,6 +24,11 @@ export function ContentPage({ slug }: { slug: string }) {
         else setError(ar.errors.generic)
       })
   }, [slug])
+
+  useEffect(() => {
+    if (!page) return
+    setPageMeta({ title: page.title, description: page.content.slice(0, 160), path: `/${page.slug}` })
+  }, [page])
 
   if (notFound) {
     return (

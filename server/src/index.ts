@@ -40,6 +40,7 @@ import { favoritesRouter } from './routes/favorites.js'
 import { frequentlyPurchasedRouter } from './routes/frequentlyPurchased.js'
 import { deliveryRouter } from './routes/delivery.js'
 import { adminDeliveryRouter } from './routes/adminDelivery.js'
+import { seoRouter } from './routes/seo.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
@@ -89,6 +90,10 @@ app.get('/health', async (_req, res) => {
     res.status(503).json({ status: 'error' })
   }
 })
+
+// عام بدون مصادقة، وقبل أي middleware خاص بـ /api — بيرجع نصوص/XML ثابتة أو شبه ثابتة،
+// مش بيانات مستخدم، فمحتاجش body parser ولا الكوكيز.
+app.use(seoRouter)
 
 app.use(express.json())
 app.use(cookieParser())

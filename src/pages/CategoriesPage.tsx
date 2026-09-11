@@ -1,11 +1,17 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCatalog } from '../store/CatalogContext'
 import { transformImage } from '../utils/image'
+import { setPageMeta } from '../utils/pageMeta'
 import { ar } from '../i18n/ar'
 
 export function CategoriesPage() {
   const navigate = useNavigate()
   const { categories } = useCatalog()
+
+  useEffect(() => {
+    setPageMeta({ title: 'الأقسام', description: 'تصفح كل أقسام المتجر ومنتجاته', path: '/categories' })
+  }, [])
 
   return (
     <div className="categories-grid">

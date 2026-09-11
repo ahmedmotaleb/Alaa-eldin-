@@ -7,6 +7,8 @@ import { StickyActionBar } from '../components/StickyActionBar'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
 import { setPageTitle } from '../store/pageTitleStore'
+import { setPageMeta, setProductJsonLd, clearProductJsonLd } from '../utils/pageMeta'
+import { getSettings } from '../store/settingsStore'
 import { api, type ApiProductDetail } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ar } from '../i18n/ar'
@@ -34,6 +36,29 @@ export function ProductPage() {
     setPageTitle(product?.name ?? '')
     return () => setPageTitle('')
   }, [product?.name])
+
+  useEffect(() => {
+    if (!product || !slug) return
+    const primaryImage = product.gallery.find(img => img.isPrimary) ?? product.gallery[0]
+    setPageMeta({
+      title: `${product.name} - ${getSettings().name}`,
+      description: product.description || product.name,
+      path: `/product/${slug}`,
+      image: primaryImage?.url,
+      type: 'product'
+    })
+    setProductJsonLd({
+      name: product.name,
+      description: product.description || product.name,
+      image: primaryImage?.url,
+      brand: product.brand,
+      price: product.price,
+      currency: 'EGP',
+      available: product.available,
+      path: `/product/${slug}`
+    })
+    return () => clearProductJsonLd()
+  }, [product, slug])
 
   if (product === null) return <Navigate to="/" replace />
   if (product === undefined) return null

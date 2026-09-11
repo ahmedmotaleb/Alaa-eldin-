@@ -7,6 +7,7 @@ import { hasOnboarded } from '../utils/onboarding'
 import { api, type ApiBanner, type ApiProduct } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { transformImage } from '../utils/image'
+import { setPageMeta } from '../utils/pageMeta'
 import { ar } from '../i18n/ar'
 
 const HOME_SECTION_LIMIT = 6
@@ -23,6 +24,15 @@ export function HomePage() {
   useEffect(() => {
     api.listBanners().then(({ banners }) => setBanners(banners)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    setPageMeta({
+      title: settings.name,
+      description: `${settings.name} - سوبر ماركت أونلاين لطلب احتياجات البيت والدفع عند الاستلام`,
+      path: '/'
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.name])
 
   // الصفحة الرئيسية بتجيب بس 6 عروض و6 الأكثر مبيعاً من السيرفر مباشرة — مش بتحمّل الكتالوج
   // كامل عشان تعرض 12 منتج بس.
