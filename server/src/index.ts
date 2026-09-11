@@ -21,6 +21,7 @@ import { adminSuppliersRouter } from './routes/adminSuppliers.js'
 import { adminPurchaseOrdersRouter } from './routes/adminPurchaseOrders.js'
 import { adminGoodsReceivingRouter } from './routes/adminGoodsReceiving.js'
 import { adminInventoryBatchesRouter } from './routes/adminInventoryBatches.js'
+import { adminStockWriteOffsRouter } from './routes/adminStockWriteOffs.js'
 import { adminCategoriesRouter } from './routes/adminCategories.js'
 import { adminCustomersRouter } from './routes/adminCustomers.js'
 import { discountsRouter } from './routes/discounts.js'
@@ -127,6 +128,7 @@ app.use('/api/admin/suppliers', adminSuppliersRouter)
 app.use('/api/admin/purchase-orders', adminPurchaseOrdersRouter)
 app.use('/api/admin/goods-receipts', adminGoodsReceivingRouter)
 app.use('/api/admin/inventory-batches', adminInventoryBatchesRouter)
+app.use('/api/admin/stock-write-offs', adminStockWriteOffsRouter)
 app.use('/api/admin/audit-logs', adminAuditLogsRouter)
 app.use('/api/admin/categories', adminCategoriesRouter)
 app.use('/api/admin/customers', adminCustomersRouter)

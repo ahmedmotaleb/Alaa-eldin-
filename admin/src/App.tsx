@@ -24,6 +24,7 @@ const PurchaseOrderFormPage = lazy(() => import('./pages/purchasing/PurchaseOrde
 const GoodsReceivingListPage = lazy(() => import('./pages/purchasing/GoodsReceivingListPage').then(m => ({ default: m.GoodsReceivingListPage })))
 const GoodsReceivingFormPage = lazy(() => import('./pages/purchasing/GoodsReceivingFormPage').then(m => ({ default: m.GoodsReceivingFormPage })))
 const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
+const StockWriteOffPage = lazy(() => import('./pages/products/StockWriteOffPage').then(m => ({ default: m.StockWriteOffPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="/products/cats" element={<CategoriesPage />} />
               <Route path="/products/inv" element={<InventoryPage />} />
               <Route path="/products/expiry" element={<ExpiryDashboardPage />} />
+              <Route path="/products/writeoff" element={<StockWriteOffPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
               <Route path="/purchasing" element={<Navigate to="/purchasing/suppliers" replace />} />
               <Route path="/purchasing/suppliers" element={<SuppliersListPage />} />

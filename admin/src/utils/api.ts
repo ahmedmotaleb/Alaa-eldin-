@@ -359,6 +359,8 @@ export interface ExpiryDashboard {
   within60Days: ExpiryBatchRow[]
 }
 
+export type WriteOffReason = 'expired' | 'damaged' | 'lost' | 'inventory_adjustment' | 'supplier_return'
+
 // 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
 // مش قيم قابلة للإنشاء اليدوي من نموذج "تسجيل حركة" في هذه اللوحة (راجع StockMovesPage).
 export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment' | 'sale' | 'cancel_restore'
@@ -634,6 +636,8 @@ export const api = {
   getExpiryDashboard: () => request<ExpiryDashboard>('/admin/inventory-batches/expiry'),
   setProductExpirySettings: (id: string, body: { tracksExpiry: boolean, defaultShelfLifeDays: number | null }) =>
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/expiry-settings`, { method: 'PATCH', body: JSON.stringify(body) }),
+  writeOffStock: (body: { productId: string, quantity: number, reason: WriteOffReason, note?: string, batchId?: string }) =>
+    request<{ newStock: number }>('/admin/stock-write-offs', { method: 'POST', body: JSON.stringify(body) }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

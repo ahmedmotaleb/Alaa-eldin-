@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg'
+import { getSellableStockMap, consumeBatchesFefo, restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
 
 export interface LockedProduct {
   id: string
@@ -46,6 +47,16 @@ export async function lockProductsForOrder(client: PoolClient, productIds: strin
   for (const row of rows) {
     map.set(row.id, { id: row.id, name: row.name, unit: row.unit, price: row.price, available: !!row.available, stock: row.stock })
   }
+
+  // منتجات ليها دفعات (اتستلمت عن طريق نظام المشتريات) — الرصيد المستخدم في التحقق من
+  // توفر الكمية بيبقى الرصيد "القابل للبيع" (بيستثني أي دفعة منتهية الصلاحية)، مش
+  // products.stock الخام. منتجات من غير أي دفعة (مخزون قديم) تفضل تعتمد على الرصيد الخام.
+  const sellableByProduct = await getSellableStockMap(client, uniqueSortedIds)
+  for (const [productId, sellable] of sellableByProduct) {
+    const product = map.get(productId)
+    if (product) product.stock = sellable
+  }
+
   return map
 }
 
@@ -74,11 +85,12 @@ export async function deductStockForOrder(client: PoolClient, productId: string,
   const row = rows[0]
   if (!row) throw new InventoryValidationError({ code: 'insufficient_stock', productId, available: 0, requested: quantity })
 
-  await client.query(
+  const { rows: movementRows } = await client.query<{ id: number }>(
     `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, order_id, quantity_before, quantity_after)
-     VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7) RETURNING id`,
     [productId, -quantity, `بيع — طلب ${orderId}`, new Date().toISOString(), orderId, row.stock + quantity, row.stock]
   )
+  await consumeBatchesFefo(client, productId, quantity, movementRows[0].id)
   return row.stock
 }
 
@@ -109,6 +121,14 @@ export async function restoreStockForCancelledOrder(client: PoolClient, orderId:
        VALUES ($1, 'cancel_restore', $2, $3, $4, $5, $6, $7)`,
       [item.productId, item.quantity, `إلغاء طلب ${orderId}`, new Date().toISOString(), orderId, row.stock - item.quantity, row.stock]
     )
+
+    // نرجّع الكمية بالظبط لنفس الدفعات اللي اتاخدت منها وقت البيع (مش دفعة عشوائية) —
+    // بيمنع أي انحراف بين إجمالي الدفعات وproducts.stock بعد إلغاء طلب.
+    const { rows: saleMovementRows } = await client.query<{ id: number }>(
+      `SELECT id FROM stock_movements WHERE order_id = $1 AND product_id = $2 AND type = 'sale' LIMIT 1`,
+      [orderId, item.productId]
+    )
+    if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
   }
   return 'restored'
 }

@@ -32,6 +32,7 @@ export const NAV: NavGroup[] = [
       { id: 'cats', label: 'الأقسام' },
       { id: 'inv', label: 'المخزون' },
       { id: 'expiry', label: 'الصلاحية' },
+      { id: 'writeoff', label: 'شطب المخزون' },
       { id: 'moves', label: 'تحويلات المخزون' }
     ]
   },

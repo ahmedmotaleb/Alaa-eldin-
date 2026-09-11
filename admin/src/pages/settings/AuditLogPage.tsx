@@ -19,6 +19,7 @@ const ACTION_LABEL: Record<string, string> = {
   purchase_order_cancelled: 'إلغاء أمر شراء',
   goods_receipt_created: 'استلام بضاعة',
   product_expiry_settings_updated: 'تعديل إعداد صلاحية منتج',
+  stock_write_off: 'شطب مخزون',
   product_created: 'إنشاء منتج',
   product_updated: 'تعديل منتج',
   product_archived: 'أرشفة منتج',
