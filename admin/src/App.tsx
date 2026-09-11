@@ -17,6 +17,8 @@ const ProductFormPage = lazy(() => import('./pages/products/ProductFormPage').th
 const CategoriesPage = lazy(() => import('./pages/products/CategoriesPage').then(m => ({ default: m.CategoriesPage })))
 const InventoryPage = lazy(() => import('./pages/products/InventoryPage').then(m => ({ default: m.InventoryPage })))
 const StockMovesPage = lazy(() => import('./pages/products/StockMovesPage').then(m => ({ default: m.StockMovesPage })))
+const SuppliersListPage = lazy(() => import('./pages/purchasing/SuppliersListPage').then(m => ({ default: m.SuppliersListPage })))
+const SupplierFormPage = lazy(() => import('./pages/purchasing/SupplierFormPage').then(m => ({ default: m.SupplierFormPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
@@ -59,6 +61,10 @@ export default function App() {
               <Route path="/products/cats" element={<CategoriesPage />} />
               <Route path="/products/inv" element={<InventoryPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
+              <Route path="/purchasing" element={<Navigate to="/purchasing/suppliers" replace />} />
+              <Route path="/purchasing/suppliers" element={<SuppliersListPage />} />
+              <Route path="/purchasing/suppliers/new" element={<SupplierFormPage />} />
+              <Route path="/purchasing/suppliers/edit/:id" element={<SupplierFormPage />} />
               <Route path="/customers" element={<Navigate to="/customers/all" replace />} />
               <Route path="/customers/all" element={<CustomersListPage />} />
               <Route path="/customers/segments" element={<SegmentsPage />} />

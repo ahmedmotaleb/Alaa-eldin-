@@ -224,6 +224,36 @@ export interface AdminDiscount {
 
 export type AdminDiscountInput = Omit<AdminDiscount, 'usedCount' | 'createdAt'>
 
+export interface AdminSupplier {
+  id: string
+  name: string
+  contactPerson: string
+  mobile: string
+  whatsapp: string
+  email: string
+  address: string
+  taxNumber: string
+  notes: string
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type AdminSupplierInput = Omit<AdminSupplier, 'id' | 'active' | 'createdAt' | 'updatedAt'>
+
+export interface AdminSupplierProduct {
+  id: string
+  supplierId: string
+  productId: string
+  supplierSku: string
+  lastCost: number | null
+  leadTimeDays: number | null
+  minimumOrderQty: number | null
+  preferred: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 // 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
 // مش قيم قابلة للإنشاء اليدوي من نموذج "تسجيل حركة" في هذه اللوحة (راجع StockMovesPage).
 export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment' | 'sale' | 'cancel_restore'
@@ -466,6 +496,20 @@ export const api = {
     request<{ discount: AdminDiscount }>('/admin/discounts', { method: 'POST', body: JSON.stringify(body) }),
   updateDiscount: (code: string, body: Partial<AdminDiscountInput>) =>
     request<{ discount: AdminDiscount }>(`/admin/discounts/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  listSuppliers: (params: { search?: string, activeOnly?: boolean } = {}) =>
+    request<{ suppliers: AdminSupplier[] }>(`/admin/suppliers${buildQuery({ search: params.search, activeOnly: params.activeOnly ? 'true' : undefined })}`),
+  getSupplier: (id: string) =>
+    request<{ supplier: AdminSupplier, products: AdminSupplierProduct[] }>(`/admin/suppliers/${encodeURIComponent(id)}`),
+  createSupplier: (body: AdminSupplierInput) =>
+    request<{ supplier: AdminSupplier }>('/admin/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+  updateSupplier: (id: string, body: AdminSupplierInput) =>
+    request<{ supplier: AdminSupplier }>(`/admin/suppliers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  setSupplierActive: (id: string, active: boolean) =>
+    request<{ supplier: AdminSupplier }>(`/admin/suppliers/${encodeURIComponent(id)}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  linkSupplierProduct: (supplierId: string, productId: string, body: Partial<Omit<AdminSupplierProduct, 'id' | 'supplierId' | 'productId' | 'createdAt' | 'updatedAt'>>) =>
+    request<{ link: AdminSupplierProduct }>(`/admin/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  unlinkSupplierProduct: (supplierId: string, productId: string) =>
+    request<void>(`/admin/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

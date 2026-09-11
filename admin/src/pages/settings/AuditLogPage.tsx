@@ -7,6 +7,12 @@ import type { LayoutContext } from '../../components/AdminLayout'
 const COLS = '1.1fr 1fr 1fr 1.4fr 1fr'
 
 const ACTION_LABEL: Record<string, string> = {
+  supplier_created: 'إنشاء مورد',
+  supplier_updated: 'تعديل مورد',
+  supplier_activated: 'تفعيل مورد',
+  supplier_deactivated: 'تعطيل مورد',
+  supplier_product_linked: 'ربط منتج بمورد',
+  supplier_product_unlinked: 'إلغاء ربط منتج بمورد',
   product_created: 'إنشاء منتج',
   product_updated: 'تعديل منتج',
   product_archived: 'أرشفة منتج',
