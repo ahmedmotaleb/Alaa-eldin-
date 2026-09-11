@@ -99,28 +99,13 @@ describe('requireRole', () => {
 })
 
 describe('extractSessionToken', () => {
-  it('reads the token from the session cookie (web)', () => {
-    const req = { cookies: { session_token: 'cookie-token-abc' }, headers: {} } as unknown as Request
+  it('reads the token from the session cookie', () => {
+    const req = { cookies: { session_token: 'cookie-token-abc' } } as unknown as Request
     expect(extractSessionToken(req)).toBe('cookie-token-abc')
   })
 
-  it('falls back to the Authorization Bearer header when there is no cookie (Android)', () => {
-    const req = { cookies: {}, headers: { authorization: 'Bearer native-token-xyz' } } as unknown as Request
-    expect(extractSessionToken(req)).toBe('native-token-xyz')
-  })
-
-  it('prefers the cookie over the Authorization header when both are present', () => {
-    const req = { cookies: { session_token: 'cookie-wins' }, headers: { authorization: 'Bearer header-token' } } as unknown as Request
-    expect(extractSessionToken(req)).toBe('cookie-wins')
-  })
-
-  it('ignores a malformed Authorization header', () => {
-    const req = { cookies: {}, headers: { authorization: 'not-a-bearer-token' } } as unknown as Request
-    expect(extractSessionToken(req)).toBeUndefined()
-  })
-
-  it('returns undefined when neither cookie nor header is present', () => {
-    const req = { cookies: {}, headers: {} } as unknown as Request
+  it('returns undefined when there is no cookie', () => {
+    const req = { cookies: {} } as unknown as Request
     expect(extractSessionToken(req)).toBeUndefined()
   })
 })

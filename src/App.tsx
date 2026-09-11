@@ -2,7 +2,6 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { OfflineBanner } from './components/OfflineBanner'
-import { AndroidBackButton } from './components/AndroidBackButton'
 import { AuthProvider } from './store/AuthContext'
 import { CartProvider } from './store/CartContext'
 import { CatalogProvider, useCatalog } from './store/CatalogContext'
@@ -76,7 +75,6 @@ export default function App() {
           <CartProvider>
             <FavoritesProvider>
               <ToastProvider>
-                <AndroidBackButton />
                 <OfflineBanner />
                 <CatalogGate>
                   <Suspense fallback={<RouteLoader />}>

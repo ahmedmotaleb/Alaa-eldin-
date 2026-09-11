@@ -31,15 +31,6 @@ function setSessionCookie(res: import('express').Response, token: string, expire
   })
 }
 
-// كوكيز SameSite=Lax (مطلوبة كحماية CSRF أساسية) ما بترجعش على طلبات cross-origin —
-// تطبيق الأندرويد (Capacitor) بيبعت الهيدر ده بنفسه (راجع src/utils/api.ts) عشان ياخد
-// نفس token الجلسة في جسم الرد ويبعته لاحقاً كـ "Authorization: Bearer <token>" بدل
-// الاعتماد على كوكيز عبر أصل مختلف. متصفح الويب العادي محدش بيبعت الهيدر ده، فسلوكه
-// (وحماية httpOnly بتاعته) يفضل بالظبط زي ما كان — الرمز نفسه ما بيتكشفش لـ JS الويب أبداً.
-export function isNativeClient(req: import('express').Request): boolean {
-  return req.headers['x-client-platform'] === 'android'
-}
-
 authRouter.post('/register', async (req, res) => {
   const { email, password, fullName } = req.body ?? {}
 
@@ -72,8 +63,7 @@ authRouter.post('/register', async (req, res) => {
   const { token, expires } = await createSession(id)
   setSessionCookie(res, token, expires)
   res.status(201).json({
-    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const },
-    ...(isNativeClient(req) ? { token } : {})
+    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const }
   })
 })
 
@@ -100,8 +90,7 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role },
-    ...(isNativeClient(req) ? { token } : {})
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role }
   })
 })
 

@@ -85,21 +85,8 @@ declare global {
   }
 }
 
-// تطبيق الأندرويد (Capacitor) بيكلّم الباك إند من أصل مختلف (cross-origin) — كوكيز
-// SameSite=Lax (المطلوبة كحماية CSRF أساسية للويب) ما بتترجعش على طلبات cross-origin
-// زي دي أصلاً، فمفيش داعي (ولا صح) نضعّف الكوكيز عشان نصلّح الأندرويد. بدل كده، العميل
-// الأصلي (native) وحده بيستقبل نفس token الجلسة في جسم رد تسجيل الدخول (راجع routes/auth.ts)
-// ويبعته كـ "Authorization: Bearer <token>" — نفس جدول sessions، نفس الصلاحية والانتهاء
-// بالظبط، غير مصدر القراءة بس. قبول هيدر Authorization هنا آمن دايماً (على عكس الكوكيز،
-// المتصفح ما بيرفقش هيدر زي ده تلقائياً في أي طلب cross-site، فمفيش خطر CSRF إضافي).
 export function extractSessionToken(req: Request): string | undefined {
-  const cookieToken = req.cookies?.[SESSION_COOKIE]
-  if (cookieToken) return cookieToken
-  const authHeader = req.headers.authorization
-  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    return authHeader.slice('Bearer '.length).trim() || undefined
-  }
-  return undefined
+  return req.cookies?.[SESSION_COOKIE]
 }
 
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {

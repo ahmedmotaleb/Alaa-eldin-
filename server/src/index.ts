@@ -58,16 +58,9 @@ app.disable('x-powered-by')
 app.use(attachRequestId)
 app.use(apiRequestLogger)
 
-// الويب (تطوير وإنتاج) بيكلّم الـ API من نفس الأصل (/api) فمحتاجش CORS خالص. تطبيق
-// الأندرويد (Capacitor) لوحده هو اللي بيبعت طلبات cross-origin حقيقية (من https://localhost
-// جوه الـ WebView) لرابط Railway المطلق — فلازم يتسمحله بالاسم صراحة حتى في الإنتاج،
-// من غير ما نستخدم '*' مع credentials أو نوسّع القائمة لأي أصل تاني.
-const ALLOWED_ORIGINS = new Set([
-  DEV_ORIGIN,
-  'https://localhost', // Capacitor Android الافتراضي (androidScheme: 'https')
-  'http://localhost',
-  'capacitor://localhost'
-])
+// الويب (تطوير وإنتاج) بيكلّم الـ API من نفس الأصل (/api) فمحتاجش CORS خالص — القائمة دي
+// موجودة بس عشان بيئة التطوير المحلية (منفذ Vite المختلف عن السيرفر).
+const ALLOWED_ORIGINS = new Set([DEV_ORIGIN])
 
 app.use(cors({
   origin(origin, callback) {

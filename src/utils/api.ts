@@ -1,35 +1,4 @@
-import { isNative } from './platform'
-import { getNativeSessionToken, setNativeSessionToken, clearNativeSessionToken } from './nativeSession'
-
-// الويب (تطوير وإنتاج) بيستخدم مسار نسبي (/api) على نفس الأصل دايماً — مفيش أي تغيير هنا.
-// تطبيق الأندرويد (Capacitor) بيحمّل الواجهة من ملفات محلية جوه الـ APK (مش من نفس أصل
-// السيرفر)، فلازم رابط API مطلق بصيغة HTTPS كامل. القيمة دي بتتحدد وقت البناء عن طريق
-// VITE_API_BASE_URL (راجع .env.example) — مفيش أي رابط localhost مثبّت هنا لبيئة الإنتاج.
-// على الأندرويد الواجهة محمّلة من ملفات محلية جوه الـ APK، فلازم أصل API مطلق وصحيح.
-// لو الرابط ناقص أو غلط، من غير الفحص ده الـ BASE كان بيبقى "/api" وهو نسبي لأصل الـ
-// WebView (https://localhost) — يعني APK بيتبني وينزّل وهو مكسور بالكامل من غير أي خطأ
-// واضح. الفحص هنا بيفشل بصوت عالي بدل ما يشحن نسخة ميتة.
-function resolveNativeApiBase(): string {
-  const raw = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '')
-  if (!raw) {
-    throw new Error('VITE_API_BASE_URL مطلوب لبناء تطبيق الأندرويد — راجع ANDROID_BUILD.md')
-  }
-  let parsed: URL
-  try {
-    parsed = new URL(raw)
-  } catch {
-    throw new Error(`VITE_API_BASE_URL غير صالح كرابط: ${raw}`)
-  }
-  if (parsed.protocol !== 'https:') {
-    throw new Error(`VITE_API_BASE_URL لازم يكون HTTPS (القيمة الحالية: ${raw})`)
-  }
-  if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-    throw new Error(`VITE_API_BASE_URL مينفعش يكون localhost في نسخة للتوزيع (القيمة الحالية: ${raw})`)
-  }
-  return `${raw}/api`
-}
-
-const BASE = isNative() ? resolveNativeApiBase() : '/api'
+const BASE = '/api'
 
 export class ApiError extends Error {
   code: string
@@ -44,22 +13,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  // على الأندرويد، الكوكيز اللي بيحطها السيرفر (أصل مختلف تماماً) ما بترجعش على طلبات
-  // JS تالية أصلاً — فبنعتمد بدلها على Authorization: Bearer <token> المخزّن محلياً بعد
-  // تسجيل الدخول. الويب يفضل زي ما هو تماماً (كوكيز httpOnly، من غير أي Authorization header).
-  const nativeHeaders: Record<string, string> = {}
-  if (isNative()) {
-    nativeHeaders['X-Client-Platform'] = 'android'
-    const token = getNativeSessionToken()
-    if (token) nativeHeaders.Authorization = `Bearer ${token}`
-  }
-
   let res: Response
   try {
     res = await fetch(BASE + path, {
       credentials: 'include',
       ...options,
-      headers: { 'Content-Type': 'application/json', ...nativeHeaders, ...(options.headers ?? {}) }
+      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) }
     })
   } catch {
     throw new ApiError('network_error', 0)
@@ -294,12 +253,10 @@ export interface ApiSettings {
 
 export const api = {
   register: (body: { email: string, password: string, fullName: string }) =>
-    request<{ user: ApiUser, token?: string }>('/auth/register', { method: 'POST', body: JSON.stringify(body) })
-      .then(res => { if (isNative() && res.token) setNativeSessionToken(res.token); return res }),
+    request<{ user: ApiUser }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (body: { email: string, password: string }) =>
-    request<{ user: ApiUser, token?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(body) })
-      .then(res => { if (isNative() && res.token) setNativeSessionToken(res.token); return res }),
-  logout: () => request<void>('/auth/logout', { method: 'POST' }).finally(() => { if (isNative()) clearNativeSessionToken() }),
+    request<{ user: ApiUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: ApiUser }>('/auth/me'),
   updateProfile: (body: { fullName: string, mobile: string }) =>
     request<{ user: ApiUser }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
