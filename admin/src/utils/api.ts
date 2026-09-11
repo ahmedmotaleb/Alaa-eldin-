@@ -144,6 +144,8 @@ export interface AdminProduct {
   barcode: string
   brand: string
   primaryImage?: string
+  tracksExpiry: boolean
+  defaultShelfLifeDays: number | null
 }
 
 export type AdminProductInput = Omit<AdminProduct, 'orderCount'>
@@ -297,6 +299,64 @@ export interface PurchaseOrderInput {
   discount?: number
   shippingCost?: number
   items: PurchaseOrderItemInput[]
+}
+
+export interface AdminGoodsReceipt {
+  id: string
+  receiptNumber: string
+  purchaseOrderId: string
+  poNumber: string
+  supplierId: string
+  supplierName: string
+  receivedByUserId: string | null
+  receivedAt: string
+  notes: string
+}
+
+export interface AdminGoodsReceiptItem {
+  id: string
+  goodsReceiptId: string
+  productId: string
+  productName: string
+  quantity: number
+  unitCost: number
+  batchNumber: string | null
+  expiryDate: string | null
+  manufacturedDate: string | null
+}
+
+export interface ReceiveItemInput {
+  productId: string
+  quantity: number
+  unitCost: number
+  batchNumber?: string | null
+  expiryDate?: string | null
+  manufacturedDate?: string | null
+}
+
+export interface ReceiveGoodsInput {
+  purchaseOrderId: string
+  items: ReceiveItemInput[]
+  notes?: string
+}
+
+export interface ExpiryBatchRow {
+  batchId: string
+  productId: string
+  productName: string
+  batchNumber: string | null
+  quantityRemaining: number
+  unitCost: number
+  expiryDate: string
+  daysRemaining: number
+  costValueAtRisk: number
+}
+
+export interface ExpiryDashboard {
+  expired: ExpiryBatchRow[]
+  within7Days: ExpiryBatchRow[]
+  within30Days: ExpiryBatchRow[]
+  within60Days: ExpiryBatchRow[]
 }
 
 // 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
@@ -565,6 +625,15 @@ export const api = {
     request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   setPurchaseOrderStatus: (id: string, status: PurchaseOrderStatus) =>
     request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  listGoodsReceipts: (params: { purchaseOrderId?: string } = {}) =>
+    request<{ receipts: AdminGoodsReceipt[] }>(`/admin/goods-receipts${buildQuery(params)}`),
+  getGoodsReceipt: (id: string) =>
+    request<{ receipt: AdminGoodsReceipt, items: AdminGoodsReceiptItem[] }>(`/admin/goods-receipts/${encodeURIComponent(id)}`),
+  receiveGoods: (body: ReceiveGoodsInput) =>
+    request<{ receipt: AdminGoodsReceipt, items: AdminGoodsReceiptItem[] }>('/admin/goods-receipts', { method: 'POST', body: JSON.stringify(body) }),
+  getExpiryDashboard: () => request<ExpiryDashboard>('/admin/inventory-batches/expiry'),
+  setProductExpirySettings: (id: string, body: { tracksExpiry: boolean, defaultShelfLifeDays: number | null }) =>
+    request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/expiry-settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

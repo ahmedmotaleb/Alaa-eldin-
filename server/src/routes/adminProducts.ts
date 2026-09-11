@@ -28,19 +28,21 @@ interface ProductRow {
   barcode: string
   brand: string
   primaryImage: string | null
+  tracksExpiry: number
+  defaultShelfLifeDays: number | null
 }
 
 const SELECT_PRODUCT = `
   SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
          unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
-         barcode, brand
+         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays"
   FROM products
 `
 
 const SELECT_PRODUCT_WITH_IMAGE = `
   SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice", p.cost,
          p.unit, p.emoji, p.available, p.bestseller, p.offer, p.order_count as "orderCount", p.stock, p.alert_threshold as "alertThreshold",
-         p.barcode, p.brand, img.image_url as "primaryImage"
+         p.barcode, p.brand, p.tracks_expiry as "tracksExpiry", p.default_shelf_life_days as "defaultShelfLifeDays", img.image_url as "primaryImage"
   FROM products p
   LEFT JOIN LATERAL (
     SELECT image_url FROM product_images pi
@@ -57,7 +59,8 @@ function serialize(row: ProductRow) {
     available: !!row.available,
     bestseller: !!row.bestseller,
     offer: !!row.offer,
-    primaryImage: row.primaryImage ?? undefined
+    primaryImage: row.primaryImage ?? undefined,
+    tracksExpiry: !!row.tracksExpiry
   }
 }
 
@@ -114,6 +117,36 @@ adminProductsRouter.get('/:id', async (req, res) => {
     return
   }
   res.json({ product: serialize(row) })
+})
+
+// إعداد تتبع الصلاحية منفصل عن نموذج المنتج الرئيسي عن قصد — تعديل بسيط ومعزول، بدل ما
+// يتوسّع التحقق الكبير الحالي لبيانات المنتج (validateBody) عشان حقلين اختياريين بس.
+adminProductsRouter.patch('/:id/expiry-settings', async (req, res) => {
+  const tracksExpiry = req.body?.tracksExpiry
+  const defaultShelfLifeDays = req.body?.defaultShelfLifeDays
+  if (typeof tracksExpiry !== 'boolean') { res.status(400).json({ error: 'invalid_tracks_expiry' }); return }
+  if (defaultShelfLifeDays !== null && defaultShelfLifeDays !== undefined && (typeof defaultShelfLifeDays !== 'number' || defaultShelfLifeDays <= 0)) {
+    res.status(400).json({ error: 'invalid_shelf_life' })
+    return
+  }
+
+  const { rows } = await pool.query<ProductRow>(
+    `UPDATE products SET tracks_expiry = $2, default_shelf_life_days = $3 WHERE id = $1
+     RETURNING id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
+               unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
+               barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays"`,
+    [req.params.id, tracksExpiry ? 1 : 0, defaultShelfLifeDays ?? null]
+  )
+  if (!rows[0]) { res.status(404).json({ error: 'product_not_found' }); return }
+
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_expiry_settings_updated',
+    entityType: 'product',
+    entityId: String(req.params.id),
+    newValues: { tracksExpiry, defaultShelfLifeDays }
+  })
+  res.json({ product: serialize(rows[0]) })
 })
 
 async function validateBody(body: unknown) {

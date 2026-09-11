@@ -21,6 +21,9 @@ const SuppliersListPage = lazy(() => import('./pages/purchasing/SuppliersListPag
 const SupplierFormPage = lazy(() => import('./pages/purchasing/SupplierFormPage').then(m => ({ default: m.SupplierFormPage })))
 const PurchaseOrdersListPage = lazy(() => import('./pages/purchasing/PurchaseOrdersListPage').then(m => ({ default: m.PurchaseOrdersListPage })))
 const PurchaseOrderFormPage = lazy(() => import('./pages/purchasing/PurchaseOrderFormPage').then(m => ({ default: m.PurchaseOrderFormPage })))
+const GoodsReceivingListPage = lazy(() => import('./pages/purchasing/GoodsReceivingListPage').then(m => ({ default: m.GoodsReceivingListPage })))
+const GoodsReceivingFormPage = lazy(() => import('./pages/purchasing/GoodsReceivingFormPage').then(m => ({ default: m.GoodsReceivingFormPage })))
+const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
@@ -62,6 +65,7 @@ export default function App() {
               <Route path="/products/edit/:id" element={<ProductFormPage />} />
               <Route path="/products/cats" element={<CategoriesPage />} />
               <Route path="/products/inv" element={<InventoryPage />} />
+              <Route path="/products/expiry" element={<ExpiryDashboardPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
               <Route path="/purchasing" element={<Navigate to="/purchasing/suppliers" replace />} />
               <Route path="/purchasing/suppliers" element={<SuppliersListPage />} />
@@ -70,6 +74,8 @@ export default function App() {
               <Route path="/purchasing/orders" element={<PurchaseOrdersListPage />} />
               <Route path="/purchasing/orders/new" element={<PurchaseOrderFormPage />} />
               <Route path="/purchasing/orders/edit/:id" element={<PurchaseOrderFormPage />} />
+              <Route path="/purchasing/receiving" element={<GoodsReceivingListPage />} />
+              <Route path="/purchasing/receiving/:poId" element={<GoodsReceivingFormPage />} />
               <Route path="/customers" element={<Navigate to="/customers/all" replace />} />
               <Route path="/customers/all" element={<CustomersListPage />} />
               <Route path="/customers/segments" element={<SegmentsPage />} />

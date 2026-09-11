@@ -10,7 +10,7 @@ const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'ل
 const emptyForm: AdminProductInput = {
   id: '', slug: '', categoryId: '', name: '', description: '', price: 0, oldPrice: undefined,
   cost: 0, unit: 'عبوة', emoji: '📦', available: true, bestseller: false, offer: false,
-  stock: 0, alertThreshold: 10, barcode: '', brand: ''
+  stock: 0, alertThreshold: 10, barcode: '', brand: '', tracksExpiry: false, defaultShelfLifeDays: null
 }
 
 export function ProductFormPage() {
@@ -24,6 +24,8 @@ export function ProductFormPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [saving, setSaving] = useState(false)
+  const [expirySaving, setExpirySaving] = useState(false)
+  const [expirySuccess, setExpirySuccess] = useState('')
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -68,6 +70,24 @@ export function ProductFormPage() {
       else setError('تعذر حفظ المنتج، تحقق من البيانات وحاول مرة أخرى')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function saveExpirySettings() {
+    if (!id) return
+    setExpirySuccess('')
+    setExpirySaving(true)
+    try {
+      const { product } = await api.setProductExpirySettings(id, {
+        tracksExpiry: form.tracksExpiry,
+        defaultShelfLifeDays: form.defaultShelfLifeDays
+      })
+      setForm(current => ({ ...current, tracksExpiry: product.tracksExpiry, defaultShelfLifeDays: product.defaultShelfLifeDays }))
+      setExpirySuccess('تم حفظ إعداد الصلاحية')
+    } catch {
+      window.alert('تعذر حفظ إعداد الصلاحية')
+    } finally {
+      setExpirySaving(false)
     }
   }
 
@@ -170,6 +190,30 @@ export function ProductFormPage() {
         {success && <div className="admin-form-success">{success}</div>}
         <button className="admin-form-save" disabled={saving} onClick={save}>{isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج'}</button>
       </div>
+
+      {isEdit && (
+        <div className="admin-form-card">
+          <div>
+            <div className="admin-form-card-title">إعداد الصلاحية</div>
+            <div className="admin-form-card-sub">لو مفعّل، استلام البضاعة هيطلب تاريخ صلاحية لهذا المنتج</div>
+          </div>
+          <label>تتبع الصلاحية
+            <span className="admin-form-chips">
+              <button type="button" className={`admin-form-chip ${form.tracksExpiry ? 'active' : ''}`} onClick={() => set('tracksExpiry', true)}>مفعّل</button>
+              <button type="button" className={`admin-form-chip ${!form.tracksExpiry ? 'active' : ''}`} onClick={() => set('tracksExpiry', false)}>معطّل</button>
+            </span>
+          </label>
+          <label>مدة الصلاحية الافتراضية (بالأيام، اختياري)
+            <input
+              type="number" min={1} value={form.defaultShelfLifeDays ?? ''}
+              onChange={e => set('defaultShelfLifeDays', e.target.value ? Number(e.target.value) : null)}
+              placeholder="مثال: 180"
+            />
+          </label>
+          {expirySuccess && <div className="admin-form-success">{expirySuccess}</div>}
+          <button className="admin-form-save" disabled={expirySaving} onClick={saveExpirySettings}>حفظ إعداد الصلاحية</button>
+        </div>
+      )}
     </div>
   )
 }

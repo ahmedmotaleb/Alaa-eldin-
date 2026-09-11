@@ -31,13 +31,15 @@ export const NAV: NavGroup[] = [
       { id: 'add', label: 'إضافة منتج' },
       { id: 'cats', label: 'الأقسام' },
       { id: 'inv', label: 'المخزون' },
+      { id: 'expiry', label: 'الصلاحية' },
       { id: 'moves', label: 'تحويلات المخزون' }
     ]
   },
   {
     id: 'purchasing', label: 'المشتريات', icon: '🚚', children: [
       { id: 'suppliers', label: 'الموردين' },
-      { id: 'orders', label: 'أوامر الشراء' }
+      { id: 'orders', label: 'أوامر الشراء' },
+      { id: 'receiving', label: 'استلام بضاعة' }
     ]
   },
   {
