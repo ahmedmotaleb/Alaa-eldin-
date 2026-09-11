@@ -3,6 +3,7 @@ import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
 import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, type SortOption } from '../services/catalogService.js'
 import { setShortPublicCache } from '../publicCache.js'
+import { logEvent } from '../logger.js'
 
 export const catalogRouter = Router()
 
@@ -58,6 +59,9 @@ catalogRouter.get('/products', async (req, res) => {
     available: parseBool(req.query.available),
     brand: typeof req.query.brand === 'string' ? req.query.brand : undefined
   })
+  if (typeof req.query.search === 'string' && req.query.search.trim()) {
+    logEvent('catalog_search', { query: req.query.search.trim(), resultCount: result.products.length })
+  }
   res.json(result)
 })
 
@@ -91,5 +95,6 @@ catalogRouter.get('/products/:slug', async (req, res) => {
     res.status(404).json({ error: 'product_not_found' })
     return
   }
+  logEvent('product_view', { productId: product.id, slug: product.slug })
   res.json({ product })
 })

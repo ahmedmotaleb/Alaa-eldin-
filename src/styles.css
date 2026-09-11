@@ -311,6 +311,14 @@ h1, h2, h3, p { margin: 0; }
 .bordered-stepper span { font-weight: 900; font-size: 13px; min-width: 14px; text-align: center; }
 .cart-item-line-total { font-weight: 900; font-size: 14px; color: var(--green-dark); }
 .delete-button { border: 0; background: transparent; align-self: flex-start; padding: 2px; }
+.cart-item-alternatives { margin-top: 4px; }
+.cart-item-alternatives-title { display: block; font-weight: 800; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+.cart-item-alternatives-rail { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; }
+.cart-item-alternative-chip { flex: none; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 4px 10px 4px 4px; max-width: 168px; }
+.cart-item-alternative-emoji { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--green-soft); display: grid; place-items: center; font-size: 14px; overflow: hidden; }
+.cart-item-alternative-emoji img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.cart-item-alternative-name { font-weight: 700; font-size: 11px; color: #1c2b20; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cart-item-alternative-price { flex: none; font-weight: 900; font-size: 11px; color: var(--green-dark); }
 .min-order-banner { background: #fff8e5; border: 1px solid #f3df9c; color: #70571a; border-radius: 15px; padding: 12px 14px; font-weight: 700; font-size: 12.5px; line-height: 1.7; }
 .discount-card { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 13px; display: flex; flex-direction: column; gap: 8px; }
 .discount-input-row { display: flex; gap: 8px; }

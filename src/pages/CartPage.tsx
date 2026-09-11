@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { StickyActionBar } from '../components/StickyActionBar'
+import { CartUpsell } from '../components/CartUpsell'
+import { CartItemAlternatives } from '../components/CartItemAlternatives'
 import { getSettings } from '../store/settingsStore'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
@@ -83,6 +85,7 @@ export function CartPage() {
               {item.blockingIssue === 'insufficient_stock' && typeof item.product.lowStockRemaining === 'number' && (
                 <span className="cart-item-issue">{ar.cart.itemInsufficientStock(item.product.lowStockRemaining)}</span>
               )}
+              {item.blockingIssue === 'unavailable' && <CartItemAlternatives productId={item.productId} />}
             </div>
             <button className="delete-button" onClick={() => removeItem(item.productId)} aria-label={ar.common.remove(item.product.name)}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13" stroke="#B42318" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -90,6 +93,8 @@ export function CartPage() {
           </article>
         ))}
       </div>
+
+      <CartUpsell />
 
       {belowMinimum && (
         <div className="min-order-banner">

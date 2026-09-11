@@ -9,6 +9,8 @@ import { AuthProvider } from './store/AuthContext'
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })))
 const OrdersPage = lazy(() => import('./pages/OrdersPage').then(m => ({ default: m.OrdersPage })))
+const PickingViewPage = lazy(() => import('./pages/PickingViewPage').then(m => ({ default: m.PickingViewPage })))
+const PrintOrderPage = lazy(() => import('./pages/PrintOrderPage').then(m => ({ default: m.PrintOrderPage })))
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage').then(m => ({ default: m.PlaceholderPage })))
 const ProductsListPage = lazy(() => import('./pages/products/ProductsListPage').then(m => ({ default: m.ProductsListPage })))
 const ProductFormPage = lazy(() => import('./pages/products/ProductFormPage').then(m => ({ default: m.ProductFormPage })))
@@ -44,10 +46,12 @@ export default function App() {
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/orders/:id/print" element={<PrintOrderPage />} />
             <Route element={<AdminLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/orders" element={<Navigate to="/orders/all" replace />} />
               <Route path="/orders/:tab" element={<OrdersPage />} />
+              <Route path="/orders/:id/picking" element={<PickingViewPage />} />
               <Route path="/products" element={<Navigate to="/products/all" replace />} />
               <Route path="/products/all" element={<ProductsListPage />} />
               <Route path="/products/add" element={<ProductFormPage />} />

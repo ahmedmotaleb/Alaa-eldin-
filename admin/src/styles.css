@@ -231,3 +231,24 @@ h1, h2, h3, p { margin: 0; }
 @media (max-width: 860px) {
   .admin-layout-with-side.has-side { grid-template-columns: 1fr; }
 }
+
+/* صفحة الطباعة — مستقلة تماماً عن شكل لوحة التحكم، مفيش شريط جانبي ولا هيدر هنا أصلاً. */
+.print-order-page { max-width: 720px; margin: 0 auto; padding: 24px 18px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #17221a; background: #fff; }
+.print-order-button { display: block; margin: 0 0 16px auto; background: #16A34A; color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 800; font-size: 13.5px; cursor: pointer; }
+.print-order-sheet { border: 1px solid #dce4de; border-radius: 14px; padding: 22px; }
+.print-order-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #17221a; padding-bottom: 12px; margin-bottom: 14px; }
+.print-order-brand { font-weight: 900; font-size: 20px; }
+.print-order-number { font-weight: 800; font-size: 15px; }
+.print-order-meta, .print-order-customer { display: flex; flex-direction: column; gap: 5px; font-size: 13px; margin-bottom: 14px; }
+.print-order-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+.print-order-table th, .print-order-table td { border: 1px solid #dce4de; padding: 7px 9px; text-align: start; }
+.print-order-table th { background: #f7f9f7; font-weight: 800; }
+.print-order-totals { display: flex; flex-direction: column; gap: 5px; font-size: 13px; max-width: 280px; margin-inline-start: auto; }
+.print-order-totals > div { display: flex; justify-content: space-between; gap: 12px; }
+.print-order-total-line { font-weight: 900; font-size: 15px; border-top: 1px solid #dce4de; padding-top: 6px; margin-top: 4px; }
+
+@media print {
+  .print-order-button { display: none; }
+  .print-order-page { padding: 0; }
+  .print-order-sheet { border: none; padding: 0; }
+}

@@ -13,7 +13,20 @@ const ACTION_LABEL: Record<string, string> = {
   product_image_added: 'إضافة صورة منتج',
   product_image_removed: 'حذف صورة منتج',
   primary_image_changed: 'تغيير الصورة الرئيسية',
-  order_cancelled: 'إلغاء طلب'
+  order_cancelled: 'إلغاء طلب',
+  banner_image_updated: 'تحديث صورة بانر',
+  banner_image_removed: 'حذف صورة بانر',
+  category_image_updated: 'تحديث صورة قسم',
+  category_image_removed: 'حذف صورة قسم',
+  delivery_zone_updated: 'تعديل منطقة توصيل',
+  delivery_slot_created: 'إنشاء ميعاد توصيل',
+  delivery_slot_updated: 'تعديل ميعاد توصيل',
+  product_alternative_added: 'إضافة بديل منتج',
+  product_alternative_removed: 'حذف بديل منتج',
+  user_admin_granted: 'منح صلاحية لوحة التحكم',
+  user_admin_revoked: 'سحب صلاحية لوحة التحكم',
+  user_role_changed: 'تغيير دور مستخدم',
+  store_settings_updated: 'تعديل إعدادات المتجر'
 }
 
 export function AuditLogPage() {

@@ -117,7 +117,8 @@ export const ar = {
     discountApplied: (code: string) => `تم تطبيق كود "${code}"`,
     itemUnavailable: 'هذا المنتج غير متوفر حالياً — احذفه من السلة للمتابعة',
     itemInsufficientStock: (available: number) => `الكمية المتاحة الآن ${available} فقط — عدّل الكمية للمتابعة`,
-    resolveIssuesCta: 'راجع السلة قبل إتمام الطلب'
+    resolveIssuesCta: 'راجع السلة قبل إتمام الطلب',
+    completeYourOrder: 'أكمل طلبك'
   },
 
   checkout: {

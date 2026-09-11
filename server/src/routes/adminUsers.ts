@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { requireAdmin, requireRole } from '../auth.js'
+import { recordAuditLog } from '../services/auditLogService.js'
+import { logEvent } from '../logger.js'
 
 // إدارة المستخدمين والصلاحيات مقصورة على دور 'admin' الكامل بس — مش أي مستخدم isAdmin.
 // راجع auth.ts للفرق بين is_admin (الدخول للوحة التحكم أصلاً) وrole ('staff' التشغيلي
@@ -92,7 +94,15 @@ adminUsersRouter.patch('/:id/admin', async (req, res) => {
   }
 
   const { rows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
-  res.json({ user: serialize(rows[0]) })
+  const user = serialize(rows[0])
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: isAdmin ? 'user_admin_granted' : 'user_admin_revoked',
+    entityType: 'user',
+    entityId: req.params.id,
+    newValues: { isAdmin: user.isAdmin, role: user.role }
+  })
+  res.json({ user })
 })
 
 // ترقية/تخفيض دور مستخدم دخل بالفعل للوحة التحكم بين 'staff' (تشغيلي) و'admin' (كامل).
@@ -108,6 +118,9 @@ adminUsersRouter.patch('/:id/role', async (req, res) => {
     return
   }
 
+  const { rows: beforeRows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
+  const before = beforeRows[0]
+
   const result = await pool.query('UPDATE users SET role = $1 WHERE id = $2 AND is_admin = 1', [role, req.params.id])
   if (result.rowCount === 0) {
     res.status(404).json({ error: 'user_not_found' })
@@ -115,5 +128,15 @@ adminUsersRouter.patch('/:id/role', async (req, res) => {
   }
 
   const { rows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
-  res.json({ user: serialize(rows[0]) })
+  const user = serialize(rows[0])
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'user_role_changed',
+    entityType: 'user',
+    entityId: req.params.id,
+    oldValues: { role: before?.role },
+    newValues: { role: user.role }
+  })
+  logEvent('role_changed', { userId: req.params.id, fromRole: before?.role, toRole: user.role })
+  res.json({ user })
 })

@@ -1,6 +1,8 @@
+import { useNavigate } from 'react-router-dom'
 import type { AdminOrder, AdminOrderStatus, AdminRider } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
+import { toWhatsAppInternational } from '../utils/phone'
 import { ALLOWED_NEXT_STATUSES, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '../orderStatus'
 
 export function OrderDrawer({
@@ -16,7 +18,13 @@ export function OrderDrawer({
   riders?: AdminRider[]
   onSetRider?: (riderId: string | null) => void
 }) {
+  const navigate = useNavigate()
   const [bg, fg] = ORDER_STATUS_COLOR[order.status]
+
+  function openWhatsApp() {
+    const text = `مرحباً ${order.customer.fullName}، بخصوص طلبك ${order.orderNumber} من علاء الدين.`
+    window.open(`https://wa.me/${toWhatsAppInternational(order.customer.mobile)}?text=${encodeURIComponent(text)}`, '_blank')
+  }
 
   return (
     <div className="admin-drawer-overlay" onClick={onClose}>
@@ -38,6 +46,12 @@ export function OrderDrawer({
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">🗺️</span><span>{order.customer.governorate}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📍</span><span>{order.customer.address}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">💵</span><span>{order.paymentMethod === 'COD' ? 'الدفع عند الاستلام' : order.paymentMethod}</span></div>
+        </div>
+
+        <div className="admin-drawer-card" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="admin-category-card-btn" onClick={openWhatsApp}>💬 واتساب العميل</button>
+          <button className="admin-category-card-btn" onClick={() => navigate(`/orders/${order.id}/picking`)}>📋 تجهيز الطلب</button>
+          <button className="admin-category-card-btn" onClick={() => window.open(`/admin/orders/${order.id}/print`, '_blank')}>🖨️ طباعة</button>
         </div>
 
         <div className="admin-drawer-card">

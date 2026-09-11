@@ -171,6 +171,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       // غلط لمحافظة مش متاحة، أو ميعاد اتشال/اتعطل من لوحة التحكم.
       const zoneDeliveryFee = await getActiveDeliveryZoneFee(client, input.customer.governorate)
       if (zoneDeliveryFee === null) throw new OrderError(400, 'delivery_zone_unavailable')
+      logEvent('delivery_zone_selected', { governorate: input.customer.governorate, deliveryFee: zoneDeliveryFee })
       if (!(await isActiveDeliverySlot(client, input.deliverySlot))) throw new OrderError(400, 'invalid_delivery_slot')
 
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined

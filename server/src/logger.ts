@@ -45,6 +45,7 @@ type BusinessEvent =
   | 'address_created' | 'address_updated' | 'address_deleted'
   | 'favorite_added' | 'favorite_removed'
   | 'password_reset_email_skipped' | 'password_reset_email_failed'
+  | 'catalog_search' | 'product_view' | 'delivery_zone_selected' | 'role_changed'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

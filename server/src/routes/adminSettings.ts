@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { isValidEgyptianMobile } from '../phone.js'
+import { recordAuditLog } from '../services/auditLogService.js'
 
 export const adminSettingsRouter = Router()
 adminSettingsRouter.use(requireAdmin)
@@ -60,5 +61,14 @@ adminSettingsRouter.patch('/', async (req, res) => {
   )
 
   const { rows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
-  res.json({ settings: serialize(rows[0]) })
+  const settings = serialize(rows[0])
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'store_settings_updated',
+    entityType: 'store_settings',
+    entityId: '1',
+    oldValues: existing,
+    newValues: settings
+  })
+  res.json({ settings })
 })
