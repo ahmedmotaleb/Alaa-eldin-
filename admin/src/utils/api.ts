@@ -254,6 +254,51 @@ export interface AdminSupplierProduct {
   updatedAt: string
 }
 
+export type PurchaseOrderStatus = 'draft' | 'submitted' | 'partially_received' | 'received' | 'cancelled'
+
+export interface AdminPurchaseOrder {
+  id: string
+  poNumber: string
+  supplierId: string
+  supplierName: string
+  status: PurchaseOrderStatus
+  expectedDate: string | null
+  notes: string
+  subtotal: number
+  discount: number
+  shippingCost: number
+  total: number
+  createdByUserId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminPurchaseOrderItem {
+  id: string
+  purchaseOrderId: string
+  productId: string
+  productName: string
+  orderedQty: number
+  receivedQty: number
+  unitCost: number
+  lineTotal: number
+}
+
+export interface PurchaseOrderItemInput {
+  productId: string
+  orderedQty: number
+  unitCost: number
+}
+
+export interface PurchaseOrderInput {
+  supplierId: string
+  expectedDate?: string | null
+  notes?: string
+  discount?: number
+  shippingCost?: number
+  items: PurchaseOrderItemInput[]
+}
+
 // 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
 // مش قيم قابلة للإنشاء اليدوي من نموذج "تسجيل حركة" في هذه اللوحة (راجع StockMovesPage).
 export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment' | 'sale' | 'cancel_restore'
@@ -510,6 +555,16 @@ export const api = {
     request<{ link: AdminSupplierProduct }>(`/admin/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'PUT', body: JSON.stringify(body) }),
   unlinkSupplierProduct: (supplierId: string, productId: string) =>
     request<void>(`/admin/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
+  listPurchaseOrders: (params: { status?: PurchaseOrderStatus, supplierId?: string, search?: string } = {}) =>
+    request<{ orders: AdminPurchaseOrder[] }>(`/admin/purchase-orders${buildQuery(params)}`),
+  getPurchaseOrder: (id: string) =>
+    request<{ order: AdminPurchaseOrder, items: AdminPurchaseOrderItem[] }>(`/admin/purchase-orders/${encodeURIComponent(id)}`),
+  createPurchaseOrder: (body: PurchaseOrderInput) =>
+    request<{ order: AdminPurchaseOrder }>('/admin/purchase-orders', { method: 'POST', body: JSON.stringify(body) }),
+  updatePurchaseOrder: (id: string, body: PurchaseOrderInput) =>
+    request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  setPurchaseOrderStatus: (id: string, status: PurchaseOrderStatus) =>
+    request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

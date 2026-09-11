@@ -36,7 +36,8 @@ export const NAV: NavGroup[] = [
   },
   {
     id: 'purchasing', label: 'المشتريات', icon: '🚚', children: [
-      { id: 'suppliers', label: 'الموردين' }
+      { id: 'suppliers', label: 'الموردين' },
+      { id: 'orders', label: 'أوامر الشراء' }
     ]
   },
   {
