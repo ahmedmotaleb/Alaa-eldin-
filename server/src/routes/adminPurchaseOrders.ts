@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import {
   listPurchaseOrders, getPurchaseOrderById, createPurchaseOrder, updateDraftPurchaseOrder, updatePurchaseOrderStatus,
@@ -33,7 +33,7 @@ function parseInput(body: unknown): PurchaseOrderInput | null {
   }
 }
 
-adminPurchaseOrdersRouter.get('/', async (req, res) => {
+adminPurchaseOrdersRouter.get('/', requirePermission('purchases.view'), async (req, res) => {
   const status = typeof req.query.status === 'string' && VALID_STATUSES.includes(req.query.status as PurchaseOrderStatus)
     ? req.query.status as PurchaseOrderStatus
     : undefined
@@ -43,13 +43,13 @@ adminPurchaseOrdersRouter.get('/', async (req, res) => {
   res.json({ orders })
 })
 
-adminPurchaseOrdersRouter.get('/:id', async (req, res) => {
+adminPurchaseOrdersRouter.get('/:id', requirePermission('purchases.view'), async (req, res) => {
   const result = await getPurchaseOrderById(String(req.params.id))
   if (!result) { res.status(404).json({ error: 'purchase_order_not_found' }); return }
   res.json(result)
 })
 
-adminPurchaseOrdersRouter.post('/', async (req, res) => {
+adminPurchaseOrdersRouter.post('/', requirePermission('purchases.create'), async (req, res) => {
   const input = parseInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -69,7 +69,7 @@ adminPurchaseOrdersRouter.post('/', async (req, res) => {
   }
 })
 
-adminPurchaseOrdersRouter.patch('/:id', async (req, res) => {
+adminPurchaseOrdersRouter.patch('/:id', requirePermission('purchases.create'), async (req, res) => {
   const input = parseInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -90,7 +90,7 @@ adminPurchaseOrdersRouter.patch('/:id', async (req, res) => {
   res.json({ order: result })
 })
 
-adminPurchaseOrdersRouter.patch('/:id/status', async (req, res) => {
+adminPurchaseOrdersRouter.patch('/:id/status', requirePermission('purchases.create'), async (req, res) => {
   const toStatus = req.body?.status
   if (typeof toStatus !== 'string' || !VALID_STATUSES.includes(toStatus as PurchaseOrderStatus)) {
     res.status(400).json({ error: 'invalid_status' })

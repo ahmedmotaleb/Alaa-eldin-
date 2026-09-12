@@ -1,24 +1,24 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { receiveGoodsForPurchaseOrder, listGoodsReceipts, getGoodsReceiptById, type ReceiveItemInput } from '../services/goodsReceivingService.js'
 
 export const adminGoodsReceivingRouter = Router()
 adminGoodsReceivingRouter.use(requireAdmin)
 
-adminGoodsReceivingRouter.get('/', async (req, res) => {
+adminGoodsReceivingRouter.get('/', requirePermission('purchases.view'), async (req, res) => {
   const purchaseOrderId = typeof req.query.purchaseOrderId === 'string' ? req.query.purchaseOrderId : undefined
   const receipts = await listGoodsReceipts({ purchaseOrderId })
   res.json({ receipts })
 })
 
-adminGoodsReceivingRouter.get('/:id', async (req, res) => {
+adminGoodsReceivingRouter.get('/:id', requirePermission('purchases.view'), async (req, res) => {
   const result = await getGoodsReceiptById(String(req.params.id))
   if (!result) { res.status(404).json({ error: 'goods_receipt_not_found' }); return }
   res.json(result)
 })
 
-adminGoodsReceivingRouter.post('/', async (req, res) => {
+adminGoodsReceivingRouter.post('/', requirePermission('purchases.receive'), async (req, res) => {
   const b = req.body as Record<string, unknown>
   if (typeof b?.purchaseOrderId !== 'string' || !b.purchaseOrderId.trim() || !Array.isArray(b.items)) {
     res.status(400).json({ error: 'missing_fields' })

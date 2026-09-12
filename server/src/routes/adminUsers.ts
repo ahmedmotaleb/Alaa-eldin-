@@ -3,6 +3,7 @@ import { pool } from '../db.js'
 import { requireAdmin, requireRole } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
+import { countFullAdmins, isFullAdmin } from '../services/permissionService.js'
 
 // إدارة المستخدمين والصلاحيات مقصورة على دور 'admin' الكامل بس — مش أي مستخدم isAdmin.
 // راجع auth.ts للفرق بين is_admin (الدخول للوحة التحكم أصلاً) وrole ('staff' التشغيلي
@@ -21,10 +22,11 @@ interface UserRow {
   createdAt: string
   isAdmin: number
   role: 'staff' | 'admin'
+  roleId: string | null
 }
 
 const SELECT_USER = `
-  SELECT id, email, full_name as "fullName", created_at as "createdAt", is_admin as "isAdmin", role as "role"
+  SELECT id, email, full_name as "fullName", created_at as "createdAt", is_admin as "isAdmin", role as "role", role_id as "roleId"
   FROM users
 `
 
@@ -79,6 +81,15 @@ adminUsersRouter.patch('/:id/admin', async (req, res) => {
   if (req.params.id === req.user!.id && !isAdmin) {
     res.status(400).json({ error: 'cannot_demote_self' })
     return
+  }
+
+  const { rows: existingRows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
+  const existing = existingRows[0]
+  if (!existing) { res.status(404).json({ error: 'user_not_found' }); return }
+
+  if (!isAdmin && isFullAdmin({ roleId: existing.roleId, isAdmin: !!existing.isAdmin })) {
+    const remaining = await countFullAdmins(req.params.id)
+    if (remaining === 0) { res.status(400).json({ error: 'cannot_remove_last_admin' }); return }
   }
 
   // ترقية جديدة لصلاحية الدخول للوحة التحكم بتبدأ بدور 'staff' التشغيلي (أقل صلاحية) —
@@ -138,5 +149,47 @@ adminUsersRouter.patch('/:id/role', async (req, res) => {
     newValues: { role: user.role }
   })
   logEvent('role_changed', { userId: req.params.id, fromRole: before?.role, toRole: user.role })
+  res.json({ user })
+})
+
+// تعيين دور دقيق (RBAC) للمستخدم — منفصل تماماً عن role القديم ('staff'/'admin' العام).
+// roleId=null بيرجّع المستخدم لصلاحيات fallback القديمة (LEGACY_ADMIN/STAFF_PERMISSIONS
+// حسب is_admin) — أي حساب موجود بيفضل شغال زي ما كان لحد ما حد يعيّن له دور دقيق صراحةً.
+adminUsersRouter.patch('/:id/role-id', async (req, res) => {
+  const roleId = req.body?.roleId
+  if (roleId !== null && typeof roleId !== 'string') {
+    res.status(400).json({ error: 'invalid_role_id' })
+    return
+  }
+
+  const { rows: existingRows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
+  const existing = existingRows[0]
+  if (!existing) { res.status(404).json({ error: 'user_not_found' }); return }
+
+  if (roleId !== null) {
+    const { rows: roleRows } = await pool.query('SELECT id FROM roles WHERE id = $1', [roleId])
+    if (!roleRows[0]) { res.status(400).json({ error: 'role_not_found' }); return }
+  }
+
+  const before = { roleId: existing.roleId, isAdmin: !!existing.isAdmin }
+  const after = { roleId, isAdmin: !!existing.isAdmin }
+  if (isFullAdmin(before) && !isFullAdmin(after)) {
+    const remaining = await countFullAdmins(req.params.id)
+    if (remaining === 0) { res.status(400).json({ error: 'cannot_remove_last_admin' }); return }
+  }
+
+  await pool.query('UPDATE users SET role_id = $1 WHERE id = $2', [roleId, req.params.id])
+  const { rows } = await pool.query<UserRow>(`${SELECT_USER} WHERE id = $1`, [req.params.id])
+  const user = serialize(rows[0])
+
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'user_permission_role_changed',
+    entityType: 'user',
+    entityId: req.params.id,
+    oldValues: { roleId: existing.roleId },
+    newValues: { roleId: user.roleId }
+  })
+  logEvent('permission_role_changed', { userId: req.params.id, fromRoleId: existing.roleId, toRoleId: user.roleId })
   res.json({ user })
 })

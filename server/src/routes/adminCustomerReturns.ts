@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import {
   createCustomerReturn, listCustomerReturns, getCustomerReturnById, updateCustomerReturnStatus,
@@ -42,7 +42,7 @@ function parseInput(body: unknown): CustomerReturnInput | null {
   }
 }
 
-adminCustomerReturnsRouter.get('/', async (req, res) => {
+adminCustomerReturnsRouter.get('/', requirePermission('returns.manage'), async (req, res) => {
   const status = typeof req.query.status === 'string' && VALID_STATUSES.includes(req.query.status as CustomerReturnStatus)
     ? req.query.status as CustomerReturnStatus : undefined
   const orderId = typeof req.query.orderId === 'string' ? req.query.orderId : undefined
@@ -50,13 +50,13 @@ adminCustomerReturnsRouter.get('/', async (req, res) => {
   res.json({ returns })
 })
 
-adminCustomerReturnsRouter.get('/:id', async (req, res) => {
+adminCustomerReturnsRouter.get('/:id', requirePermission('returns.manage'), async (req, res) => {
   const result = await getCustomerReturnById(String(req.params.id))
   if (!result) { res.status(404).json({ error: 'customer_return_not_found' }); return }
   res.json(result)
 })
 
-adminCustomerReturnsRouter.post('/', async (req, res) => {
+adminCustomerReturnsRouter.post('/', requirePermission('returns.manage'), async (req, res) => {
   const input = parseInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -74,7 +74,7 @@ adminCustomerReturnsRouter.post('/', async (req, res) => {
   res.status(201).json({ customerReturn: result })
 })
 
-adminCustomerReturnsRouter.patch('/:id/status', async (req, res) => {
+adminCustomerReturnsRouter.patch('/:id/status', requirePermission('returns.manage'), async (req, res) => {
   const toStatus = req.body?.status
   if (typeof toStatus !== 'string' || !VALID_STATUSES.includes(toStatus as CustomerReturnStatus)) {
     res.status(400).json({ error: 'invalid_status' })

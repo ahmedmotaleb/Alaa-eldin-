@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
@@ -69,7 +69,7 @@ function serialize(row: ProductRow) {
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 20
 
-adminProductsRouter.get('/', async (req, res) => {
+adminProductsRouter.get('/', requirePermission('products.view'), async (req, res) => {
   // الترقيم والبحث اختياريان (opt-in) — لو مفيش page/limit، بيرجع كل المنتجات زي ما كان
   // الحال دايماً، عشان أي استدعاء قديم ما ينكسرش بصمت.
   const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined
@@ -111,7 +111,7 @@ adminProductsRouter.get('/', async (req, res) => {
   })
 })
 
-adminProductsRouter.get('/:id', async (req, res) => {
+adminProductsRouter.get('/:id', requirePermission('products.view'), async (req, res) => {
   const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
   const row = rows[0]
   if (!row) {
@@ -123,7 +123,7 @@ adminProductsRouter.get('/:id', async (req, res) => {
 
 // إعداد تتبع الصلاحية منفصل عن نموذج المنتج الرئيسي عن قصد — تعديل بسيط ومعزول، بدل ما
 // يتوسّع التحقق الكبير الحالي لبيانات المنتج (validateBody) عشان حقلين اختياريين بس.
-adminProductsRouter.patch('/:id/expiry-settings', async (req, res) => {
+adminProductsRouter.patch('/:id/expiry-settings', requirePermission('products.edit'), async (req, res) => {
   const tracksExpiry = req.body?.tracksExpiry
   const defaultShelfLifeDays = req.body?.defaultShelfLifeDays
   if (typeof tracksExpiry !== 'boolean') { res.status(400).json({ error: 'invalid_tracks_expiry' }); return }
@@ -154,7 +154,7 @@ adminProductsRouter.patch('/:id/expiry-settings', async (req, res) => {
 // SKU مستقل عن نموذج المنتج الرئيسي (زي إعداد الصلاحية) — تعديل يدوي بسيط، أو توليد تلقائي
 // بصيغة ALA-XXXXXX (راجع productSkuService.ts). التوليد التلقائي أبداً ما بيكتبش فوق SKU
 // موجود بالفعل.
-adminProductsRouter.patch('/:id/sku', async (req, res) => {
+adminProductsRouter.patch('/:id/sku', requirePermission('products.edit'), async (req, res) => {
   const raw = req.body?.sku
   if (raw !== null && typeof raw !== 'string') { res.status(400).json({ error: 'invalid_sku' }); return }
 
@@ -176,7 +176,7 @@ adminProductsRouter.patch('/:id/sku', async (req, res) => {
   }
 })
 
-adminProductsRouter.post('/:id/generate-sku', async (req, res) => {
+adminProductsRouter.post('/:id/generate-sku', requirePermission('products.edit'), async (req, res) => {
   const result = await generateSkuForProduct(String(req.params.id))
   if ('error' in result) {
     res.status(result.error === 'product_not_found' ? 404 : 409).json({ error: result.error })
@@ -191,7 +191,7 @@ adminProductsRouter.post('/:id/generate-sku', async (req, res) => {
 })
 
 // بحث بالباركود لصفحة "مسح الباركود" — تطابق تام (مسح فعلي أو إدخال يدوي/جهاز قارئ).
-adminProductsRouter.get('/by-barcode/:barcode', async (req, res) => {
+adminProductsRouter.get('/by-barcode/:barcode', requirePermission('products.view'), async (req, res) => {
   const product = await findProductByBarcode(String(req.params.barcode))
   if (!product) { res.status(404).json({ error: 'product_not_found' }); return }
   res.json({ product })
@@ -236,7 +236,7 @@ async function validateBody(body: unknown) {
   }
 }
 
-adminProductsRouter.post('/', async (req, res) => {
+adminProductsRouter.post('/', requirePermission('products.create'), async (req, res) => {
   const data = await validateBody(req.body)
   if (!data) {
     res.status(400).json({ error: 'missing_fields' })
@@ -272,7 +272,7 @@ adminProductsRouter.post('/', async (req, res) => {
   res.status(201).json({ product: serialize(rows[0]) })
 })
 
-adminProductsRouter.patch('/:id', async (req, res) => {
+adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req, res) => {
   const { rows: existingRows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
   const existing = existingRows[0]
   if (!existing) {
@@ -338,7 +338,7 @@ adminProductsRouter.patch('/:id', async (req, res) => {
     adminUserId: req.user!.id,
     action: before.available !== after.available && !after.available ? 'product_archived' : 'product_updated',
     entityType: 'product',
-    entityId: req.params.id,
+    entityId: String(req.params.id),
     oldValues: before,
     newValues: after
   })

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { writeOffStock, type WriteOffReason } from '../services/stockWriteOffService.js'
 
@@ -8,7 +8,7 @@ adminStockWriteOffsRouter.use(requireAdmin)
 
 const VALID_REASONS: WriteOffReason[] = ['expired', 'damaged', 'lost', 'inventory_adjustment', 'supplier_return']
 
-adminStockWriteOffsRouter.post('/', async (req, res) => {
+adminStockWriteOffsRouter.post('/', requirePermission('inventory.adjust'), async (req, res) => {
   const b = req.body as Record<string, unknown>
   if (
     typeof b?.productId !== 'string' || !b.productId.trim() ||

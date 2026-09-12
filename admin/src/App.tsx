@@ -40,6 +40,7 @@ const WalletPage = lazy(() => import('./pages/WalletPage').then(m => ({ default:
 const DiscountsListPage = lazy(() => import('./pages/discounts/DiscountsListPage').then(m => ({ default: m.DiscountsListPage })))
 const DiscountFormPage = lazy(() => import('./pages/discounts/DiscountFormPage').then(m => ({ default: m.DiscountFormPage })))
 const UsersPage = lazy(() => import('./pages/settings/UsersPage').then(m => ({ default: m.UsersPage })))
+const RolesPage = lazy(() => import('./pages/settings/RolesPage').then(m => ({ default: m.RolesPage })))
 const StoreSettingsPage = lazy(() => import('./pages/settings/StoreSettingsPage').then(m => ({ default: m.StoreSettingsPage })))
 const DeliverySettingsPage = lazy(() => import('./pages/settings/DeliverySettingsPage').then(m => ({ default: m.DeliverySettingsPage })))
 const PaymentSettingsPage = lazy(() => import('./pages/settings/PaymentSettingsPage').then(m => ({ default: m.PaymentSettingsPage })))
@@ -111,6 +112,7 @@ export default function App() {
               <Route path="/discounts/new" element={<DiscountFormPage />} />
               <Route path="/discounts/edit/:code" element={<DiscountFormPage />} />
               <Route path="/settings/users" element={<RequireAdminRole><UsersPage /></RequireAdminRole>} />
+              <Route path="/settings/roles" element={<RequireAdminRole><RolesPage /></RequireAdminRole>} />
               <Route path="/settings/store" element={<StoreSettingsPage />} />
               <Route path="/settings/delivery" element={<DeliverySettingsPage />} />
               <Route path="/settings/payment" element={<PaymentSettingsPage />} />

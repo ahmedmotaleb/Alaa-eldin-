@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import {
   listSuppliers, getSupplierById, createSupplier, updateSupplier, setSupplierActive,
@@ -27,21 +27,21 @@ function validateInput(body: unknown): SupplierInput | null {
   }
 }
 
-adminSuppliersRouter.get('/', async (req, res) => {
+adminSuppliersRouter.get('/', requirePermission('purchases.view'), async (req, res) => {
   const search = typeof req.query.search === 'string' ? req.query.search : undefined
   const activeOnly = req.query.activeOnly === 'true'
   const suppliers = await listSuppliers({ search, activeOnly })
   res.json({ suppliers })
 })
 
-adminSuppliersRouter.get('/:id', async (req, res) => {
+adminSuppliersRouter.get('/:id', requirePermission('purchases.view'), async (req, res) => {
   const supplier = await getSupplierById(String(req.params.id))
   if (!supplier) { res.status(404).json({ error: 'supplier_not_found' }); return }
   const products = await listSupplierProductsForSupplier(supplier.id)
   res.json({ supplier, products })
 })
 
-adminSuppliersRouter.post('/', async (req, res) => {
+adminSuppliersRouter.post('/', requirePermission('purchases.create'), async (req, res) => {
   const input = validateInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -56,7 +56,7 @@ adminSuppliersRouter.post('/', async (req, res) => {
   res.status(201).json({ supplier })
 })
 
-adminSuppliersRouter.patch('/:id', async (req, res) => {
+adminSuppliersRouter.patch('/:id', requirePermission('purchases.create'), async (req, res) => {
   const input = validateInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -75,7 +75,7 @@ adminSuppliersRouter.patch('/:id', async (req, res) => {
   res.json({ supplier })
 })
 
-adminSuppliersRouter.patch('/:id/active', async (req, res) => {
+adminSuppliersRouter.patch('/:id/active', requirePermission('purchases.create'), async (req, res) => {
   const active = req.body?.active
   if (typeof active !== 'boolean') { res.status(400).json({ error: 'invalid_active' }); return }
 
@@ -92,7 +92,7 @@ adminSuppliersRouter.patch('/:id/active', async (req, res) => {
 })
 
 // ربط منتج بمورد — يُستخدم لاحقاً في اقتراحات الشراء وأوامر الشراء الافتراضية.
-adminSuppliersRouter.put('/:id/products/:productId', async (req, res) => {
+adminSuppliersRouter.put('/:id/products/:productId', requirePermission('purchases.create'), async (req, res) => {
   const supplier = await getSupplierById(String(req.params.id))
   if (!supplier) { res.status(404).json({ error: 'supplier_not_found' }); return }
 
@@ -118,7 +118,7 @@ adminSuppliersRouter.put('/:id/products/:productId', async (req, res) => {
   res.json({ link })
 })
 
-adminSuppliersRouter.delete('/:id/products/:productId', async (req, res) => {
+adminSuppliersRouter.delete('/:id/products/:productId', requirePermission('purchases.create'), async (req, res) => {
   await removeSupplierProduct(String(req.params.id), String(req.params.productId))
   await recordAuditLog({
     adminUserId: req.user!.id,

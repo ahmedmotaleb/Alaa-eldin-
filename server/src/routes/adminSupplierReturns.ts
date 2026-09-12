@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import {
   createSupplierReturn, listSupplierReturns, getSupplierReturnById, updateSupplierReturnStatus,
@@ -31,7 +31,7 @@ function parseInput(body: unknown): SupplierReturnInput | null {
   }
 }
 
-adminSupplierReturnsRouter.get('/', async (req, res) => {
+adminSupplierReturnsRouter.get('/', requirePermission('returns.manage'), async (req, res) => {
   const status = typeof req.query.status === 'string' && VALID_STATUSES.includes(req.query.status as SupplierReturnStatus)
     ? req.query.status as SupplierReturnStatus : undefined
   const supplierId = typeof req.query.supplierId === 'string' ? req.query.supplierId : undefined
@@ -39,13 +39,13 @@ adminSupplierReturnsRouter.get('/', async (req, res) => {
   res.json({ returns })
 })
 
-adminSupplierReturnsRouter.get('/:id', async (req, res) => {
+adminSupplierReturnsRouter.get('/:id', requirePermission('returns.manage'), async (req, res) => {
   const result = await getSupplierReturnById(String(req.params.id))
   if (!result) { res.status(404).json({ error: 'supplier_return_not_found' }); return }
   res.json(result)
 })
 
-adminSupplierReturnsRouter.post('/', async (req, res) => {
+adminSupplierReturnsRouter.post('/', requirePermission('returns.manage'), async (req, res) => {
   const input = parseInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
@@ -61,7 +61,7 @@ adminSupplierReturnsRouter.post('/', async (req, res) => {
   }
 })
 
-adminSupplierReturnsRouter.patch('/:id/status', async (req, res) => {
+adminSupplierReturnsRouter.patch('/:id/status', requirePermission('returns.manage'), async (req, res) => {
   const toStatus = req.body?.status
   if (typeof toStatus !== 'string' || !VALID_STATUSES.includes(toStatus as SupplierReturnStatus)) {
     res.status(400).json({ error: 'invalid_status' })

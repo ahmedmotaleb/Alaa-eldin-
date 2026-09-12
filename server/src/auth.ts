@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import type { Request, Response, NextFunction } from 'express'
 import { pool } from './db.js'
+import { userHasPermission, type Permission } from './services/permissionService.js'
 
 export const SESSION_COOKIE = 'session_token'
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -64,11 +65,12 @@ export interface AuthedUser {
   createdAt: string
   isAdmin: boolean
   role: UserRole
+  roleId: string | null
 }
 
 async function getUserBySession(token: string): Promise<AuthedUser | null> {
   const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null }>(`
-    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role"
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role", u.role_id as "roleId"
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = $1 AND s.expires_at > $2
   `, [token, new Date().toISOString()])
@@ -128,6 +130,24 @@ export function requireRole(...allowed: UserRole[]) {
       return
     }
     if (!allowed.includes(req.user.role)) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+    next()
+  }
+}
+
+// بوابة صلاحيات دقيقة (RBAC) — بتتحقق من الصلاحية الفعلية للمستخدم (من role_id لو موجود،
+// أو من is_admin/role القديمين كـ fallback) بدل الاكتفاء بـ isAdmin العام. لازم تيجي بعد
+// requireAdmin على نفس المسار (مستخدم مش isAdmin أصلاً هيتوقف قبل ما يوصل هنا).
+export function requirePermission(permission: Permission) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const allowed = await userHasPermission(req.user, permission)
+    if (!allowed) {
       res.status(403).json({ error: 'forbidden' })
       return
     }

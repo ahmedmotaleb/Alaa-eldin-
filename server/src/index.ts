@@ -32,6 +32,7 @@ import { discountsRouter } from './routes/discounts.js'
 import { adminDiscountsRouter } from './routes/adminDiscounts.js'
 import { adminStockMovementsRouter } from './routes/adminStockMovements.js'
 import { adminUsersRouter } from './routes/adminUsers.js'
+import { adminRolesRouter } from './routes/adminRoles.js'
 import { bannersRouter } from './routes/banners.js'
 import { adminBannersRouter } from './routes/adminBanners.js'
 import { settingsRouter } from './routes/settings.js'
@@ -143,6 +144,7 @@ app.use('/api/admin/customers', adminCustomersRouter)
 app.use('/api/admin/discounts', adminDiscountsRouter)
 app.use('/api/admin/stock-movements', adminStockMovementsRouter)
 app.use('/api/admin/users', adminUsersRouter)
+app.use('/api/admin/roles', adminRolesRouter)
 app.use('/api/admin/banners', adminBannersRouter)
 app.use('/api/admin/settings', adminSettingsRouter)
 app.use('/api/admin/expenses', adminExpensesRouter)

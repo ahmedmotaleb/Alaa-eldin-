@@ -93,6 +93,7 @@ export const NAV: NavGroup[] = [
       { id: 'delivery', label: 'التوصيل' },
       { id: 'payment', label: 'الدفع' },
       { id: 'users', label: 'المستخدمون والصلاحيات', adminOnly: true },
+      { id: 'roles', label: 'الأدوار والصلاحيات', adminOnly: true },
       { id: 'audit', label: 'سجل النشاط', adminOnly: true }
     ]
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
-import { api, ApiError, type AdminUser } from '../../utils/api'
+import { api, ApiError, type AdminUser, type AdminRole } from '../../utils/api'
 import { useAuth } from '../../store/AuthContext'
 import { formatDate } from '../../utils/format'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
@@ -24,6 +24,7 @@ export function UsersPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [statsUsers, setStatsUsers] = useState<AdminUser[]>([])
+  const [roles, setRoles] = useState<AdminRole[]>([])
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState('')
@@ -46,6 +47,7 @@ export function UsersPage() {
   }
 
   useEffect(() => { loadStats() }, [])
+  useEffect(() => { api.listRoles().then(({ roles }) => setRoles(roles)).catch(() => {}) }, [])
   useEffect(() => { setPage(1) }, [debouncedQuery])
   useEffect(() => { loadPage() }, [page, debouncedQuery])
 
@@ -85,6 +87,22 @@ export function UsersPage() {
       setUsers(current => current?.map(x => x.id === updated.id ? updated : x) ?? current)
       loadStats()
     } catch {
+      loadPage()
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  async function changeRoleId(u: AdminUser, roleId: string | null) {
+    setBusyId(u.id)
+    try {
+      const { user: updated } = await api.setUserRoleId(u.id, roleId)
+      setUsers(current => current?.map(x => x.id === updated.id ? updated : x) ?? current)
+      loadStats()
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === 'cannot_remove_last_admin'
+        ? 'لا يمكن تغيير دور آخر مدير كامل في النظام'
+        : 'تعذر تغيير الدور، حاول مرة أخرى')
       loadPage()
     } finally {
       setBusyId('')
@@ -133,7 +151,7 @@ export function UsersPage() {
                   <div>
                     <span className="admin-pill" style={{ background: pill.bg, color: pill.fg }}>{pill.label}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
                       className="admin-category-card-btn"
                       disabled={busyId === u.id || (isSelf && u.isAdmin)}
@@ -151,6 +169,18 @@ export function UsersPage() {
                       >
                         {u.role === 'admin' ? 'إرجاع لمدير تشغيلي' : 'ترقية لمدير كامل'}
                       </button>
+                    )}
+                    {u.isAdmin && roles.length > 0 && (
+                      <select
+                        className="admin-form-chip"
+                        value={u.roleId ?? ''}
+                        disabled={busyId === u.id}
+                        title="دور دقيق (RBAC) — يتحكم في الصلاحيات التفصيلية داخل لوحة التحكم"
+                        onChange={e => changeRoleId(u, e.target.value || null)}
+                      >
+                        <option value="">بدون دور دقيق (افتراضي)</option>
+                        {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
                     )}
                   </div>
                 </div>

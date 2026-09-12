@@ -38,6 +38,14 @@ export interface AdminUser {
   createdAt: string
   isAdmin: boolean
   role: UserRole
+  roleId: string | null
+}
+
+export interface AdminRole {
+  id: string
+  name: string
+  isSystem: boolean
+  permissions: string[]
 }
 
 export interface PageInfo {
@@ -779,6 +787,9 @@ export const api = {
     request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/admin`, { method: 'PATCH', body: JSON.stringify({ isAdmin }) }),
   setUserRole: (id: string, role: UserRole) =>
     request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  setUserRoleId: (id: string, roleId: string | null) =>
+    request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/role-id`, { method: 'PATCH', body: JSON.stringify({ roleId }) }),
+  listRoles: () => request<{ roles: AdminRole[] }>('/admin/roles'),
   listBanners: () => request<{ banners: AdminBanner[] }>('/admin/banners'),
   getBanner: (id: number) => request<{ banner: AdminBanner }>(`/admin/banners/${id}`),
   createBanner: (body: AdminBannerInput) =>
