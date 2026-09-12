@@ -36,7 +36,8 @@ export const NAV: NavGroup[] = [
       { id: 'writeoff', label: 'شطب المخزون' },
       { id: 'barcode', label: 'مسح الباركود' },
       { id: 'valuation', label: 'قيمة المخزون' },
-      { id: 'moves', label: 'تحويلات المخزون' }
+      { id: 'moves', label: 'تحويلات المخزون' },
+      { id: 'cyclecounts', label: 'الجرد الدوري' }
     ]
   },
   {

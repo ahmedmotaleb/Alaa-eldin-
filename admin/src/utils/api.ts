@@ -29,6 +29,43 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T
 }
 
+// بيجيب الملف كـ blob ويشغّل تنزيله في المتصفح مباشرة — بدون أي عرض للمحتوى في الصفحة.
+async function downloadFile(path: string, filename: string): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(BASE + path, { credentials: 'include' })
+  } catch {
+    throw new ApiError('network_error', 0)
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new ApiError(data?.error ?? 'server_error', res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  let res: Response
+  try {
+    res = await fetch(BASE + path, { method: 'POST', credentials: 'include', body: form })
+  } catch {
+    throw new ApiError('network_error', 0)
+  }
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(data?.error ?? 'server_error', res.status)
+  return data as T
+}
+
 export type UserRole = 'staff' | 'admin'
 
 export interface AdminUser {
@@ -534,6 +571,36 @@ export interface AdminStockMovement {
   productEmoji: string
 }
 
+export type CycleCountStatus = 'draft' | 'completed' | 'cancelled'
+
+export interface CycleCountSummary {
+  id: string
+  categoryId: string | null
+  categoryName: string | null
+  status: CycleCountStatus
+  note: string
+  createdAt: string
+  completedAt: string | null
+  itemCount: number
+  countedCount: number
+  varianceCount: number
+}
+
+export interface CycleCountItem {
+  id: string
+  productId: string
+  productName: string
+  sku: string | null
+  barcode: string
+  systemQuantity: number
+  countedQuantity: number | null
+  variance: number | null
+}
+
+export interface CycleCountDetail extends CycleCountSummary {
+  items: CycleCountItem[]
+}
+
 export interface AdminBanner {
   id: number
   kicker: string
@@ -854,6 +921,21 @@ export const api = {
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
+  exportProductsCsv: () => downloadFile('/admin/products/export', 'products.csv'),
+  importProductsCsv: (file: File) => uploadFile<{ updated: number, skipped: { row: number, reason: string }[] }>('/admin/products/import', file),
+  listCycleCounts: () => request<{ cycleCounts: CycleCountSummary[] }>('/admin/cycle-counts'),
+  createCycleCount: (body: { categoryId?: string | null, note?: string }) =>
+    request<{ id: string }>('/admin/cycle-counts', { method: 'POST', body: JSON.stringify(body) }),
+  getCycleCount: (id: string) => request<{ cycleCount: CycleCountDetail }>(`/admin/cycle-counts/${encodeURIComponent(id)}`),
+  recordCycleCountCounts: (id: string, counts: { productId: string, countedQuantity: number }[]) =>
+    request<{ updated: number, skipped: string[] }>(`/admin/cycle-counts/${encodeURIComponent(id)}/counts`, { method: 'PATCH', body: JSON.stringify({ counts }) }),
+  completeCycleCount: (id: string) =>
+    request<{ adjustedCount: number }>(`/admin/cycle-counts/${encodeURIComponent(id)}/complete`, { method: 'POST' }),
+  cancelCycleCount: (id: string) =>
+    request<{ ok: true }>(`/admin/cycle-counts/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  exportCycleCountCsv: (id: string) => downloadFile(`/admin/cycle-counts/${encodeURIComponent(id)}/export`, `cycle-count-${id}.csv`),
+  importCycleCountCsv: (id: string, file: File) =>
+    uploadFile<{ updated: number, skipped: string[], unmatched: string[] }>(`/admin/cycle-counts/${encodeURIComponent(id)}/import`, file),
   listUsers: (params: { page?: number, limit?: number, search?: string } = {}) =>
     request<{ users: AdminUser[] } & Partial<PageInfo>>(`/admin/users${buildQuery(params)}`),
   setUserAdmin: (id: string, isAdmin: boolean) =>

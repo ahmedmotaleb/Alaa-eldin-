@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminCategory, type AdminProduct } from '../../utils/api'
@@ -21,6 +21,8 @@ export function ProductsListPage() {
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState('الكل')
+  const [csvNotice, setCsvNotice] = useState('')
+  const importInputRef = useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebouncedValue(query)
 
   useEffect(() => {
@@ -48,6 +50,26 @@ export function ProductsListPage() {
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل المنتجات' : 'حدث خطأ، حاول مرة أخرى'))
   }, [page, debouncedQuery, chip, categories])
 
+  async function exportCsv() {
+    try {
+      await api.exportProductsCsv()
+    } catch {
+      setCsvNotice('تعذر تصدير الملف')
+    }
+  }
+
+  async function importCsv(file: File) {
+    try {
+      const result = await api.importProductsCsv(file)
+      setCsvNotice(`تم تحديث ${result.updated} منتج${result.skipped.length ? ` — ${result.skipped.length} صف اتجاهل` : ''}`)
+      api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined }).then(({ products }) => setProducts(products)).catch(() => {})
+    } catch {
+      setCsvNotice('تعذر استيراد الملف')
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!products) return null
 
@@ -74,7 +96,13 @@ export function ProductsListPage() {
               <button key={label} className={`admin-chip ${chip === label ? 'active' : ''}`} onClick={() => setChip(label)}>{label}</button>
             ))}
           </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="admin-form-chip" onClick={exportCsv}>تصدير CSV</button>
+            <button className="admin-form-chip" onClick={() => importInputRef.current?.click()}>استيراد CSV</button>
+            <input ref={importInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f) }} />
+          </div>
         </div>
+        {csvNotice && <div className="admin-form-success" style={{ margin: '0 16px' }}>{csvNotice}</div>}
         <div className="admin-table-scroll">
           <div style={{ minWidth: 900 }}>
             <div className="admin-table-head" style={{ gridTemplateColumns: COLS }}>

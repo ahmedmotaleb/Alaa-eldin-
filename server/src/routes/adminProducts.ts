@@ -1,10 +1,14 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
+import multer from 'multer'
 import { pool, withTransaction } from '../db.js'
 import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
+import { toCsv, parseCsv, csvRecords } from '../csv.js'
+
+const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
 export const adminProductsRouter = Router()
 adminProductsRouter.use(requireAdmin)
@@ -109,6 +113,79 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
     total,
     totalPages: Math.max(1, Math.ceil(total / limit))
   })
+})
+
+// مسجّلة قبل '/:id' عمداً — نفس شكل المسار (segment واحد)، فلو اتسجلت بعده هيتقفل عليها
+// '/:id' الأول (id='export') وميوصلوش الطلب هنا أبداً.
+adminProductsRouter.get('/export', requirePermission('products.view'), async (_req, res) => {
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} ORDER BY name`)
+  const csv = toCsv(
+    ['id', 'sku', 'barcode', 'name', 'price', 'oldPrice', 'cost', 'stock', 'alertThreshold', 'available', 'brand'],
+    rows.map(p => [p.id, p.sku ?? '', p.barcode, p.name, p.price, p.oldPrice ?? '', p.cost, p.stock, p.alertThreshold, p.available ? '1' : '0', p.brand])
+  )
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', 'attachment; filename="products.csv"')
+  res.send('﻿' + csv)
+})
+
+// استيراد جماعي — تحديث فقط لمنتجات موجودة بالفعل (المطابقة بالـ sku أولاً، وبالـ id
+// كبديل)، ومقصور على حقول تشغيلية آمنة (سعر/تكلفة/مخزون/توفر) — عمداً بدون إنشاء منتجات
+// جديدة من CSV (ده محتاج تحقق أوسع بكتير: slug فريد، قسم صحيح، إلخ) وبدون تعديل الاسم أو
+// القسم، تقليلاً لمخاطر استيراد ملف فيه أخطاء يبوّظ الكتالوج. كل صف بيتقيّم لوحده والباقي
+// بيكمل حتى لو صف واحد فشل.
+adminProductsRouter.post('/import', requirePermission('products.edit'), csvUpload.single('file'), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'missing_file' })
+    return
+  }
+
+  const records = csvRecords(parseCsv(req.file.buffer.toString('utf-8')))
+  let updated = 0
+  const skipped: { row: number; reason: string }[] = []
+
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i]
+    const identifier = r.sku?.trim() || r.id?.trim()
+    if (!identifier) {
+      skipped.push({ row: i + 2, reason: 'missing_sku_or_id' })
+      continue
+    }
+
+    const fields: string[] = []
+    const params: unknown[] = []
+    function setField(column: string, raw: string | undefined, parse: (v: string) => unknown) {
+      if (raw === undefined || raw.trim() === '') return
+      params.push(parse(raw.trim()))
+      fields.push(`${column} = $${params.length}`)
+    }
+    setField('price', r.price, Number)
+    setField('old_price', r.oldPrice, v => v === '' ? null : Number(v))
+    setField('cost', r.cost, Number)
+    setField('stock', r.stock, v => Math.trunc(Number(v)))
+    setField('alert_threshold', r.alertThreshold, v => Math.trunc(Number(v)))
+    setField('available', r.available, v => (v === '1' || v.toLowerCase() === 'true') ? 1 : 0)
+    setField('brand', r.brand, String)
+
+    if (fields.length === 0) {
+      skipped.push({ row: i + 2, reason: 'no_fields_to_update' })
+      continue
+    }
+    if (params.some(p => typeof p === 'number' && !Number.isFinite(p))) {
+      skipped.push({ row: i + 2, reason: 'invalid_number' })
+      continue
+    }
+
+    params.push(identifier)
+    const { rowCount } = await pool.query(
+      `UPDATE products SET ${fields.join(', ')} WHERE sku = $${params.length} OR id = $${params.length}`,
+      params
+    )
+    if (rowCount) updated++
+    else skipped.push({ row: i + 2, reason: 'product_not_found' })
+  }
+
+  logEvent('admin_product_updated', { source: 'csv_import', updated, skippedCount: skipped.length })
+  res.json({ updated, skipped })
 })
 
 adminProductsRouter.get('/:id', requirePermission('products.view'), async (req, res) => {
