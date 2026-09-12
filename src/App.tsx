@@ -15,6 +15,8 @@ import { ar } from './i18n/ar'
 const AccountPage = lazy(() => import('./pages/AccountPage').then(m => ({ default: m.AccountPage })))
 const AddressesPage = lazy(() => import('./pages/AddressesPage').then(m => ({ default: m.AddressesPage })))
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(m => ({ default: m.FavoritesPage })))
+const ShoppingListsPage = lazy(() => import('./pages/ShoppingListsPage').then(m => ({ default: m.ShoppingListsPage })))
+const ShoppingListDetailPage = lazy(() => import('./pages/ShoppingListDetailPage').then(m => ({ default: m.ShoppingListDetailPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })))
 const BestSellersPage = lazy(() => import('./pages/BestSellersPage').then(m => ({ default: m.BestSellersPage })))
 const CartPage = lazy(() => import('./pages/CartPage').then(m => ({ default: m.CartPage })))
@@ -96,6 +98,8 @@ export default function App() {
                         <Route path="/account" element={<AccountPage />} />
                         <Route path="/account/addresses" element={<AddressesPage />} />
                         <Route path="/account/favorites" element={<FavoritesPage />} />
+                        <Route path="/account/shopping-lists" element={<ShoppingListsPage />} />
+                        <Route path="/account/shopping-lists/:id" element={<ShoppingListDetailPage />} />
                         <Route path="/account/profile" element={<ProfilePage />} />
                         <Route path="/login" element={<LoginPage />} />
                         <Route path="/register" element={<RegisterPage />} />

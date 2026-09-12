@@ -144,6 +144,20 @@ export interface ApiProduct {
   brand: string
 }
 
+export interface ShoppingList {
+  id: string
+  name: string
+  itemCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ShoppingListItem {
+  productId: string
+  quantity: number
+  product: ApiProduct | null
+}
+
 export interface ApiPagination {
   page: number
   limit: number
@@ -281,6 +295,18 @@ export const api = {
   addFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'POST' }),
   removeFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   listFrequentlyPurchased: () => request<{ products: ApiProduct[] }>('/account/frequently-purchased'),
+  listShoppingLists: () => request<{ lists: ShoppingList[] }>('/account/shopping-lists'),
+  createShoppingList: (name: string) =>
+    request<{ list: ShoppingList }>('/account/shopping-lists', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameShoppingList: (id: string, name: string) =>
+    request<void>(`/account/shopping-lists/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deleteShoppingList: (id: string) => request<void>(`/account/shopping-lists/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getShoppingListItems: (id: string) =>
+    request<{ list: { id: string, name: string }, items: ShoppingListItem[] }>(`/account/shopping-lists/${encodeURIComponent(id)}`),
+  setShoppingListItem: (listId: string, productId: string, quantity: number) =>
+    request<void>(`/account/shopping-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(productId)}`, { method: 'PUT', body: JSON.stringify({ quantity }) }),
+  removeShoppingListItem: (listId: string, productId: string) =>
+    request<void>(`/account/shopping-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   getVapidPublicKey: () => request<{ publicKey: string | null, configured: boolean }>('/notifications/vapid-public-key'),
   subscribePush: (subscription: { endpoint: string, keys: { p256dh: string, auth: string } }) =>
     request<void>('/notifications/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),

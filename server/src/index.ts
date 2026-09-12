@@ -49,6 +49,7 @@ import { pagesRouter } from './routes/pages.js'
 import { trackRouter } from './routes/track.js'
 import { addressesRouter } from './routes/addresses.js'
 import { favoritesRouter } from './routes/favorites.js'
+import { shoppingListsRouter } from './routes/shoppingLists.js'
 import { notificationsRouter } from './routes/notifications.js'
 import { frequentlyPurchasedRouter } from './routes/frequentlyPurchased.js'
 import { deliveryRouter } from './routes/delivery.js'
@@ -119,6 +120,7 @@ app.use('/api/orders', ordersRouter)
 app.use('/api/track', trackRouter)
 app.use('/api/account/addresses', addressesRouter)
 app.use('/api/account/favorites', favoritesRouter)
+app.use('/api/account/shopping-lists', shoppingListsRouter)
 app.use('/api/notifications', notificationsRouter)
 app.use('/api/account/frequently-purchased', frequentlyPurchasedRouter)
 app.use('/api/delivery', deliveryRouter)

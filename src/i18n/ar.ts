@@ -193,6 +193,7 @@ export const ar = {
     contactWhatsapp: 'تواصل معنا على واتساب',
     savedAddresses: 'عناويني المحفوظة',
     favorites: 'المفضلة',
+    shoppingLists: 'قوائم التسوق',
     returnPolicy: 'سياسة الاسترجاع والاستبدال',
     settingsAndNotifications: 'الإعدادات والإشعارات',
     logout: 'تسجيل الخروج',
@@ -216,6 +217,24 @@ export const ar = {
     saveError: 'تعذر حفظ التعديلات، تحقق من البيانات وحاول مرة أخرى',
     nameError: 'الاسم لازم يكون بين حرفين و100 حرف',
     mobileError: 'أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015، أو اتركه فاضي'
+  },
+
+  shoppingLists: {
+    title: 'قوائم التسوق',
+    emptyTitle: 'مفيش قوائم تسوق لسه',
+    emptyNote: 'اعمل قائمة (زي "قائمة الأسبوع") واحفظ فيها المنتجات اللي بتشتريها بانتظام.',
+    newListPlaceholder: 'اسم القائمة (مثال: قائمة الأسبوع)',
+    createButton: 'إنشاء قائمة',
+    itemsCount: (count: number) => `${count} صنف`,
+    deleteConfirm: 'هل تريد حذف هذه القائمة؟',
+    renamePrompt: 'اسم القائمة الجديد',
+    addAllToCart: 'إضافة الكل للسلة',
+    addAllDone: 'تم إضافة المنتجات المتاحة للسلة',
+    addAllNoneAvailable: 'كل منتجات هذه القائمة غير متاحة حالياً',
+    searchPlaceholder: 'ابحث عن منتج تضيفه للقائمة...',
+    unavailableNote: 'غير متاح حالياً',
+    removeItem: 'إزالة',
+    back: 'رجوع لقوائم التسوق'
   },
 
   notifications: {

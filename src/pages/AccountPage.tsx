@@ -12,6 +12,7 @@ const ACCOUNT_ROWS = [
   { icon: '👤', label: ar.account.editProfile, path: '/account/profile' },
   { icon: '📍', label: ar.account.savedAddresses, path: '/account/addresses' },
   { icon: '❤️', label: ar.account.favorites, path: '/account/favorites' },
+  { icon: '📝', label: ar.account.shoppingLists, path: '/account/shopping-lists' },
   { icon: '↺', label: ar.account.returnPolicy, path: '/refund-exchange-policy' },
   { icon: '⚙️', label: ar.account.settingsAndNotifications, path: undefined }
 ]
