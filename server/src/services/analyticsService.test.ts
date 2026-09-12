@@ -3,7 +3,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
 import {
   getRevenueByDay, getOverviewStats, getSalesStats, getRevenueByCategory, getTopProducts,
-  getRevenueBySlot, getProductStats, getRegionRevenue, getOrdersBreakdown, getHomeSummary
+  getRevenueBySlot, getProductStats, getRegionRevenue, getOrdersBreakdown, getHomeSummary,
+  getRiderPerformance
 } from './analyticsService.js'
 
 const CATEGORY_A = 'test-cat-an-a'
@@ -212,5 +213,54 @@ describe('getHomeSummary', () => {
     expect(summary.todayOrderCount).toBe(1)
     expect(summary.totalOrders).toBe(3)
     expect(summary.newOrdersCount).toBe(2)
+  })
+})
+
+describe('getRiderPerformance', () => {
+  const RIDER_ID = 'test-rider-an'
+
+  beforeEach(async () => {
+    await pool.query('DELETE FROM riders WHERE id = $1', [RIDER_ID])
+    await pool.query(`INSERT INTO riders (id, name, created_at) VALUES ($1, 'مندوب اختبار', now())`, [RIDER_ID])
+  })
+  afterAll(async () => {
+    await pool.query('DELETE FROM riders WHERE id = $1', [RIDER_ID])
+  })
+
+  it('counts only delivered orders, averages delivery time from status history, and sums unsettled cash', async () => {
+    await insertOrder({ id: 'an-rider-1', total: 100, status: 'delivered' })
+    await insertOrder({ id: 'an-rider-2', total: 200, status: 'delivered' })
+    await insertOrder({ id: 'an-rider-3', total: 50, status: 'placed' })
+    await pool.query('UPDATE orders SET rider_id = $1 WHERE id IN ($2, $3, $4)', [RIDER_ID, 'an-rider-1', 'an-rider-2', 'an-rider-3'])
+    await pool.query('UPDATE orders SET settlement_id = NULL WHERE id = $1', ['an-rider-2'])
+
+    const now = new Date()
+    const tenMinAgo = new Date(now.getTime() - 10 * 60000)
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60000)
+    await pool.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, source, created_at) VALUES
+       ('an-rider-1', 'ready_for_delivery', 'out_for_delivery', 'rider', $1),
+       ('an-rider-1', 'out_for_delivery', 'delivered', 'rider', $2)`,
+      [twentyMinAgo.toISOString(), now.toISOString()]
+    )
+    await pool.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, source, created_at) VALUES
+       ('an-rider-2', 'ready_for_delivery', 'out_for_delivery', 'rider', $1),
+       ('an-rider-2', 'out_for_delivery', 'delivered', 'rider', $2)`,
+      [tenMinAgo.toISOString(), now.toISOString()]
+    )
+
+    const rows = await getRiderPerformance()
+    const row = rows.find(r => r.riderId === RIDER_ID)
+    expect(row).toBeTruthy()
+    expect(row!.deliveredCount).toBe(2)
+    expect(row!.avgDeliveryMinutes).toBeCloseTo(15, 0)
+    expect(row!.unsettledAmount).toBe(300)
+  })
+
+  it('excludes inactive riders', async () => {
+    await pool.query('UPDATE riders SET active = 0 WHERE id = $1', [RIDER_ID])
+    const rows = await getRiderPerformance()
+    expect(rows.find(r => r.riderId === RIDER_ID)).toBeUndefined()
   })
 })

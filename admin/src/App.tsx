@@ -7,6 +7,7 @@ import { AuthProvider } from './store/AuthContext'
 // كل صفحة بتتحمّل كـ chunk منفصل (lazy) بدل ما تتحمّل كلها مقدماً ضمن الحزمة الرئيسية —
 // أول تحميل للوحة التحكم (أو أي قسم فيها) بيجيب بس كود الصفحة المطلوبة فعلاً.
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
+const NotificationCenterPage = lazy(() => import('./pages/NotificationCenterPage').then(m => ({ default: m.NotificationCenterPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })))
 const RiderOrdersPage = lazy(() => import('./pages/RiderOrdersPage').then(m => ({ default: m.RiderOrdersPage })))
 const OrdersPage = lazy(() => import('./pages/OrdersPage').then(m => ({ default: m.OrdersPage })))
@@ -133,6 +134,7 @@ export default function App() {
               <Route path="/marketing/banners/add" element={<BannerFormPage />} />
               <Route path="/marketing/banners/edit/:id" element={<BannerFormPage />} />
               <Route path="/marketing/whatsapp" element={<WhatsAppTemplatesPage />} />
+              <Route path="/notifications" element={<NotificationCenterPage />} />
               <Route path="/:group" element={<PlaceholderPage />} />
               <Route path="/:group/:sub" element={<PlaceholderPage />} />
             </Route>

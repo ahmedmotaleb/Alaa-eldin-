@@ -2,7 +2,8 @@ import { Router } from 'express'
 import { requireAdmin } from '../auth.js'
 import {
   getRevenueByDay, getOverviewStats, getSalesStats, getRevenueByCategory, getTopProducts,
-  getRevenueBySlot, getProductStats, getRegionRevenue, getOrdersBreakdown, getHomeSummary
+  getRevenueBySlot, getProductStats, getRegionRevenue, getOrdersBreakdown, getHomeSummary,
+  getRiderPerformance
 } from '../services/analyticsService.js'
 
 export const adminAnalyticsRouter = Router()
@@ -45,6 +46,10 @@ adminAnalyticsRouter.get('/regions', async (_req, res) => {
 
 adminAnalyticsRouter.get('/orders-breakdown', async (_req, res) => {
   res.json(await getOrdersBreakdown())
+})
+
+adminAnalyticsRouter.get('/riders', async (_req, res) => {
+  res.json({ riders: await getRiderPerformance() })
 })
 
 adminAnalyticsRouter.get('/home-summary', async (_req, res) => {

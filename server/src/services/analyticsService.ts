@@ -180,6 +180,44 @@ export async function getOrdersBreakdown(): Promise<{
   }
 }
 
+export interface RiderPerformance {
+  riderId: string
+  riderName: string
+  deliveredCount: number
+  avgDeliveryMinutes: number | null
+  unsettledAmount: number
+}
+
+// وقت التسليم بيتحسب من فرق التوقيت بين آخر انتقال لـ 'out_for_delivery' وآخر انتقال
+// لـ 'delivered' في سجل order_status_history لنفس الطلب — مش من created_at بتاع الطلب نفسه،
+// لأن الوقت اللي يهم هنا هو مدة التوصيل الفعلية بعد ما المندوب خرج، مش عمر الطلب كله.
+// طلب من غير أي انتقال مسجّل (نادر، من قبل ما يتفعّل تتبع الحالة) بيتجاهل من متوسط الوقت
+// بس، مش من عدد الطلبات المُسلَّمة.
+export async function getRiderPerformance(): Promise<RiderPerformance[]> {
+  const { rows } = await pool.query<RiderPerformance>(
+    `WITH transitions AS (
+       SELECT order_id,
+              MAX(created_at) FILTER (WHERE to_status = 'out_for_delivery') as out_at,
+              MAX(created_at) FILTER (WHERE to_status = 'delivered') as delivered_at
+       FROM order_status_history
+       GROUP BY order_id
+     )
+     SELECT r.id as "riderId", r.name as "riderName",
+            COUNT(o.id) FILTER (WHERE o.status = 'delivered')::int as "deliveredCount",
+            AVG(EXTRACT(EPOCH FROM (t.delivered_at - t.out_at)) / 60) FILTER (
+              WHERE t.delivered_at IS NOT NULL AND t.out_at IS NOT NULL
+            )::float as "avgDeliveryMinutes",
+            COALESCE(SUM(o.total) FILTER (WHERE o.status = 'delivered' AND o.settlement_id IS NULL), 0)::float as "unsettledAmount"
+     FROM riders r
+     LEFT JOIN orders o ON o.rider_id = r.id
+     LEFT JOIN transitions t ON t.order_id = o.id
+     WHERE r.active = 1
+     GROUP BY r.id, r.name
+     ORDER BY "deliveredCount" DESC`
+  )
+  return rows
+}
+
 export async function getHomeSummary(): Promise<{
   todayRevenue: number
   todayOrderCount: number

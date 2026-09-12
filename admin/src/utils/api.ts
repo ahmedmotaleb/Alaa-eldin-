@@ -728,6 +728,24 @@ export interface AnalyticsHomeSummary {
   topProducts: AnalyticsProductRevenue[]
 }
 
+export interface RiderPerformance {
+  riderId: string
+  riderName: string
+  deliveredCount: number
+  avgDeliveryMinutes: number | null
+  unsettledAmount: number
+}
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export interface Alert {
+  category: string
+  label: string
+  count: number
+  severity: AlertSeverity
+  link: string
+}
+
 export interface TwoFactorSetup {
   secret: string
   qrCodeDataUrl: string
@@ -982,6 +1000,8 @@ export const api = {
   getAnalyticsProducts: () => request<AnalyticsProducts>('/admin/analytics/products'),
   getAnalyticsRegions: () => request<AnalyticsRegions>('/admin/analytics/regions'),
   getAnalyticsOrdersBreakdown: () => request<AnalyticsOrdersBreakdown>('/admin/analytics/orders-breakdown'),
+  getAnalyticsRiders: () => request<{ riders: RiderPerformance[] }>('/admin/analytics/riders'),
+  getAlerts: () => request<{ alerts: Alert[], count: number }>('/admin/alerts'),
   getAnalyticsHomeSummary: () => request<AnalyticsHomeSummary>('/admin/analytics/home-summary'),
   listRiders: () => request<{ riders: AdminRider[] }>('/admin/riders'),
   createRider: (body: { name: string, phone?: string }) =>

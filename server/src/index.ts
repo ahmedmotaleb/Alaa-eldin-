@@ -33,6 +33,7 @@ import { discountsRouter } from './routes/discounts.js'
 import { adminDiscountsRouter } from './routes/adminDiscounts.js'
 import { adminStockMovementsRouter } from './routes/adminStockMovements.js'
 import { adminCycleCountsRouter } from './routes/adminCycleCounts.js'
+import { adminAlertsRouter } from './routes/adminAlerts.js'
 import { adminUsersRouter } from './routes/adminUsers.js'
 import { adminRolesRouter } from './routes/adminRoles.js'
 import { adminWhatsappRouter } from './routes/adminWhatsapp.js'
@@ -191,6 +192,7 @@ app.use('/api/admin/customers', adminCustomersRouter)
 app.use('/api/admin/discounts', adminDiscountsRouter)
 app.use('/api/admin/stock-movements', adminStockMovementsRouter)
 app.use('/api/admin/cycle-counts', adminCycleCountsRouter)
+app.use('/api/admin/alerts', adminAlertsRouter)
 app.use('/api/admin/users', adminUsersRouter)
 app.use('/api/admin/roles', adminRolesRouter)
 app.use('/api/admin/whatsapp', adminWhatsappRouter)

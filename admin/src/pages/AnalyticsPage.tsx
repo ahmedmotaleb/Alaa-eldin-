@@ -4,7 +4,7 @@ import { StatsGrid } from '../components/StatsGrid'
 import {
   api, ApiError, type AdminCustomer,
   type AnalyticsOverview, type AnalyticsSales, type AnalyticsProducts, type AnalyticsRegions, type AnalyticsOrdersBreakdown,
-  type AnalyticsRevenueDay, type AnalyticsCategoryRevenue
+  type AnalyticsRevenueDay, type AnalyticsCategoryRevenue, type RiderPerformance
 } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from '../orderStatus'
@@ -29,21 +29,23 @@ function useAnalyticsData() {
   const [regions, setRegions] = useState<AnalyticsRegions | null>(null)
   const [ordersBreakdown, setOrdersBreakdown] = useState<AnalyticsOrdersBreakdown | null>(null)
   const [customers, setCustomers] = useState<AdminCustomer[]>([])
+  const [riders, setRiders] = useState<RiderPerformance[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
     Promise.all([
       api.getAnalyticsOverview(), api.getAnalyticsSales(), api.getAnalyticsProducts(),
-      api.getAnalyticsRegions(), api.getAnalyticsOrdersBreakdown(), api.listCustomers()
+      api.getAnalyticsRegions(), api.getAnalyticsOrdersBreakdown(), api.listCustomers(), api.getAnalyticsRiders()
     ])
-      .then(([overview, sales, products, regions, ordersBreakdown, customersRes]) => {
+      .then(([overview, sales, products, regions, ordersBreakdown, customersRes, ridersRes]) => {
         setOverview(overview); setSales(sales); setProducts(products)
         setRegions(regions); setOrdersBreakdown(ordersBreakdown); setCustomers(customersRes.customers)
+        setRiders(ridersRes.riders)
       })
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل بيانات التحليلات' : 'حدث خطأ، حاول مرة أخرى'))
   }, [])
 
-  return { overview, sales, products, regions, ordersBreakdown, customers, error }
+  return { overview, sales, products, regions, ordersBreakdown, customers, riders, error }
 }
 
 function toCategoryRows(rows: AnalyticsCategoryRevenue[]) {
@@ -120,7 +122,7 @@ export function AnalyticsPage() {
   const { setHeader } = useOutletContext<LayoutContext>()
   const activeTab = tab && ANALYTICS_NAV.children.find(c => c.id === tab) ? tab : 'overview'
   const tabLabel = ANALYTICS_NAV.children.find(c => c.id === activeTab)?.label ?? 'نظرة عامة'
-  const { overview, sales, products, regions, ordersBreakdown, customers, error } = useAnalyticsData()
+  const { overview, sales, products, regions, ordersBreakdown, customers, riders, error } = useAnalyticsData()
 
   useEffect(() => {
     setHeader({ crumb: 'التحليلات', title: tabLabel })
@@ -296,6 +298,41 @@ export function AnalyticsPage() {
           <div className="admin-table-footer">
             <span>أعلى 10 عملاء إنفاقاً</span>
             <span>من صفحة العملاء لعرض التفاصيل الكاملة</span>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (activeTab === 'riders') {
+    const totalDelivered = riders.reduce((a, r) => a + r.deliveredCount, 0)
+    const totalUnsettled = riders.reduce((a, r) => a + r.unsettledAmount, 0)
+    const ridersWithAvg = riders.filter(r => r.avgDeliveryMinutes !== null)
+    const overallAvg = ridersWithAvg.length ? ridersWithAvg.reduce((a, r) => a + (r.avgDeliveryMinutes ?? 0), 0) / ridersWithAvg.length : 0
+
+    return (
+      <>
+        <StatsGrid stats={[
+          { label: 'طلبات تم تسليمها', value: String(totalDelivered), note: 'كل المناديب النشطين', icon: '🛵', tint: '#EAF2FF' },
+          { label: 'متوسط وقت التوصيل', value: ridersWithAvg.length ? `${Math.round(overallAvg)} دقيقة` : '—', note: 'من خروج المندوب لحد التسليم', icon: '⏱️', tint: '#EAF8EF' },
+          { label: 'كاش غير مُسوّى', value: formatMoney(totalUnsettled), note: 'مستحق على المناديب', icon: '💵', tint: '#FFF3E3', noteColor: '#B45309' }
+        ]} />
+        <div className="admin-table-card">
+          <div className="admin-table-scroll">
+            <div style={{ minWidth: 640 }}>
+              <div className="admin-table-head" style={{ gridTemplateColumns: '1.6fr 1fr 1fr 1fr' }}>
+                <div>المندوب</div><div>طلبات مُسلَّمة</div><div>متوسط وقت التوصيل</div><div>كاش غير مُسوّى</div>
+              </div>
+              {riders.map(r => (
+                <div key={r.riderId} className="admin-table-row" style={{ gridTemplateColumns: '1.6fr 1fr 1fr 1fr' }}>
+                  <div className="admin-cell-plain" style={{ fontWeight: 800 }}>{r.riderName}</div>
+                  <div className="admin-cell-plain">{r.deliveredCount}</div>
+                  <div className="admin-cell-plain">{r.avgDeliveryMinutes === null ? '—' : `${Math.round(r.avgDeliveryMinutes)} دقيقة`}</div>
+                  <div className="admin-cell-plain" style={{ fontWeight: 800, color: r.unsettledAmount > 0 ? '#B4740E' : '#12813C' }}>{formatMoney(r.unsettledAmount)}</div>
+                </div>
+              ))}
+              {riders.length === 0 && <div className="admin-table-empty">لا يوجد مناديب نشطين بعد</div>}
+            </div>
           </div>
         </div>
       </>

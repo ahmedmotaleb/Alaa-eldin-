@@ -76,6 +76,7 @@ h1, h2, h3, p { margin: 0; }
 .admin-action-button { border: 0; background: var(--green); color: #fff; border-radius: 11px; padding: 10px 15px; font-weight: 800; font-size: 12.5px; }
 .admin-action-button:hover { background: var(--green-dark); }
 .admin-bell { border: 1px solid var(--border); background: #fff; border-radius: 11px; width: 38px; height: 38px; font-size: 15px; }
+.admin-bell-badge { position: absolute; top: -4px; left: -4px; background: #B42318; color: #fff; border-radius: 999px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; padding: 0 3px; display: flex; align-items: center; justify-content: center; line-height: 1; }
 
 .admin-content { padding: 20px 22px 40px; display: flex; flex-direction: column; gap: 16px; animation: fadein .22s ease; }
 
