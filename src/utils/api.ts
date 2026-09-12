@@ -40,6 +40,11 @@ export interface ApiUser {
   isAdmin: boolean
 }
 
+export interface NotificationPreferences {
+  orderUpdates: boolean
+  promotions: boolean
+}
+
 export interface ApiOrderItem {
   productId: string
   name: string
@@ -275,6 +280,14 @@ export const api = {
   addFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'POST' }),
   removeFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   listFrequentlyPurchased: () => request<{ products: ApiProduct[] }>('/account/frequently-purchased'),
+  getVapidPublicKey: () => request<{ publicKey: string | null, configured: boolean }>('/notifications/vapid-public-key'),
+  subscribePush: (subscription: { endpoint: string, keys: { p256dh: string, auth: string } }) =>
+    request<void>('/notifications/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
+  unsubscribePush: (endpoint: string) =>
+    request<void>('/notifications/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
+  getNotificationPreferences: () => request<{ preferences: NotificationPreferences }>('/notifications/preferences'),
+  setNotificationPreferences: (preferences: NotificationPreferences) =>
+    request<{ preferences: NotificationPreferences }>('/notifications/preferences', { method: 'PATCH', body: JSON.stringify(preferences) }),
   // تتبّع طلب زائر — لازم التوكن الصحيح، مفيش أي طريقة تانية تفتح بيها تفاصيل طلب حد تاني.
   trackGuestOrder: (orderNumber: string, token: string) =>
     request<{ order: ApiOrder }>(`/track/${encodeURIComponent(orderNumber)}${buildQuery({ t: token })}`),

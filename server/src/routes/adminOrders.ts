@@ -7,6 +7,7 @@ import { cancelOrder } from '../services/orderService.js'
 import { recordOrderStatusChange, listOrderStatusHistoryForOrders } from '../services/orderStatusHistoryService.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
+import { notifyOrderStatusChange } from '../services/pushService.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
@@ -155,6 +156,7 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
       entityType: 'order',
       entityId: String(req.params.id)
     })
+    await notifyCustomerOfStatus(String(req.params.id), status)
     res.status(204).end()
     return
   }
@@ -176,8 +178,24 @@ adminOrdersRouter.patch('/:id/status', async (req, res) => {
   }
 
   if (status === 'delivered') logEvent('order_delivered', { orderId: String(req.params.id) })
+  await notifyCustomerOfStatus(String(req.params.id), status)
   res.status(204).end()
 })
+
+// بيبعت إشعار Push فوري للعميل (لو عنده اشتراك وتفضيلاته مفعّلة) — أفضل-جهد بالكامل، فشل
+// الإشعار (أو عدم وجود اشتراك أصلاً) أبداً ما بيأثرش على استجابة تحديث حالة الطلب نفسها.
+async function notifyCustomerOfStatus(orderId: string, status: string): Promise<void> {
+  try {
+    const { rows } = await pool.query<{ userId: string | null; orderNumber: string }>(
+      'SELECT user_id as "userId", order_number as "orderNumber" FROM orders WHERE id = $1',
+      [orderId]
+    )
+    const order = rows[0]
+    if (order) await notifyOrderStatusChange(order.userId, order.orderNumber, status)
+  } catch {
+    // إشعار فشل (اشتراك منتهي، خطأ شبكة) — يُتجاهل عمداً، الطلب نفسه اتحدّث بنجاح بالفعل.
+  }
+}
 
 adminOrdersRouter.patch('/:id/rider', async (req, res) => {
   let { riderId } = req.body ?? {}

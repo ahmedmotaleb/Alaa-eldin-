@@ -4,6 +4,8 @@ import { useRequireAuth } from '../hooks/useRequireAuth'
 import { useAuth } from '../store/AuthContext'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
+import { api, type NotificationPreferences } from '../utils/api'
+import { subscribeToPush, unsubscribeFromPush, getPushSubscriptionStatus } from '../utils/push'
 
 export function ProfilePage() {
   const { user, loading: authLoading } = useRequireAuth()
@@ -16,12 +18,56 @@ export function ProfilePage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const [pushStatus, setPushStatus] = useState<'subscribed' | 'not_subscribed' | 'unsupported'>('not_subscribed')
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushError, setPushError] = useState('')
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
+
   useEffect(() => {
     if (user) {
       setFullName(user.fullName)
       setMobile(user.mobile ?? '')
     }
   }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    getPushSubscriptionStatus().then(setPushStatus)
+    api.getNotificationPreferences().then(({ preferences }) => setPreferences(preferences)).catch(() => {})
+  }, [user])
+
+  async function togglePush() {
+    setPushBusy(true)
+    setPushError('')
+    if (pushStatus === 'subscribed') {
+      await unsubscribeFromPush()
+      setPushStatus('not_subscribed')
+    } else {
+      const result = await subscribeToPush()
+      if (result.ok) {
+        setPushStatus('subscribed')
+      } else {
+        setPushError(
+          result.reason === 'unsupported' ? ar.notifications.unsupported
+          : result.reason === 'not_configured' ? ar.notifications.notConfigured
+          : result.reason === 'permission_denied' ? ar.notifications.permissionDenied
+          : ar.notifications.genericError
+        )
+      }
+    }
+    setPushBusy(false)
+  }
+
+  async function updatePreference(key: keyof NotificationPreferences, value: boolean) {
+    if (!preferences) return
+    const next = { ...preferences, [key]: value }
+    setPreferences(next)
+    try {
+      await api.setNotificationPreferences(next)
+    } catch {
+      setPreferences(preferences)
+    }
+  }
 
   if (!user && !authLoading) return null
   if (!user) return null
@@ -65,6 +111,35 @@ export function ProfilePage() {
       {error && <div className="admin-form-error">{error}</div>}
       {success && <div className="admin-form-success">{success}</div>}
       <button className="primary-button" disabled={saving} onClick={save}>{ar.profile.save}</button>
+
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #e5e9e6' }}>
+        <strong style={{ display: 'block', marginBottom: 10 }}>{ar.notifications.title}</strong>
+        {pushStatus === 'unsupported' ? (
+          <div className="admin-form-help">{ar.notifications.unsupported}</div>
+        ) : (
+          <>
+            <button className="secondary-button" disabled={pushBusy} onClick={togglePush}>
+              {pushStatus === 'subscribed' ? ar.notifications.disableButton : ar.notifications.enableButton}
+            </button>
+            {pushStatus === 'subscribed' && <div className="admin-form-help" style={{ marginTop: 6 }}>{ar.notifications.enabledNote}</div>}
+            {pushError && <div className="admin-form-error" style={{ marginTop: 6 }}>{pushError}</div>}
+          </>
+        )}
+
+        {preferences && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={preferences.orderUpdates} onChange={e => updatePreference('orderUpdates', e.target.checked)} />
+              {ar.notifications.orderUpdatesLabel}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={preferences.promotions} onChange={e => updatePreference('promotions', e.target.checked)} />
+              {ar.notifications.promotionsLabel}
+            </label>
+          </div>
+        )}
+      </div>
+
       <button className="secondary-button" onClick={() => navigate('/account')} style={{ marginTop: 8 }}>{ar.common.back}</button>
     </div>
   )
