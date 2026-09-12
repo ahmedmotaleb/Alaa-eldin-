@@ -21,6 +21,7 @@ export interface CheckoutInput {
   customer: CheckoutCustomerInput
   items: CheckoutItemInput[]
   discountCode?: string
+  deliveryInstructions?: string
 }
 
 export type CheckoutValidationError =
@@ -34,6 +35,7 @@ export type CheckoutValidationError =
   | 'payment_method_not_supported'
   | 'invalid_items'
   | 'invalid_discount_code'
+  | 'delivery_instructions_too_long'
 
 export type CheckoutValidationResult =
   | { ok: true, data: CheckoutInput }
@@ -44,6 +46,7 @@ const NAME_MIN_LENGTH = 2
 const NAME_MAX_LENGTH = 100
 const ADDRESS_MIN_LENGTH = 5
 const ADDRESS_MAX_LENGTH = 300
+const DELIVERY_INSTRUCTIONS_MAX_LENGTH = 300
 
 export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
   const b = body as Record<string, unknown> | null
@@ -101,6 +104,12 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'invalid_discount_code' }
   }
 
+  // اختياري تماماً — نص حر من العميل (مثال: "اترك عند الباب")، غير مطلوب صحته زي العنوان.
+  const rawDeliveryInstructions = typeof b.deliveryInstructions === 'string' ? b.deliveryInstructions.trim() : ''
+  if (rawDeliveryInstructions.length > DELIVERY_INSTRUCTIONS_MAX_LENGTH) {
+    return { ok: false, error: 'delivery_instructions_too_long' }
+  }
+
   // يدمج أي عناصر بنفس productId مكرّرة (بدل ما يرفض الطلب أو يقفل نفس المنتج مرتين).
   const mergedItems = new Map<string, number>()
   for (const item of b.items as CheckoutItemInput[]) {
@@ -119,7 +128,8 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
         address: rawAddress
       },
       items: Array.from(mergedItems, ([productId, quantity]) => ({ productId, quantity })),
-      discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined
+      discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined,
+      deliveryInstructions: rawDeliveryInstructions || undefined
     }
   }
 }

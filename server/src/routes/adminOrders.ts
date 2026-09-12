@@ -8,6 +8,8 @@ import { recordOrderStatusChange, listOrderStatusHistoryForOrders } from '../ser
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { notifyOrderStatusChange } from '../services/pushService.js'
+import { setItemPickedStatus, isValidPickedStatus } from '../services/orderPickingService.js'
+import { listOrderNotes, addOrderNote } from '../services/orderNotesService.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
@@ -32,6 +34,7 @@ interface OrderRow {
   riderId: string | null
   riderName: string | null
   settlementId: number | null
+  deliveryInstructions: string
 }
 
 function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
@@ -57,7 +60,8 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
     discountAmount: row.discountAmount,
     riderId: row.riderId,
     riderName: row.riderName,
-    settlementId: row.settlementId
+    settlementId: row.settlementId,
+    deliveryInstructions: row.deliveryInstructions || undefined
   }
 }
 
@@ -67,7 +71,7 @@ const SELECT_ORDER = `
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
          o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
-         u.email as "accountEmail"
+         o.delivery_instructions as "deliveryInstructions", u.email as "accountEmail"
   FROM orders o LEFT JOIN users u ON u.id = o.user_id
        LEFT JOIN riders r ON r.id = o.rider_id
 `
@@ -133,7 +137,8 @@ adminOrdersRouter.get('/:id', async (req, res) => {
     return
   }
   const itemsByOrder = await fetchItemsForOrders([row.id])
-  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []) })
+  const notes = await listOrderNotes(row.id)
+  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []), notes })
 })
 
 adminOrdersRouter.patch('/:id/status', async (req, res) => {
@@ -218,4 +223,46 @@ adminOrdersRouter.patch('/:id/rider', async (req, res) => {
     return
   }
   res.status(204).end()
+})
+
+// جودة التجهيز — تسجيل حالة كل صنف فعلياً وقت التجهيز (تم/استبدال/غير متوفر) بدل قايمة
+// تحقق محلية بتتمسح مع أي refresh. الحالة دي ظاهرة للعميل كمان (راجع orderItems.ts).
+adminOrdersRouter.patch('/:id/items/:itemId/pick', async (req, res) => {
+  const { status, note } = req.body ?? {}
+  if (!isValidPickedStatus(status)) {
+    res.status(400).json({ error: 'invalid_picked_status' })
+    return
+  }
+  const itemId = Number(req.params.itemId)
+  if (!Number.isInteger(itemId)) {
+    res.status(400).json({ error: 'invalid_item_id' })
+    return
+  }
+
+  const result = await setItemPickedStatus(String(req.params.id), itemId, status, typeof note === 'string' ? note : '')
+  if ('error' in result) {
+    res.status(404).json({ error: result.error })
+    return
+  }
+  res.status(204).end()
+})
+
+// ملاحظات داخلية على الطلب — مش مرئية للعميل أبداً (عكس delivery_instructions اللي هو
+// كاتبها بنفسه وقت الطلب).
+adminOrdersRouter.get('/:id/notes', async (req, res) => {
+  res.json({ notes: await listOrderNotes(String(req.params.id)) })
+})
+
+adminOrdersRouter.post('/:id/notes', async (req, res) => {
+  const { note } = req.body ?? {}
+  if (typeof note !== 'string' || !note.trim()) {
+    res.status(400).json({ error: 'note_required' })
+    return
+  }
+  const result = await addOrderNote(String(req.params.id), note, req.user!.id)
+  if ('error' in result) {
+    res.status(404).json({ error: result.error })
+    return
+  }
+  res.status(201).json({ note: result })
 })

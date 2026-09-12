@@ -150,6 +150,9 @@ export const ar = {
     policyLink: 'سياسة الاسترجاع والاستبدال',
     savedAddressTitle: 'اختر عنوان التوصيل',
     newAddressOption: '+ عنوان جديد',
+    deliveryInstructionsLabel: 'تعليمات التوصيل (اختياري)',
+    deliveryInstructionsPlaceholder: 'مثال: اتصل قبل الوصول، الشقة الثالثة، اترك الطلب مع البواب...',
+    deliveryInstructionsError: 'تعليمات التوصيل طويلة أوي، اختصرها شوية',
     submit: 'تأكيد الطلب وإرسال واتساب'
   },
 
@@ -164,7 +167,8 @@ export const ar = {
     trackOrder: 'تتبع الطلب',
     backHome: 'العودة للرئيسية',
     whatsappNote: 'تم إرسال نسخة من الطلب على واتساب المتجر — تقدر تعدّل أي حاجة قبل الخروج للتوصيل.',
-    guestDetailsUnavailable: 'تفاصيل الطلب متاحة مباشرة بعد إتمامه فقط. لو محتاج تتابع طلبك، تقدر تسجّل دخول لحسابك أو تكلمنا على واتساب.'
+    guestDetailsUnavailable: 'تفاصيل الطلب متاحة مباشرة بعد إتمامه فقط. لو محتاج تتابع طلبك، تقدر تسجّل دخول لحسابك أو تكلمنا على واتساب.',
+    deliveryInstructions: 'تعليمات التوصيل'
   },
 
   tracking: {
@@ -180,7 +184,10 @@ export const ar = {
       { title: 'خرج للتوصيل', time: 'المندوب في الطريق' },
       { title: 'تم التسليم', time: 'الدفع عند الاستلام' }
     ],
-    orderCancelled: 'تم إلغاء الطلب'
+    orderCancelled: 'تم إلغاء الطلب',
+    itemSubstituted: 'تم استبدال هذا الصنف',
+    itemUnavailable: 'هذا الصنف لم يتوفر ولم يتم تجهيزه',
+    itemNote: (note: string) => `ملاحظة: ${note}`
   },
 
   account: {

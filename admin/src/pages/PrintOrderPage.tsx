@@ -48,6 +48,7 @@ export function PrintOrderPage() {
           <div><strong>الهاتف:</strong> {order.customer.mobile}</div>
           <div><strong>المحافظة:</strong> {order.customer.governorate}</div>
           <div><strong>العنوان:</strong> {order.customer.address}</div>
+          {order.deliveryInstructions && <div><strong>تعليمات التوصيل:</strong> {order.deliveryInstructions}</div>}
         </div>
 
         <table className="print-order-table">

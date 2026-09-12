@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminRider, type WhatsAppTemplate } from '../utils/api'
+import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminRider, type PickedStatus, type WhatsAppTemplate } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
 import { toWhatsAppInternational } from '../utils/phone'
 import { ALLOWED_NEXT_STATUSES, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '../orderStatus'
+
+const PICKED_STATUS_LABEL: Record<PickedStatus, string> = {
+  pending: 'لسه', picked: 'تم', substituted: 'استبدال', unavailable: 'غير متوفر'
+}
+const PICKED_STATUS_TINT: Record<PickedStatus, { bg: string, fg: string }> = {
+  pending: { bg: '#F1F4F2', fg: '#68746B' },
+  picked: { bg: '#EAF8EF', fg: '#12813C' },
+  substituted: { bg: '#FFF3E3', fg: '#B4740E' },
+  unavailable: { bg: '#FFF0EF', fg: '#B42318' }
+}
 
 export function OrderDrawer({
   order,
@@ -26,11 +36,34 @@ export function OrderDrawer({
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState('')
+  const [notes, setNotes] = useState<AdminOrderNote[]>([])
+  const [newNote, setNewNote] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
 
   useEffect(() => {
     api.getWhatsAppStatus().then(({ configured }) => setWaConfigured(configured)).catch(() => setWaConfigured(false))
     api.listWhatsAppTemplates().then(({ templates }) => setTemplates(templates.filter(t => t.active))).catch(() => {})
   }, [])
+
+  function loadNotes() {
+    api.listOrderNotes(order.id).then(({ notes }) => setNotes(notes)).catch(() => {})
+  }
+
+  useEffect(loadNotes, [order.id])
+
+  async function submitNote() {
+    if (!newNote.trim()) return
+    setAddingNote(true)
+    try {
+      await api.addOrderNote(order.id, newNote)
+      setNewNote('')
+      loadNotes()
+    } catch {
+      window.alert('تعذر إضافة الملاحظة')
+    } finally {
+      setAddingNote(false)
+    }
+  }
 
   function openWhatsApp() {
     const text = `مرحباً ${order.customer.fullName}، بخصوص طلبك ${order.orderNumber} من علاء الدين.`
@@ -73,6 +106,9 @@ export function OrderDrawer({
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">🗺️</span><span>{order.customer.governorate}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📍</span><span>{order.customer.address}</span></div>
           <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">💵</span><span>{order.paymentMethod === 'COD' ? 'الدفع عند الاستلام' : order.paymentMethod}</span></div>
+          {order.deliveryInstructions && (
+            <div className="admin-drawer-info-row"><span className="admin-drawer-info-icon">📝</span><span>{order.deliveryInstructions}</span></div>
+          )}
         </div>
 
         <div className="admin-drawer-card" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -108,12 +144,20 @@ export function OrderDrawer({
 
         <div className="admin-drawer-card">
           <div className="admin-drawer-card-title">المنتجات</div>
-          {order.items.map(item => (
-            <div className="admin-drawer-line" key={item.productId}>
-              <span style={{ color: '#4C5B51' }}>{item.name} × {item.quantity}</span>
-              <span>{formatMoney(item.lineTotal)}</span>
-            </div>
-          ))}
+          {order.items.map(item => {
+            const tint = PICKED_STATUS_TINT[item.pickedStatus]
+            return (
+              <div className="admin-drawer-line" key={item.productId}>
+                <span style={{ color: '#4C5B51', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {item.name} × {item.quantity}
+                  {item.pickedStatus !== 'pending' && (
+                    <span className="admin-pill" style={{ background: tint.bg, color: tint.fg, fontSize: 10 }}>{PICKED_STATUS_LABEL[item.pickedStatus]}</span>
+                  )}
+                </span>
+                <span>{formatMoney(item.lineTotal)}</span>
+              </div>
+            )
+          })}
         </div>
 
         <div className="admin-drawer-card">
@@ -165,6 +209,27 @@ export function OrderDrawer({
               الطلب في حالة نهائية ({ORDER_STATUS_LABEL[order.status]}) — مفيش إجراء إضافي متاح.
             </div>
           )}
+        </div>
+
+        <div className="admin-drawer-card">
+          <div className="admin-drawer-card-title">ملاحظات داخلية (مش مرئية للعميل)</div>
+          {notes.map(n => (
+            <div key={n.id} className="admin-drawer-line" style={{ display: 'block', padding: '8px 0' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{n.note}</div>
+              <div style={{ fontSize: 10.5, color: '#8A948C', marginTop: 2 }}>{n.createdByName ?? 'مستخدم محذوف'} — {formatDateTime(n.createdAt)}</div>
+            </div>
+          ))}
+          {notes.length === 0 && <div style={{ fontSize: 12, color: '#8A948C' }}>مفيش ملاحظات بعد</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <input
+              type="text"
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="أضف ملاحظة..."
+              style={{ flex: 1, border: '1px solid #dce4de', borderRadius: 11, padding: '8px 10px', fontWeight: 600, fontSize: 12.5, outline: 'none', background: '#fbfcfb', color: '#17221a' }}
+            />
+            <button className="admin-category-card-btn" disabled={!newNote.trim() || addingNote} onClick={submitNote}>إضافة</button>
+          </div>
         </div>
       </div>
     </div>

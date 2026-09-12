@@ -88,6 +88,8 @@ export interface CustomerDetails {
   address: string
 }
 
+export type PickedStatus = 'pending' | 'picked' | 'substituted' | 'unavailable'
+
 export interface OrderLine {
   productId: string
   name: string
@@ -95,6 +97,8 @@ export interface OrderLine {
   unitPrice: number
   quantity: number
   lineTotal: number
+  pickedStatus: PickedStatus
+  pickedNote: string
 }
 
 export type OrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
@@ -113,4 +117,5 @@ export interface Order {
   status: OrderStatus
   discountCode?: string
   discountAmount: number
+  deliveryInstructions?: string
 }

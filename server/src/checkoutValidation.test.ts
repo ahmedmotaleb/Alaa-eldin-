@@ -176,4 +176,21 @@ describe('validateCheckoutInput', () => {
     const result = validateCheckoutInput(withCustomer({}))
     expect(result.ok).toBe(true)
   })
+
+  it('accepts a request with no delivery instructions at all', () => {
+    const result = validateCheckoutInput(withCustomer({}))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.deliveryInstructions).toBeUndefined()
+  })
+
+  it('trims and accepts free-text delivery instructions', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryInstructions: '  اترك الطلب عند الباب  ' })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.deliveryInstructions).toBe('اترك الطلب عند الباب')
+  })
+
+  it('rejects delivery instructions over the max length', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryInstructions: 'a'.repeat(301) })
+    expect(result).toEqual({ ok: false, error: 'delivery_instructions_too_long' })
+  })
 })

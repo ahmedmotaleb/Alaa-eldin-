@@ -52,6 +52,8 @@ export interface ApiOrderItem {
   unitPrice: number
   quantity: number
   lineTotal: number
+  pickedStatus: 'pending' | 'picked' | 'substituted' | 'unavailable'
+  pickedNote: string
 }
 
 export interface ApiOrder {
@@ -72,6 +74,7 @@ export interface ApiOrder {
   // بيتحدد بس في رد تتبّع الطلب (GET /orders/:orderNumber أو /track/:orderNumber) — راجع
   // TrackingPage.tsx. صف واحد لكل انتقال حالة فعلي، بترتيب زمني تصاعدي.
   statusHistory?: { fromStatus: string | null, toStatus: string, source: string, createdAt: string }[]
+  deliveryInstructions?: string
 }
 
 export interface ApiAddress {
@@ -346,6 +349,7 @@ export const api = {
     customer: { fullName: string, mobile: string, governorate: string, address: string }
     items: { productId: string, quantity: number }[]
     discountCode?: string
+    deliveryInstructions?: string
   }, idempotencyKey: string) =>
     request<{ order: ApiOrder }>('/orders', {
       method: 'POST',

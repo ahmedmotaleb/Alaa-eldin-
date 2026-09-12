@@ -130,6 +130,8 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return query ? `?${query}` : ''
 }
 
+export type PickedStatus = 'pending' | 'picked' | 'substituted' | 'unavailable'
+
 export interface AdminOrderItem {
   id: number
   productId: string
@@ -138,9 +140,20 @@ export interface AdminOrderItem {
   unitPrice: number
   quantity: number
   lineTotal: number
+  pickedStatus: PickedStatus
+  pickedNote: string
 }
 
 export type AdminOrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
+
+export interface AdminOrderNote {
+  id: number
+  orderId: string
+  note: string
+  createdByUserId: string | null
+  createdByName: string | null
+  createdAt: string
+}
 
 export interface AdminOrder {
   id: string
@@ -160,6 +173,7 @@ export interface AdminOrder {
   riderId: string | null
   riderName: string | null
   settlementId: number | null
+  deliveryInstructions?: string
 }
 
 export interface RiderOrder {
@@ -771,11 +785,16 @@ export const api = {
   me: () => request<{ user: AdminUser }>('/auth/me'),
   listOrders: (params: { limit?: number } = {}) =>
     request<{ orders: AdminOrder[] }>(`/admin/orders${params.limit ? `?limit=${params.limit}` : ''}`),
-  getOrder: (id: string) => request<{ order: AdminOrder }>(`/admin/orders/${encodeURIComponent(id)}`),
+  getOrder: (id: string) => request<{ order: AdminOrder, notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(id)}`),
   updateOrderStatus: (id: string, status: AdminOrderStatus) =>
     request<void>(`/admin/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   setOrderRider: (id: string, riderId: string | null) =>
     request<void>(`/admin/orders/${encodeURIComponent(id)}/rider`, { method: 'PATCH', body: JSON.stringify({ riderId }) }),
+  setOrderItemPickedStatus: (orderId: string, itemId: number, status: PickedStatus, note?: string) =>
+    request<void>(`/admin/orders/${encodeURIComponent(orderId)}/items/${itemId}/pick`, { method: 'PATCH', body: JSON.stringify({ status, note }) }),
+  listOrderNotes: (orderId: string) => request<{ notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`),
+  addOrderNote: (orderId: string, note: string) =>
+    request<{ note: AdminOrderNote }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
   listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string } = {}) =>
     request<{ products: AdminProduct[] } & Partial<PageInfo>>(`/admin/products${buildQuery(params)}`),
   getProduct: (id: string) => request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`),

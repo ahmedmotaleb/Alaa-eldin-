@@ -47,12 +47,30 @@ export function ConfirmationPage() {
         <div><div className="order-id-label">{ar.confirmation.expectedDelivery}</div><div className="order-id-value small">{slot}</div></div>
       </div>
 
+      {order.deliveryInstructions && (
+        <div className="order-id-card">
+          <div><div className="order-id-label">{ar.confirmation.deliveryInstructions}</div><div className="order-id-value small">{order.deliveryInstructions}</div></div>
+        </div>
+      )}
+
       <div className="invoice-card">
         <h2>{ar.confirmation.invoiceTitle}</h2>
         {order.items.map(item => (
-          <div className="invoice-line" key={item.productId}>
-            <span>{item.name} × {item.quantity}</span>
-            <span>{formatMoney(item.lineTotal)}</span>
+          <div className="invoice-line" key={item.productId} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{item.name} × {item.quantity}</span>
+              <span>{formatMoney(item.lineTotal)}</span>
+            </div>
+            {item.pickedStatus === 'substituted' && (
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B4740E' }}>
+                {ar.tracking.itemSubstituted}{item.pickedNote ? ` — ${ar.tracking.itemNote(item.pickedNote)}` : ''}
+              </span>
+            )}
+            {item.pickedStatus === 'unavailable' && (
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318' }}>
+                {ar.tracking.itemUnavailable}{item.pickedNote ? ` — ${ar.tracking.itemNote(item.pickedNote)}` : ''}
+              </span>
+            )}
           </div>
         ))}
         <hr />

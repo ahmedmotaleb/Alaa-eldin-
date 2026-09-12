@@ -31,6 +31,7 @@ export function CheckoutPage() {
   const { deliveryZones, deliverySlots } = useCatalog()
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
+  const [deliveryInstructions, setDeliveryInstructions] = useState('')
   const [slot, setSlot] = useState<string>(() => deliverySlots[0]?.id ?? '')
   const [touched, setTouched] = useState(false)
   const [apiError, setApiError] = useState('')
@@ -144,7 +145,8 @@ export function CheckoutPage() {
         paymentMethod: 'COD',
         customer,
         items,
-        discountCode: discount?.code
+        discountCode: discount?.code,
+        deliveryInstructions: deliveryInstructions.trim() || undefined
       }, idempotencyKey)
 
       const order = created as unknown as Order
@@ -237,6 +239,15 @@ export function CheckoutPage() {
           />
         </label>
         {addressError && <div className="field-error">{addressError}</div>}
+        <label>{ar.checkout.deliveryInstructionsLabel}
+          <textarea
+            value={deliveryInstructions}
+            onChange={e => setDeliveryInstructions(e.target.value)}
+            placeholder={ar.checkout.deliveryInstructionsPlaceholder}
+            maxLength={300}
+            rows={2}
+          />
+        </label>
       </div>
 
       <div className="form-card">

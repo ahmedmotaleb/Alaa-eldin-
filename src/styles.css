@@ -350,8 +350,8 @@ h1, h2, h3, p { margin: 0; }
 .form-card { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 15px; display: flex; flex-direction: column; gap: 11px; }
 .form-card h2 { font-weight: 900; font-size: 15.5px; }
 .form-card label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 12.5px; color: #3b4a40; }
-.form-card input, .form-card select { border: 1px solid #dce4de; border-radius: 12px; padding: 11px 12px; font-weight: 600; font-size: 14px; outline: none; background: #fbfcfb; color: #17221a; }
-.form-card input:focus, .form-card select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.10); }
+.form-card input, .form-card select, .form-card textarea { border: 1px solid #dce4de; border-radius: 12px; padding: 11px 12px; font-weight: 600; font-size: 14px; outline: none; background: #fbfcfb; color: #17221a; font-family: inherit; resize: vertical; }
+.form-card input:focus, .form-card select:focus, .form-card textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.10); }
 .slot-list { display: flex; flex-direction: column; gap: 8px; }
 .slot-option { border: 1.5px solid var(--border); background: #fff; border-radius: 14px; padding: 12px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: start; }
 .slot-option.active { border-color: var(--green); background: #f4fbf6; }

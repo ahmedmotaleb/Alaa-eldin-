@@ -4,6 +4,7 @@ import { useAuth } from '../store/AuthContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { getGuestTrackingToken } from '../utils/guestTracking'
 import { formatTime } from '../utils/format'
+import { formatMoney } from '../utils/money'
 import type { OrderStatus } from '../types/models'
 import { ar } from '../i18n/ar'
 
@@ -60,8 +61,43 @@ export function TrackingPage() {
   const cancelledAtIndex = isCancelled ? STATUSES.indexOf((cancelledEntry?.fromStatus ?? '') as OrderStatus) : -1
   const lastDoneIndex = isCancelled ? cancelledAtIndex : statusIndex
 
+  const hasPickingIssues = order.items.some(item => item.pickedStatus === 'substituted' || item.pickedStatus === 'unavailable')
+
   return (
     <div className="tracking-page">
+      {order.deliveryInstructions && (
+        <div className="courier-card" style={{ background: '#EAF2FF' }}>
+          <div className="courier-info">
+            <div className="courier-name">📝 {ar.confirmation.deliveryInstructions}</div>
+            <div className="courier-note">{order.deliveryInstructions}</div>
+          </div>
+        </div>
+      )}
+
+      {hasPickingIssues && (
+        <div className="invoice-card">
+          <h2>{ar.confirmation.invoiceTitle}</h2>
+          {order.items.map(item => (
+            <div className="invoice-line" key={item.productId} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>{item.name} × {item.quantity}</span>
+                <span>{formatMoney(item.lineTotal)}</span>
+              </div>
+              {item.pickedStatus === 'substituted' && (
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B4740E' }}>
+                  {ar.tracking.itemSubstituted}{item.pickedNote ? ` — ${ar.tracking.itemNote(item.pickedNote)}` : ''}
+                </span>
+              )}
+              {item.pickedStatus === 'unavailable' && (
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318' }}>
+                  {ar.tracking.itemUnavailable}{item.pickedNote ? ` — ${ar.tracking.itemNote(item.pickedNote)}` : ''}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="tracking-map">
         <div>
           <div className="tracking-map-emoji">🛵</div>

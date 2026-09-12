@@ -46,6 +46,7 @@ interface OrderRow {
   discountAmount: number
   requestFingerprint: string | null
   guestTrackingToken: string | null
+  deliveryInstructions: string
 }
 
 export interface SerializedOrder {
@@ -68,13 +69,14 @@ export interface SerializedOrder {
   // بيتحدد بس في مسارات التتبع (getOrderByNumberForUser/getOrderByNumberForGuestToken) —
   // مش في كل استدعاء لـ serializeOrderRow، عشان قائمة الطلبات العادية ما تحتاجش التاريخ الكامل.
   statusHistory?: OrderStatusHistoryEntry[]
+  deliveryInstructions?: string
 }
 
 const SELECT_ORDER_FIELDS = `
   id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
-  request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken"
+  request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions"
 `
 
 async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
@@ -98,7 +100,8 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
-    guestTrackingToken: row.guestTrackingToken ?? undefined
+    guestTrackingToken: row.guestTrackingToken ?? undefined,
+    deliveryInstructions: row.deliveryInstructions || undefined
   }
 }
 
@@ -241,13 +244,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
              id, order_number, user_id, created_at, delivery_slot, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
              subtotal, delivery_fee, total, status, discount_code, discount_amount,
-             idempotency_key, request_fingerprint, guest_tracking_token
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17,$18)`,
+             idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17,$18,$19)`,
           [
             id, orderNumber, userId, createdAt, input.deliverySlot, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
             subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
-            idempotencyKey, fingerprint, guestTrackingToken
+            idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? ''
           ]
         )
       } catch (err) {
@@ -365,7 +368,8 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
     total: row.total,
     status: row.status,
     discountCode: row.discountCode ?? undefined,
-    discountAmount: row.discountAmount
+    discountAmount: row.discountAmount,
+    deliveryInstructions: row.deliveryInstructions || undefined
   }))
 
   return { orders, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } }
