@@ -5,8 +5,18 @@ import { pool } from '../db.js'
 import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, requireAuth, SESSION_COOKIE } from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
 import { isValidEgyptianMobile } from '../phone.js'
+import { isStrongPassword } from '../passwordPolicy.js'
 import { publicOrigin } from '../publicUrl.js'
 import { logEvent, logWarn } from '../logger.js'
+import {
+  isTwoFactorEnabled,
+  createPendingTwoFactorLogin,
+  verifyPendingTwoFactorLogin,
+  startTwoFactorSetup,
+  confirmTwoFactorSetup,
+  disableTwoFactor,
+  countRemainingBackupCodes
+} from '../services/twoFactorService.js'
 
 export const authRouter = Router()
 
@@ -42,7 +52,7 @@ authRouter.post('/register', async (req, res) => {
     res.status(400).json({ error: 'invalid_email' })
     return
   }
-  if (password.length < 6) {
+  if (!isStrongPassword(password)) {
     res.status(400).json({ error: 'weak_password' })
     return
   }
@@ -86,12 +96,100 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
     return
   }
 
+  if (await isTwoFactorEnabled(row.id)) {
+    const pendingToken = await createPendingTwoFactorLogin(row.id)
+    res.json({ requiresTwoFactor: true, pendingToken })
+    return
+  }
+
   const { token, expires } = await createSession(row.id)
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
     user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role }
   })
+})
+
+// المرحلة الثانية من تسجيل الدخول للحسابات المفعّل عليها 2FA — بعد التحقق من كلمة المرور
+// وإرجاع pendingToken من /login، العميل بيبعت هنا كود TOTP (أو كود احتياطي) عشان الجلسة
+// الفعلية تتعمل. نفس الـ rate limit بتاع تسجيل الدخول العادي عشان يمنع تخمين الكود آلياً.
+authRouter.post('/2fa/verify-login', loginRateLimit, async (req, res) => {
+  const { pendingToken, code } = req.body ?? {}
+  if (typeof pendingToken !== 'string' || typeof code !== 'string') {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+
+  const result = await verifyPendingTwoFactorLogin(pendingToken, code)
+  if ('error' in result) {
+    logWarn('two_factor_login_failed', { reason: result.error })
+    res.status(401).json({ error: result.error })
+    return
+  }
+
+  const { rows } = await pool.query<{ id: string, email: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin' }>(
+    'SELECT id, email, full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role FROM users WHERE id = $1',
+    [result.userId]
+  )
+  const row = rows[0]
+  if (!row) {
+    res.status(401).json({ error: 'invalid_or_expired_login' })
+    return
+  }
+
+  const { token, expires } = await createSession(row.id)
+  setSessionCookie(res, token, expires)
+  logEvent('login_success', { userId: row.id, twoFactor: true })
+  res.json({
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role }
+  })
+})
+
+// تفعيل المصادقة الثنائية — الخطوة الأولى: توليد سر جديد وQR code. المستخدم لازم يأكّد
+// بكود صحيح عبر /2fa/confirm قبل ما تتفعّل فعلياً (2fa لسه totp_enabled=0 لحد كده).
+authRouter.post('/2fa/setup', requireAuth, async (req, res) => {
+  const setup = await startTwoFactorSetup(req.user!.id, req.user!.email)
+  res.json(setup)
+})
+
+authRouter.post('/2fa/confirm', requireAuth, async (req, res) => {
+  const { token } = req.body ?? {}
+  if (typeof token !== 'string') {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+  const result = await confirmTwoFactorSetup(req.user!.id, token)
+  if ('error' in result) {
+    res.status(400).json({ error: result.error })
+    return
+  }
+  logEvent('two_factor_enabled', { userId: req.user!.id })
+  res.json({ backupCodes: result.backupCodes })
+})
+
+// تعطيل المصادقة الثنائية — بيتطلب كلمة المرور الحالية كتأكيد هوية إضافي قبل التعطيل.
+authRouter.post('/2fa/disable', requireAuth, async (req, res) => {
+  const { password } = req.body ?? {}
+  if (typeof password !== 'string') {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+
+  const { rows } = await pool.query<{ passwordHash: string }>('SELECT password_hash as "passwordHash" FROM users WHERE id = $1', [req.user!.id])
+  if (!rows[0] || !verifyPassword(password, rows[0].passwordHash)) {
+    res.status(401).json({ error: 'invalid_password' })
+    return
+  }
+
+  await disableTwoFactor(req.user!.id)
+  logEvent('two_factor_disabled', { userId: req.user!.id })
+  res.status(204).end()
+})
+
+authRouter.get('/2fa/status', requireAuth, async (req, res) => {
+  const enabled = await isTwoFactorEnabled(req.user!.id)
+  const remainingBackupCodes = enabled ? await countRemainingBackupCodes(req.user!.id) : 0
+  res.json({ enabled, remainingBackupCodes })
 })
 
 // نفس الرد بالظبط سواء كان الإيميل مسجّل أو لأ، عشان محدش يقدر يكتشف إيميلات عملاء حقيقيين
@@ -119,7 +217,7 @@ authRouter.post('/reset-password', resetPasswordRateLimit, async (req, res) => {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
-  if (password.length < 6) {
+  if (!isStrongPassword(password)) {
     res.status(400).json({ error: 'weak_password' })
     return
   }

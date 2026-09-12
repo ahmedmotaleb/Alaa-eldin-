@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -69,6 +70,31 @@ logEvent('database_connected')
 
 const app = express()
 app.disable('x-powered-by')
+
+// CSP مخصص لطبيعة المشروع الفعلية: خطين ثابتين (المتجر واللوحة) بيتصلوا بالـ API من نفس
+// الأصل، مفيش أي كود inline (كل شيء JS مبني كملفات منفصلة عن طريق Vite)، وصور المنتجات من
+// Cloudinary + خط Tajawal من Google Fonts هما المصدرين الخارجيين الوحيدين المستخدمين فعلياً.
+// COEP متعطّل عمداً — تفعيله ممكن يمنع تحميل صور Cloudinary لو مفيش هيدر CORP منها.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com'],
+      connectSrc: ["'self'"],
+      manifestSrc: ["'self'"],
+      workerSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}))
+
 app.use(attachRequestId)
 app.use(apiRequestLogger)
 
@@ -105,6 +131,20 @@ app.use(seoRouter)
 app.use(express.json())
 app.use(cookieParser())
 app.use(attachUser)
+
+// حماية CSRF: الكوكيز نفسها SameSite=Lax فعلياً (مش policy إضافية هنا) بيمنع المتصفح من
+// إرفاقها مع أي طلب POST/PATCH/DELETE... جاي من موقع تاني أصلاً — الفحص ده طبقة صريحة
+// إضافية (defense in depth) بترفض أي طلب تغيير حالة لو هيدر Origin موجود ومش من الأصل
+// المسموح، حتى لو المتصفح (قديم أو مُعدّل) سمح بإرسال الكوكيز. طلب من غير هيدر Origin خالص
+// (curl، تطبيقات native) بيتقبل زي ما كان دايماً — نفس منطق إعدادات CORS فوق بالظبط.
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+app.use('/api', (req, res, next) => {
+  if (SAFE_METHODS.has(req.method)) { next(); return }
+  const origin = req.headers.origin
+  if (!origin) { next(); return }
+  if (ALLOWED_ORIGINS.has(origin) || !isProduction) { next(); return }
+  res.status(403).json({ error: 'invalid_origin' })
+})
 
 // كل استجابات /api/* ديناميكية أو خاصة بمستخدم (سلة، دفع، طلبات، محفظة، تسجيل دخول، مخزون
 // لحظي) — ممنوع تتخزن في أي كاش وسيط (متصفح، CDN) حتى لو كانت الاستجابة ناجحة (200).

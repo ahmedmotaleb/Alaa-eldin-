@@ -661,9 +661,27 @@ export interface AnalyticsHomeSummary {
   topProducts: AnalyticsProductRevenue[]
 }
 
+export interface TwoFactorSetup {
+  secret: string
+  qrCodeDataUrl: string
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean
+  remainingBackupCodes: number
+}
+
 export const api = {
   login: (body: { email: string, password: string }) =>
-    request<{ user: AdminUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ user: AdminUser } | { requiresTwoFactor: true, pendingToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  verifyTwoFactorLogin: (body: { pendingToken: string, code: string }) =>
+    request<{ user: AdminUser }>('/auth/2fa/verify-login', { method: 'POST', body: JSON.stringify(body) }),
+  twoFactorStatus: () => request<TwoFactorStatus>('/auth/2fa/status'),
+  startTwoFactorSetup: () => request<TwoFactorSetup>('/auth/2fa/setup', { method: 'POST' }),
+  confirmTwoFactorSetup: (token: string) =>
+    request<{ backupCodes: string[] }>('/auth/2fa/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
+  disableTwoFactor: (password: string) =>
+    request<void>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: AdminUser }>('/auth/me'),
   listOrders: (params: { limit?: number } = {}) =>
