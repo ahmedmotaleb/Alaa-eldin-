@@ -76,6 +76,30 @@ describe('customerReturnService', () => {
     expect(result).toEqual({ error: 'exceeds_sold_quantity', orderItemId })
   })
 
+  it('rejects a return against an order id that does not exist', async () => {
+    const result = await createCustomerReturn(
+      { orderId: 'no-such-order', items: [{ orderItemId, productId: PRODUCT_ID, quantity: 1 }] },
+      null
+    )
+    expect(result).toEqual({ error: 'order_not_found' })
+  })
+
+  it('rejects a return whose order item id does not belong to the given order/product', async () => {
+    const result = await createCustomerReturn(
+      { orderId: ORDER_ID, items: [{ orderItemId: orderItemId + 999, productId: PRODUCT_ID, quantity: 1 }] },
+      null
+    )
+    expect(result).toEqual({ error: 'order_item_mismatch', orderItemId: orderItemId + 999 })
+  })
+
+  it('rejects a return whose order item id belongs to the order but a different product', async () => {
+    const result = await createCustomerReturn(
+      { orderId: ORDER_ID, items: [{ orderItemId, productId: 'some-other-product', quantity: 1 }] },
+      null
+    )
+    expect(result).toEqual({ error: 'order_item_mismatch', orderItemId })
+  })
+
   it('rejects a second return that would push cumulative quantity over the sold amount', async () => {
     const first = await createCustomerReturn(
       { orderId: ORDER_ID, items: [{ orderItemId, productId: PRODUCT_ID, quantity: 3 }] },

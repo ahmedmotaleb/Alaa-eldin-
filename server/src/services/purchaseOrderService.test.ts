@@ -184,4 +184,17 @@ describe('purchaseOrderService', () => {
     expect(canTransitionPurchaseOrderStatus('received', 'cancelled')).toBe(false)
     expect(canTransitionPurchaseOrderStatus('draft', 'draft')).toBe(true)
   })
+
+  it('returns not_found when editing a purchase order id that does not exist', async () => {
+    const result = await updateDraftPurchaseOrder('no-such-po', {
+      supplierId: SUPPLIER_ID,
+      items: [{ productId: PRODUCT_ID, orderedQty: 1, unitCost: 5 }]
+    })
+    expect(result).toEqual({ error: 'not_found' })
+  })
+
+  it('returns not_found when changing status of a purchase order id that does not exist', async () => {
+    const result = await updatePurchaseOrderStatus('no-such-po', 'submitted')
+    expect(result).toEqual({ error: 'not_found' })
+  })
 })

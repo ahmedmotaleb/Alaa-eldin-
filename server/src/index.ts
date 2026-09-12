@@ -8,6 +8,7 @@ import multer from 'multer'
 import { pool } from './db.js'
 import { assertMigrationsUpToDate } from './checkMigrations.js'
 import { attachUser } from './auth.js'
+import { isRequestOriginAllowed } from './csrfOriginCheck.js'
 import { attachRequestId } from './requestId.js'
 import { apiRequestLogger } from './httpLogger.js'
 import { logger, logEvent, logError } from './logger.js'
@@ -139,12 +140,8 @@ app.use(attachUser)
 // إضافية (defense in depth) بترفض أي طلب تغيير حالة لو هيدر Origin موجود ومش من الأصل
 // المسموح، حتى لو المتصفح (قديم أو مُعدّل) سمح بإرسال الكوكيز. طلب من غير هيدر Origin خالص
 // (curl، تطبيقات native) بيتقبل زي ما كان دايماً — نفس منطق إعدادات CORS فوق بالظبط.
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 app.use('/api', (req, res, next) => {
-  if (SAFE_METHODS.has(req.method)) { next(); return }
-  const origin = req.headers.origin
-  if (!origin) { next(); return }
-  if (ALLOWED_ORIGINS.has(origin) || !isProduction) { next(); return }
+  if (isRequestOriginAllowed(req.method, req.headers.origin, ALLOWED_ORIGINS, isProduction)) { next(); return }
   res.status(403).json({ error: 'invalid_origin' })
 })
 

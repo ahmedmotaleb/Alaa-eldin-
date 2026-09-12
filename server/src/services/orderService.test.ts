@@ -152,6 +152,22 @@ describe('createOrder — server-authoritative delivery zones and slots', () => 
     await pool.query(`UPDATE delivery_slots SET is_active = 0 WHERE id = 'now'`)
     await expect(createOrder(baseInput(), null, nextKey())).rejects.toMatchObject({ status: 400, code: 'invalid_delivery_slot' })
   })
+
+  it('rejects an order once the slot reaches its configured daily capacity', async () => {
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = 1 WHERE id = 'now'`)
+    await createOrder(baseInput(), null, nextKey())
+    await expect(createOrder(baseInput(), null, nextKey())).rejects.toMatchObject({ status: 409, code: 'delivery_slot_full' })
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = NULL WHERE id = 'now'`)
+  })
+
+  it('does not count a cancelled order against the slot capacity', async () => {
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = 1 WHERE id = 'now'`)
+    const { order: first } = await createOrder(baseInput(), null, nextKey())
+    await cancelOrder(first.id)
+    const { order: second } = await createOrder(baseInput(), null, nextKey())
+    expect(second.status).toBe('placed')
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = NULL WHERE id = 'now'`)
+  })
 })
 
 describe('createOrder — stock validation and atomic deduction', () => {

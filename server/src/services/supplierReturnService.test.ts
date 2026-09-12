@@ -99,6 +99,11 @@ describe('supplierReturnService', () => {
     expect(result).toEqual({ error: 'invalid_transition' })
   })
 
+  it('returns not_found when changing status of a supplier return id that does not exist', async () => {
+    const result = await updateSupplierReturnStatus('no-such-return', 'approved', USER_ID)
+    expect(result).toEqual({ error: 'not_found' })
+  })
+
   it('does not allow cancelling after sent', async () => {
     const supplierReturn = await createSupplierReturn(
       { supplierId: SUPPLIER_ID, items: [{ productId: PRODUCT_ID, quantity: 5 }] },

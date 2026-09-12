@@ -3,7 +3,7 @@
 // من غير ما نحتاج نشغّل سيرفر HTTP حقيقي.
 import { describe, expect, it, vi } from 'vitest'
 import type { Request, Response } from 'express'
-import { requireAdmin, requireRole, extractSessionToken } from './auth.js'
+import { requireAdmin, requireRole, requirePermission, extractSessionToken } from './auth.js'
 import type { AuthedUser } from './auth.js'
 
 function makeRes() {
@@ -92,6 +92,54 @@ describe('requireRole', () => {
     const next = vi.fn()
 
     requireRole('staff', 'admin')(req, res, next)
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(res.status).not.toHaveBeenCalled()
+  })
+})
+
+describe('requirePermission', () => {
+  it('rejects an unauthenticated request with 401', async () => {
+    const req = {} as Request
+    const res = makeRes()
+    const next = vi.fn()
+
+    await requirePermission('users.manage')(req, res, next)
+
+    expect(res.status).toHaveBeenCalledWith(401)
+    expect(res.json).toHaveBeenCalledWith({ error: 'unauthorized' })
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it('rejects a legacy staff user (no roleId) lacking the required permission with 403', async () => {
+    const req = { user: { id: 'u1', email: 'a@a.com', fullName: 'x', createdAt: '', isAdmin: false, role: 'staff', roleId: null } as AuthedUser } as Request
+    const res = makeRes()
+    const next = vi.fn()
+
+    await requirePermission('users.manage')(req, res, next)
+
+    expect(res.status).toHaveBeenCalledWith(403)
+    expect(res.json).toHaveBeenCalledWith({ error: 'forbidden' })
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it('allows a legacy staff user through for a permission included in the legacy staff set', async () => {
+    const req = { user: { id: 'u1', email: 'a@a.com', fullName: 'x', createdAt: '', isAdmin: false, role: 'staff', roleId: null } as AuthedUser } as Request
+    const res = makeRes()
+    const next = vi.fn()
+
+    await requirePermission('orders.view')(req, res, next)
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(res.status).not.toHaveBeenCalled()
+  })
+
+  it('allows a legacy admin user (is_admin=1, no roleId) through for any permission', async () => {
+    const req = { user: { id: 'u1', email: 'a@a.com', fullName: 'x', createdAt: '', isAdmin: true, role: 'admin', roleId: null } as AuthedUser } as Request
+    const res = makeRes()
+    const next = vi.fn()
+
+    await requirePermission('users.manage')(req, res, next)
 
     expect(next).toHaveBeenCalledOnce()
     expect(res.status).not.toHaveBeenCalled()

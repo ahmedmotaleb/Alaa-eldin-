@@ -162,6 +162,38 @@ describe('goodsReceivingService', () => {
     expect(result).toEqual({ error: 'purchase_order_not_receivable' })
   })
 
+  it('rejects an empty items list before touching the database', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_ID, orderedQty: 5, unitCost: 4 }])
+    const result = await receiveGoodsForPurchaseOrder({ purchaseOrderId: order.id, items: [] }, USER_ID)
+    expect(result).toEqual({ error: 'no_items' })
+  })
+
+  it('rejects an item with a zero or negative quantity', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_ID, orderedQty: 5, unitCost: 4 }])
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_ID, quantity: 0, unitCost: 4 }] },
+      USER_ID
+    )
+    expect(result).toEqual({ error: 'invalid_item' })
+  })
+
+  it('rejects an item with a negative unit cost', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_ID, orderedQty: 5, unitCost: 4 }])
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_ID, quantity: 1, unitCost: -1 }] },
+      USER_ID
+    )
+    expect(result).toEqual({ error: 'invalid_cost' })
+  })
+
+  it('rejects receiving against a purchase order id that does not exist', async () => {
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: 'no-such-po', items: [{ productId: PRODUCT_ID, quantity: 1, unitCost: 4 }] },
+      USER_ID
+    )
+    expect(result).toEqual({ error: 'purchase_order_not_found' })
+  })
+
   it('requires an expiry date for a product with tracks_expiry enabled', async () => {
     const order = await makeSubmittedPO([{ productId: PRODUCT_EXPIRY_ID, orderedQty: 5, unitCost: 6 }])
     const result = await receiveGoodsForPurchaseOrder(
