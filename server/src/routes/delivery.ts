@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listActiveDeliveryZones, listActiveDeliverySlots } from '../services/deliveryService.js'
+import { listActiveDeliveryZones, listActiveDeliverySlotsWithAvailability } from '../services/deliveryService.js'
 
 export const deliveryRouter = Router()
 
@@ -9,6 +9,6 @@ deliveryRouter.get('/zones', async (_req, res) => {
 })
 
 deliveryRouter.get('/slots', async (_req, res) => {
-  const slots = await listActiveDeliverySlots()
-  res.json({ slots: slots.map(s => ({ id: s.id, label: s.label, note: s.note })) })
+  const slots = await listActiveDeliverySlotsWithAvailability()
+  res.json({ slots: slots.map(s => ({ id: s.id, label: s.label, note: s.note, available: s.available })) })
 })

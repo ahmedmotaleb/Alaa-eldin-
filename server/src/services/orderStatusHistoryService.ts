@@ -2,7 +2,7 @@ import type { PoolClient } from 'pg'
 import { pool } from '../db.js'
 import type { OrderStatus } from '../orderStatus.js'
 
-export type StatusChangeSource = 'admin' | 'system' | 'customer'
+export type StatusChangeSource = 'admin' | 'system' | 'customer' | 'rider'
 
 export interface RecordStatusChangeInput {
   orderId: string

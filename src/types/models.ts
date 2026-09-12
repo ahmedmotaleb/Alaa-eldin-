@@ -73,6 +73,7 @@ export interface DeliverySlot {
   id: DeliverySlotId
   label: string
   note: string
+  available: boolean
 }
 
 export interface DeliveryZone {

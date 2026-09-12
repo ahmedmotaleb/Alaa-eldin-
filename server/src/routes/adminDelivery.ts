@@ -45,20 +45,28 @@ adminDeliveryRouter.get('/slots', async (_req, res) => {
 
 const SLOT_ID_PATTERN = /^[a-z0-9_-]{1,40}$/
 
+function parseMaxOrdersPerDay(value: unknown): number | null | undefined {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value !== 'number' || value <= 0 || !Number.isInteger(value)) return undefined
+  return value
+}
+
 adminDeliveryRouter.post('/slots', async (req, res) => {
   const b = req.body as Record<string, unknown>
   const id = typeof b?.id === 'string' ? b.id.trim() : ''
+  const maxOrdersPerDay = parseMaxOrdersPerDay(b?.maxOrdersPerDay)
   if (
     !SLOT_ID_PATTERN.test(id) ||
     typeof b?.label !== 'string' || !b.label.trim() ||
-    typeof b?.note !== 'string' || typeof b?.isActive !== 'boolean'
+    typeof b?.note !== 'string' || typeof b?.isActive !== 'boolean' ||
+    maxOrdersPerDay === undefined
   ) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
   try {
-    const slot = await createDeliverySlot({ id, label: b.label.trim(), note: b.note.trim(), isActive: b.isActive })
+    const slot = await createDeliverySlot({ id, label: b.label.trim(), note: b.note.trim(), isActive: b.isActive, maxOrdersPerDay })
     await recordAuditLog({
       adminUserId: req.user!.id,
       action: 'delivery_slot_created',
@@ -79,12 +87,16 @@ adminDeliveryRouter.post('/slots', async (req, res) => {
 adminDeliveryRouter.patch('/slots/:id', async (req, res) => {
   const id = String(req.params.id)
   const b = req.body as Record<string, unknown>
-  if (typeof b?.label !== 'string' || !b.label.trim() || typeof b?.note !== 'string' || typeof b?.isActive !== 'boolean') {
+  const maxOrdersPerDay = parseMaxOrdersPerDay(b?.maxOrdersPerDay)
+  if (
+    typeof b?.label !== 'string' || !b.label.trim() || typeof b?.note !== 'string' || typeof b?.isActive !== 'boolean' ||
+    maxOrdersPerDay === undefined
+  ) {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
 
-  const slot = await updateDeliverySlot(id, { label: b.label.trim(), note: b.note.trim(), isActive: b.isActive })
+  const slot = await updateDeliverySlot(id, { label: b.label.trim(), note: b.note.trim(), isActive: b.isActive, maxOrdersPerDay })
   if (!slot) {
     res.status(404).json({ error: 'delivery_slot_not_found' })
     return

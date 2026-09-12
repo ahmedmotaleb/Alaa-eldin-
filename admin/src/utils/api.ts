@@ -125,12 +125,27 @@ export interface AdminOrder {
   settlementId: number | null
 }
 
+export interface RiderOrder {
+  id: string
+  orderNumber: string
+  createdAt: string
+  status: AdminOrderStatus
+  customerFullName: string
+  customerMobile: string
+  customerGovernorate: string
+  customerAddress: string
+  paymentMethod: string
+  total: number
+}
+
 export interface AdminRider {
   id: string
   name: string
   phone: string
   active: boolean
   createdAt: string
+  userId: string | null
+  userEmail: string | null
 }
 
 export interface AdminSettlement {
@@ -564,6 +579,7 @@ export interface AdminDeliverySlot {
   note: string
   isActive: boolean
   sortOrder: number
+  maxOrdersPerDay: number | null
 }
 
 export interface AnalyticsRevenueDay {
@@ -857,9 +873,9 @@ export const api = {
   updateDeliveryZone: (governorate: string, body: { deliveryFee: number, isActive: boolean }) =>
     request<{ zone: AdminDeliveryZone }>(`/admin/delivery/zones/${encodeURIComponent(governorate)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   listDeliverySlots: () => request<{ slots: AdminDeliverySlot[] }>('/admin/delivery/slots'),
-  createDeliverySlot: (body: { id: string, label: string, note: string, isActive: boolean }) =>
+  createDeliverySlot: (body: { id: string, label: string, note: string, isActive: boolean, maxOrdersPerDay: number | null }) =>
     request<{ slot: AdminDeliverySlot }>('/admin/delivery/slots', { method: 'POST', body: JSON.stringify(body) }),
-  updateDeliverySlot: (id: string, body: { label: string, note: string, isActive: boolean }) =>
+  updateDeliverySlot: (id: string, body: { label: string, note: string, isActive: boolean, maxOrdersPerDay: number | null }) =>
     request<{ slot: AdminDeliverySlot }>(`/admin/delivery/slots/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   getAnalyticsOverview: () => request<AnalyticsOverview>('/admin/analytics/overview'),
   getAnalyticsSales: () => request<AnalyticsSales>('/admin/analytics/sales'),
@@ -872,6 +888,13 @@ export const api = {
     request<{ rider: AdminRider }>('/admin/riders', { method: 'POST', body: JSON.stringify(body) }),
   updateRider: (id: string, body: Partial<Pick<AdminRider, 'name' | 'phone' | 'active'>>) =>
     request<{ rider: AdminRider }>(`/admin/riders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  linkRiderUser: (id: string, email: string) =>
+    request<{ rider: AdminRider }>(`/admin/riders/${encodeURIComponent(id)}/link-user`, { method: 'POST', body: JSON.stringify({ email }) }),
+  unlinkRiderUser: (id: string) =>
+    request<{ rider: AdminRider }>(`/admin/riders/${encodeURIComponent(id)}/link-user`, { method: 'DELETE' }),
+  listMyRiderOrders: (all = false) => request<{ orders: RiderOrder[] }>(`/rider/orders${all ? '?all=true' : ''}`),
+  updateMyRiderOrderStatus: (id: string, status: 'out_for_delivery' | 'delivered') =>
+    request<void>(`/rider/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   listSettlements: (params: { page?: number, limit?: number } = {}) =>
     request<{ settlements: AdminSettlement[] } & Partial<PageInfo>>(`/admin/settlements${buildQuery(params)}`),
   createSettlement: (riderId: string) =>

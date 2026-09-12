@@ -4,6 +4,7 @@ import { StatsGrid } from '../components/StatsGrid'
 import { OrderTable } from '../components/OrderTable'
 import { api, ApiError, type AdminOrder, type AnalyticsHomeSummary } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { useAuth } from '../store/AuthContext'
 import type { LayoutContext } from '../components/AdminLayout'
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
@@ -11,10 +12,17 @@ const RECENT_ORDERS_LIMIT = 5
 
 export function HomePage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { setHeader } = useOutletContext<LayoutContext>()
   const [summary, setSummary] = useState<AnalyticsHomeSummary | null>(null)
   const [recentOrders, setRecentOrders] = useState<AdminOrder[] | null>(null)
   const [error, setError] = useState('')
+
+  // حساب مندوب اتفتح على '/' مباشرة (زي بعد تحديث الصفحة، مش بس أول تسجيل دخول) — يترجّع
+  // لشاشته المبسّطة بدل ما يشوف لوحة التحكم الكاملة اللي مالهاش صلاحية عليها أصلاً.
+  useEffect(() => {
+    if (user?.roleId === 'role-rider') navigate('/rider', { replace: true })
+  }, [user, navigate])
 
   useEffect(() => {
     setHeader({ crumb: 'لوحة التحكم', title: 'الرئيسية' })

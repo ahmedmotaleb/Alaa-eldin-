@@ -358,6 +358,40 @@ function SettlementsTab({
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [settlingId, setSettlingId] = useState<string | null>(null)
+  const [linkingId, setLinkingId] = useState<string | null>(null)
+  const [linkEmail, setLinkEmail] = useState('')
+  const [linkError, setLinkError] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+
+  async function linkAccount(riderId: string) {
+    if (!linkEmail.trim()) { setLinkError('أدخل البريد الإلكتروني'); return }
+    setLinkBusy(true)
+    setLinkError('')
+    try {
+      await api.linkRiderUser(riderId, linkEmail.trim())
+      setLinkingId(null)
+      setLinkEmail('')
+      reloadRiders()
+    } catch (err) {
+      setLinkError(
+        err instanceof ApiError && err.code === 'user_not_found' ? 'لا يوجد حساب بهذا البريد'
+        : err instanceof ApiError && err.code === 'cannot_link_full_admin' ? 'لا يمكن ربط حساب مدير كامل الصلاحيات'
+        : err instanceof ApiError && err.code === 'user_already_linked_to_another_rider' ? 'هذا الحساب مربوط بمندوب آخر بالفعل'
+        : 'تعذر ربط الحساب'
+      )
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  async function unlinkAccount(riderId: string) {
+    try {
+      await api.unlinkRiderUser(riderId)
+      reloadRiders()
+    } catch {
+      // ignore
+    }
+  }
 
   const outstandingByRider = useMemo(() => {
     const map = new Map<string, { amount: number, count: number }>()
@@ -437,17 +471,39 @@ function SettlementsTab({
       <div className="admin-table-card" style={{ marginBottom: 16 }}>
         <div className="admin-table-scroll">
           <div style={{ minWidth: 640 }}>
-            <div className="admin-table-head" style={{ gridTemplateColumns: '1.4fr 1fr 1fr .9fr .9fr' }}>
-              <div>المندوب</div><div>الهاتف</div><div>المستحق حالياً</div><div>الحالة</div><div></div>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '1.2fr .9fr .9fr 1.6fr .8fr .8fr' }}>
+              <div>المندوب</div><div>الهاتف</div><div>المستحق حالياً</div><div>حساب الدخول (للموبايل)</div><div>الحالة</div><div></div>
             </div>
             {riders.map(r => {
               const outstanding = outstandingByRider.get(r.id)
               return (
-                <div key={r.id} className="admin-table-row" style={{ gridTemplateColumns: '1.4fr 1fr 1fr .9fr .9fr' }}>
+                <div key={r.id} className="admin-table-row" style={{ gridTemplateColumns: '1.2fr .9fr .9fr 1.6fr .8fr .8fr' }}>
                   <div className="admin-cell-plain" style={{ fontWeight: 800 }}>{r.name}</div>
                   <div className="admin-cell-plain" style={{ color: '#68746B' }}>{r.phone || '—'}</div>
                   <div className="admin-cell-plain" style={{ fontWeight: 800, color: outstanding ? '#B45309' : '#8A948C' }}>
                     {outstanding ? `${formatMoney(outstanding.amount)} (${outstanding.count} طلب)` : formatMoney(0)}
+                  </div>
+                  <div>
+                    {r.userEmail ? (
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="admin-pill" style={{ background: '#EAF8EF', color: '#12813C' }}>{r.userEmail}</span>
+                        <button className="admin-category-card-btn" onClick={() => unlinkAccount(r.id)}>إلغاء الربط</button>
+                      </span>
+                    ) : linkingId === r.id ? (
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          value={linkEmail} onChange={e => setLinkEmail(e.target.value)}
+                          placeholder="بريد حساب المندوب" style={{ width: 160 }}
+                        />
+                        <button className="admin-form-chip" disabled={linkBusy} onClick={() => linkAccount(r.id)}>ربط</button>
+                        <button className="admin-category-card-btn" onClick={() => { setLinkingId(null); setLinkError('') }}>إلغاء</button>
+                        {linkError && <div className="admin-form-error" style={{ width: '100%' }}>{linkError}</div>}
+                      </span>
+                    ) : (
+                      <button className="admin-category-card-btn" onClick={() => { setLinkingId(r.id); setLinkEmail(''); setLinkError('') }}>
+                        ربط حساب دخول
+                      </button>
+                    )}
                   </div>
                   <div>
                     <button className={`admin-form-chip ${r.active ? 'active' : ''}`} onClick={() => toggleActive(r)}>

@@ -15,8 +15,8 @@ export function LoginPage() {
     setSubmitting(true)
     setError('')
     try {
-      await login(email, password)
-      navigate('/', { replace: true })
+      const user = await login(email, password)
+      navigate(user.roleId === 'role-rider' ? '/rider' : '/', { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.code === 'invalid_credentials' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'حدث خطأ، حاول مرة أخرى')

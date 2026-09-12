@@ -56,7 +56,9 @@ const ACTION_LABEL: Record<string, string> = {
   store_settings_updated: 'تعديل إعدادات المتجر',
   whatsapp_template_created: 'إنشاء قالب واتساب',
   whatsapp_template_updated: 'تعديل قالب واتساب',
-  whatsapp_message_sent: 'إرسال رسالة واتساب'
+  whatsapp_message_sent: 'إرسال رسالة واتساب',
+  rider_user_linked: 'ربط مندوب بحساب دخول',
+  rider_user_unlinked: 'إلغاء ربط مندوب بحساب دخول'
 }
 
 export function AuditLogPage() {

@@ -242,6 +242,7 @@ export interface ApiDeliverySlot {
   id: string
   label: string
   note: string
+  available: boolean
 }
 
 export interface ApiSettings {

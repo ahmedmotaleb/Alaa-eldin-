@@ -40,6 +40,7 @@ import { settingsRouter } from './routes/settings.js'
 import { adminSettingsRouter } from './routes/adminSettings.js'
 import { adminExpensesRouter } from './routes/adminExpenses.js'
 import { adminRidersRouter } from './routes/adminRiders.js'
+import { riderRouter } from './routes/rider.js'
 import { adminSettlementsRouter } from './routes/adminSettlements.js'
 import { adminAuditLogsRouter } from './routes/adminAuditLogs.js'
 import { adminAnalyticsRouter } from './routes/adminAnalytics.js'
@@ -153,6 +154,7 @@ app.use('/api/admin/banners', adminBannersRouter)
 app.use('/api/admin/settings', adminSettingsRouter)
 app.use('/api/admin/expenses', adminExpensesRouter)
 app.use('/api/admin/riders', adminRidersRouter)
+app.use('/api/rider', riderRouter)
 app.use('/api/admin/settlements', adminSettlementsRouter)
 app.use('/api/admin/analytics', adminAnalyticsRouter)
 

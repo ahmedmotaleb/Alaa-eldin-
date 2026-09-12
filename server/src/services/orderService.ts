@@ -10,7 +10,7 @@ import {
 } from './inventoryService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
-import { getActiveDeliveryZoneFee, isActiveDeliverySlot } from './deliveryService.js'
+import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacity } from './deliveryService.js'
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { logEvent, logWarn } from '../logger.js'
 
@@ -173,6 +173,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       if (zoneDeliveryFee === null) throw new OrderError(400, 'delivery_zone_unavailable')
       logEvent('delivery_zone_selected', { governorate: input.customer.governorate, deliveryFee: zoneDeliveryFee })
       if (!(await isActiveDeliverySlot(client, input.deliverySlot))) throw new OrderError(400, 'invalid_delivery_slot')
+      if (!(await checkDeliverySlotCapacity(client, input.deliverySlot))) throw new OrderError(409, 'delivery_slot_full')
 
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined
 

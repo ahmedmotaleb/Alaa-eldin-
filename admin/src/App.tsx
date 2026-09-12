@@ -8,6 +8,7 @@ import { AuthProvider } from './store/AuthContext'
 // أول تحميل للوحة التحكم (أو أي قسم فيها) بيجيب بس كود الصفحة المطلوبة فعلاً.
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })))
+const RiderOrdersPage = lazy(() => import('./pages/RiderOrdersPage').then(m => ({ default: m.RiderOrdersPage })))
 const OrdersPage = lazy(() => import('./pages/OrdersPage').then(m => ({ default: m.OrdersPage })))
 const PickingViewPage = lazy(() => import('./pages/PickingViewPage').then(m => ({ default: m.PickingViewPage })))
 const PrintOrderPage = lazy(() => import('./pages/PrintOrderPage').then(m => ({ default: m.PrintOrderPage })))
@@ -64,6 +65,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/orders/:id/print" element={<PrintOrderPage />} />
+            <Route path="/rider" element={<RiderOrdersPage />} />
             <Route element={<AdminLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/orders" element={<Navigate to="/orders/all" replace />} />

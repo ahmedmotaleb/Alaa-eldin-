@@ -167,12 +167,12 @@ function DeliveryZonesSection() {
   )
 }
 
-const emptySlotForm = { id: '', label: '', note: '', isActive: true }
+const emptySlotForm = { id: '', label: '', note: '', isActive: true, maxOrdersPerDay: '' }
 
 function DeliverySlotsSection() {
   const [slots, setSlots] = useState<AdminDeliverySlot[] | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ label: '', note: '', isActive: true })
+  const [editForm, setEditForm] = useState({ label: '', note: '', isActive: true, maxOrdersPerDay: '' })
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState(emptySlotForm)
   const [error, setError] = useState('')
@@ -187,7 +187,7 @@ function DeliverySlotsSection() {
 
   function startEdit(slot: AdminDeliverySlot) {
     setEditingId(slot.id)
-    setEditForm({ label: slot.label, note: slot.note, isActive: slot.isActive })
+    setEditForm({ label: slot.label, note: slot.note, isActive: slot.isActive, maxOrdersPerDay: slot.maxOrdersPerDay?.toString() ?? '' })
     setFormError('')
   }
 
@@ -200,7 +200,8 @@ function DeliverySlotsSection() {
     setSaving(true)
     setFormError('')
     try {
-      await api.updateDeliverySlot(editingId, { label: editForm.label.trim(), note: editForm.note.trim(), isActive: editForm.isActive })
+      const maxOrdersPerDay = editForm.maxOrdersPerDay.trim() ? Number(editForm.maxOrdersPerDay) : null
+      await api.updateDeliverySlot(editingId, { label: editForm.label.trim(), note: editForm.note.trim(), isActive: editForm.isActive, maxOrdersPerDay })
       setEditingId(null)
       load()
     } catch {
@@ -219,7 +220,8 @@ function DeliverySlotsSection() {
     setSaving(true)
     setFormError('')
     try {
-      await api.createDeliverySlot({ id, label: createForm.label.trim(), note: createForm.note.trim(), isActive: createForm.isActive })
+      const maxOrdersPerDay = createForm.maxOrdersPerDay.trim() ? Number(createForm.maxOrdersPerDay) : null
+      await api.createDeliverySlot({ id, label: createForm.label.trim(), note: createForm.note.trim(), isActive: createForm.isActive, maxOrdersPerDay })
       setCreateForm(emptySlotForm)
       setShowCreate(false)
       load()
@@ -256,6 +258,13 @@ function DeliverySlotsSection() {
                 <label>ملاحظة (اختياري)
                   <input value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))} />
                 </label>
+                <label>الحد الأقصى للطلبات في اليوم (اختياري)
+                  <input
+                    type="number" min={1} value={editForm.maxOrdersPerDay}
+                    onChange={e => setEditForm(f => ({ ...f, maxOrdersPerDay: e.target.value }))}
+                    placeholder="بلا حد أقصى"
+                  />
+                </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexDirection: 'row' }}>
                   <input type="checkbox" checked={editForm.isActive} onChange={e => setEditForm(f => ({ ...f, isActive: e.target.checked }))} />
                   مفعّل (يظهر للعميل)
@@ -270,7 +279,10 @@ function DeliverySlotsSection() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>
                   <span className="admin-category-card-title">{slot.label}{!slot.isActive && ' (متوقف)'}</span>
-                  <span className="admin-category-card-sub">{slot.note || 'بدون ملاحظة'}</span>
+                  <span className="admin-category-card-sub">
+                    {slot.note || 'بدون ملاحظة'}
+                    {slot.maxOrdersPerDay !== null && ` — حد أقصى ${slot.maxOrdersPerDay} طلب/يوم`}
+                  </span>
                 </span>
                 <button className="admin-category-card-btn" onClick={() => startEdit(slot)}>تعديل</button>
               </div>
@@ -290,6 +302,13 @@ function DeliverySlotsSection() {
             </div>
             <label>ملاحظة (اختياري)
               <input value={createForm.note} onChange={e => setCreateForm(f => ({ ...f, note: e.target.value }))} />
+            </label>
+            <label>الحد الأقصى للطلبات في اليوم (اختياري)
+              <input
+                type="number" min={1} value={createForm.maxOrdersPerDay}
+                onChange={e => setCreateForm(f => ({ ...f, maxOrdersPerDay: e.target.value }))}
+                placeholder="بلا حد أقصى"
+              />
             </label>
             {formError && <div className="admin-form-error">{formError}</div>}
             <button className="admin-form-save" disabled={saving} onClick={createSlot}>حفظ الميعاد</button>

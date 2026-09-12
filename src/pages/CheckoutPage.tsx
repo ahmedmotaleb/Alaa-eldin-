@@ -107,6 +107,18 @@ export function CheckoutPage() {
     if (cartWasEmptyOnEntry || hasBlockingIssues) navigate('/cart', { replace: true })
   }, [cartWasEmptyOnEntry, hasBlockingIssues, navigate])
 
+  // لو العميل دخل الصفحة قبل ما مواعيد التوصيل تتحمّل (طبيعي جداً مع التحميل غير المتزامن)،
+  // أو الميعاد الافتراضي طلع ممتلئ، بنختار أول ميعاد متاح تلقائياً بدل ما نسيب الاختيار فاضي.
+  useEffect(() => {
+    if (deliverySlots.length === 0) return
+    const current = deliverySlots.find(s => s.id === slot)
+    if (!current || !current.available) {
+      const firstAvailable = deliverySlots.find(s => s.available) ?? deliverySlots[0]
+      setSlot(firstAvailable.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliverySlots])
+
   function update<K extends keyof CustomerDetails>(key: K, value: CustomerDetails[K]) {
     setCustomer(current => ({ ...current, [key]: value }))
   }
@@ -234,11 +246,12 @@ export function CheckoutPage() {
             <button
               key={option.id}
               className={`slot-option ${slot === option.id ? 'active' : ''}`}
-              onClick={() => setSlot(option.id)}
+              disabled={!option.available}
+              onClick={() => option.available && setSlot(option.id)}
             >
               <span>
                 <span className="slot-label">{option.label}</span>
-                <span className="slot-note">{option.note}</span>
+                <span className="slot-note">{option.available ? option.note : ar.checkout.deliverySlotFull}</span>
               </span>
               <span className="slot-dot" />
             </button>
