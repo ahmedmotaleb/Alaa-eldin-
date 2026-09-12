@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AdminOrder, AdminOrderStatus, AdminRider } from '../utils/api'
+import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminRider, type WhatsAppTemplate } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
 import { toWhatsAppInternational } from '../utils/phone'
@@ -20,10 +21,36 @@ export function OrderDrawer({
 }) {
   const navigate = useNavigate()
   const [bg, fg] = ORDER_STATUS_COLOR[order.status]
+  const [waConfigured, setWaConfigured] = useState(false)
+  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState('')
+
+  useEffect(() => {
+    api.getWhatsAppStatus().then(({ configured }) => setWaConfigured(configured)).catch(() => setWaConfigured(false))
+    api.listWhatsAppTemplates().then(({ templates }) => setTemplates(templates.filter(t => t.active))).catch(() => {})
+  }, [])
 
   function openWhatsApp() {
     const text = `مرحباً ${order.customer.fullName}، بخصوص طلبك ${order.orderNumber} من علاء الدين.`
     window.open(`https://wa.me/${toWhatsAppInternational(order.customer.mobile)}?text=${encodeURIComponent(text)}`, '_blank')
+  }
+
+  async function sendTemplate() {
+    if (!selectedTemplateId) return
+    setSending(true)
+    setSendResult('')
+    try {
+      await api.sendWhatsAppMessage(order.id, { templateId: selectedTemplateId })
+      setSendResult('تم إرسال الرسالة بنجاح')
+    } catch (err) {
+      setSendResult(err instanceof ApiError && err.code === 'whatsapp_not_configured'
+        ? 'الإرسال الفعلي غير مفعّل — راجع إعدادات واتساب'
+        : 'تعذر إرسال الرسالة')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -53,6 +80,31 @@ export function OrderDrawer({
           <button className="admin-category-card-btn" onClick={() => navigate(`/orders/${order.id}/picking`)}>📋 تجهيز الطلب</button>
           <button className="admin-category-card-btn" onClick={() => window.open(`/admin/orders/${order.id}/print`, '_blank')}>🖨️ طباعة</button>
         </div>
+
+        {templates.length > 0 && (
+          <div className="admin-drawer-card">
+            <div className="admin-drawer-card-title">إرسال قالب واتساب فعلي</div>
+            {!waConfigured && (
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: '#8A948C', marginBottom: 8 }}>
+                الإرسال الفعلي غير مفعّل حالياً على السيرفر — الزر هيرجع خطأ لحد ما يتضبط WHATSAPP_ACCESS_TOKEN.
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                value={selectedTemplateId}
+                onChange={e => setSelectedTemplateId(e.target.value)}
+                style={{ border: '1px solid #dce4de', borderRadius: 11, padding: '8px 10px', fontWeight: 600, fontSize: 13, outline: 'none', background: '#fbfcfb', color: '#17221a' }}
+              >
+                <option value="">اختر قالب...</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button className="admin-category-card-btn" disabled={!selectedTemplateId || sending} onClick={sendTemplate}>
+                {sending ? 'جارٍ الإرسال...' : 'إرسال'}
+              </button>
+            </div>
+            {sendResult && <div style={{ fontSize: 12, marginTop: 6, color: '#4C5B51' }}>{sendResult}</div>}
+          </div>
+        )}
 
         <div className="admin-drawer-card">
           <div className="admin-drawer-card-title">المنتجات</div>

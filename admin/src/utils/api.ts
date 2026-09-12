@@ -48,6 +48,35 @@ export interface AdminRole {
   permissions: string[]
 }
 
+export interface WhatsAppTemplate {
+  id: string
+  name: string
+  category: string
+  content: string
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WhatsAppTemplateInput {
+  name: string
+  category: string
+  content: string
+  active: boolean
+}
+
+export interface WhatsAppMessage {
+  id: string
+  orderId: string | null
+  templateId: string | null
+  toNumber: string
+  body: string
+  status: 'sent' | 'failed'
+  providerMessageId: string | null
+  error: string | null
+  createdAt: string
+}
+
 export interface PageInfo {
   page: number
   limit: number
@@ -777,6 +806,16 @@ export const api = {
   getReplenishmentSuggestions: (targetDays: number) =>
     request<{ suggestions: ReplenishmentSuggestion[], targetDays: number }>(`/admin/replenishment?targetDays=${targetDays}`),
   getInventoryValuation: () => request<InventoryValuationSummary>('/admin/inventory-valuation'),
+  getWhatsAppStatus: () => request<{ configured: boolean }>('/admin/whatsapp/status'),
+  listWhatsAppTemplates: () => request<{ templates: WhatsAppTemplate[] }>('/admin/whatsapp/templates'),
+  createWhatsAppTemplate: (body: WhatsAppTemplateInput) =>
+    request<{ template: WhatsAppTemplate }>('/admin/whatsapp/templates', { method: 'POST', body: JSON.stringify(body) }),
+  updateWhatsAppTemplate: (id: string, body: WhatsAppTemplateInput) =>
+    request<{ template: WhatsAppTemplate }>(`/admin/whatsapp/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  sendWhatsAppMessage: (orderId: string, body: { templateId?: string; body?: string }) =>
+    request<{ sent: boolean, messageId: string }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/send`, { method: 'POST', body: JSON.stringify(body) }),
+  listWhatsAppMessages: (orderId: string) =>
+    request<{ messages: WhatsAppMessage[] }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/messages`),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

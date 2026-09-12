@@ -41,6 +41,7 @@ const DiscountsListPage = lazy(() => import('./pages/discounts/DiscountsListPage
 const DiscountFormPage = lazy(() => import('./pages/discounts/DiscountFormPage').then(m => ({ default: m.DiscountFormPage })))
 const UsersPage = lazy(() => import('./pages/settings/UsersPage').then(m => ({ default: m.UsersPage })))
 const RolesPage = lazy(() => import('./pages/settings/RolesPage').then(m => ({ default: m.RolesPage })))
+const WhatsAppTemplatesPage = lazy(() => import('./pages/settings/WhatsAppTemplatesPage').then(m => ({ default: m.WhatsAppTemplatesPage })))
 const StoreSettingsPage = lazy(() => import('./pages/settings/StoreSettingsPage').then(m => ({ default: m.StoreSettingsPage })))
 const DeliverySettingsPage = lazy(() => import('./pages/settings/DeliverySettingsPage').then(m => ({ default: m.DeliverySettingsPage })))
 const PaymentSettingsPage = lazy(() => import('./pages/settings/PaymentSettingsPage').then(m => ({ default: m.PaymentSettingsPage })))
@@ -123,6 +124,7 @@ export default function App() {
               <Route path="/marketing/banners" element={<BannersListPage />} />
               <Route path="/marketing/banners/add" element={<BannerFormPage />} />
               <Route path="/marketing/banners/edit/:id" element={<BannerFormPage />} />
+              <Route path="/marketing/whatsapp" element={<WhatsAppTemplatesPage />} />
               <Route path="/:group" element={<PlaceholderPage />} />
               <Route path="/:group/:sub" element={<PlaceholderPage />} />
             </Route>

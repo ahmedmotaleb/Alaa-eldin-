@@ -53,7 +53,10 @@ const ACTION_LABEL: Record<string, string> = {
   user_admin_revoked: 'سحب صلاحية لوحة التحكم',
   user_role_changed: 'تغيير دور مستخدم',
   user_permission_role_changed: 'تغيير دور الصلاحيات الدقيقة',
-  store_settings_updated: 'تعديل إعدادات المتجر'
+  store_settings_updated: 'تعديل إعدادات المتجر',
+  whatsapp_template_created: 'إنشاء قالب واتساب',
+  whatsapp_template_updated: 'تعديل قالب واتساب',
+  whatsapp_message_sent: 'إرسال رسالة واتساب'
 }
 
 export function AuditLogPage() {
