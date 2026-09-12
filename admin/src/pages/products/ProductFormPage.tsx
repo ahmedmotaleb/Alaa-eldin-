@@ -10,7 +10,7 @@ const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'ل
 const emptyForm: AdminProductInput = {
   id: '', slug: '', categoryId: '', name: '', description: '', price: 0, oldPrice: undefined,
   cost: 0, unit: 'عبوة', emoji: '📦', available: true, bestseller: false, offer: false,
-  stock: 0, alertThreshold: 10, barcode: '', brand: '', tracksExpiry: false, defaultShelfLifeDays: null
+  stock: 0, alertThreshold: 10, barcode: '', brand: '', tracksExpiry: false, defaultShelfLifeDays: null, sku: null
 }
 
 export function ProductFormPage() {
@@ -26,6 +26,9 @@ export function ProductFormPage() {
   const [saving, setSaving] = useState(false)
   const [expirySaving, setExpirySaving] = useState(false)
   const [expirySuccess, setExpirySuccess] = useState('')
+  const [skuInput, setSkuInput] = useState('')
+  const [skuSaving, setSkuSaving] = useState(false)
+  const [skuSuccess, setSkuSuccess] = useState('')
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -41,7 +44,7 @@ export function ProductFormPage() {
   useEffect(() => {
     if (!id) return
     api.getProduct(id)
-      .then(({ product }) => setForm(product))
+      .then(({ product }) => { setForm(product); setSkuInput(product.sku ?? '') })
       .catch(() => setError('تعذر تحميل بيانات المنتج'))
       .finally(() => setLoading(false))
   }, [id])
@@ -88,6 +91,38 @@ export function ProductFormPage() {
       window.alert('تعذر حفظ إعداد الصلاحية')
     } finally {
       setExpirySaving(false)
+    }
+  }
+
+  async function saveSku() {
+    if (!id) return
+    setSkuSuccess('')
+    setSkuSaving(true)
+    try {
+      const result = await api.setProductSku(id, skuInput.trim() || null)
+      setSkuInput(result.sku ?? '')
+      setForm(current => ({ ...current, sku: result.sku }))
+      setSkuSuccess('تم حفظ SKU')
+    } catch (err) {
+      window.alert(err instanceof ApiError && err.code === 'sku_taken' ? 'هذا الـ SKU مستخدم بالفعل لمنتج آخر' : 'تعذر حفظ SKU')
+    } finally {
+      setSkuSaving(false)
+    }
+  }
+
+  async function generateSku() {
+    if (!id) return
+    setSkuSuccess('')
+    setSkuSaving(true)
+    try {
+      const result = await api.generateProductSku(id)
+      setSkuInput(result.sku ?? '')
+      setForm(current => ({ ...current, sku: result.sku }))
+      setSkuSuccess('تم توليد SKU تلقائياً')
+    } catch {
+      window.alert('تعذر توليد SKU — قد يكون للمنتج SKU بالفعل')
+    } finally {
+      setSkuSaving(false)
     }
   }
 
@@ -190,6 +225,23 @@ export function ProductFormPage() {
         {success && <div className="admin-form-success">{success}</div>}
         <button className="admin-form-save" disabled={saving} onClick={save}>{isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج'}</button>
       </div>
+
+      {isEdit && (
+        <div className="admin-form-card">
+          <div>
+            <div className="admin-form-card-title">SKU</div>
+            <div className="admin-form-card-sub">رمز داخلي لإدارة المخزون — مختلف عن الباركود</div>
+          </div>
+          <label>SKU
+            <input value={skuInput} onChange={e => setSkuInput(e.target.value)} placeholder="اتركه فارغاً لحذف الـ SKU" />
+          </label>
+          <span className="admin-form-chips">
+            <button type="button" className="admin-form-chip" disabled={skuSaving} onClick={saveSku}>حفظ</button>
+            <button type="button" className="admin-form-chip" disabled={skuSaving || !!form.sku} onClick={generateSku}>توليد تلقائي</button>
+          </span>
+          {skuSuccess && <div className="admin-form-success">{skuSuccess}</div>}
+        </div>
+      )}
 
       {isEdit && (
         <div className="admin-form-card">

@@ -29,6 +29,7 @@ const CustomerReturnsListPage = lazy(() => import('./pages/CustomerReturnsListPa
 const CustomerReturnDetailPage = lazy(() => import('./pages/CustomerReturnDetailPage').then(m => ({ default: m.CustomerReturnDetailPage })))
 const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
 const StockWriteOffPage = lazy(() => import('./pages/products/StockWriteOffPage').then(m => ({ default: m.StockWriteOffPage })))
+const BarcodeScanPage = lazy(() => import('./pages/products/BarcodeScanPage').then(m => ({ default: m.BarcodeScanPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
@@ -75,6 +76,7 @@ export default function App() {
               <Route path="/products/inv" element={<InventoryPage />} />
               <Route path="/products/expiry" element={<ExpiryDashboardPage />} />
               <Route path="/products/writeoff" element={<StockWriteOffPage />} />
+              <Route path="/products/barcode" element={<BarcodeScanPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
               <Route path="/purchasing" element={<Navigate to="/purchasing/suppliers" replace />} />
               <Route path="/purchasing/suppliers" element={<SuppliersListPage />} />

@@ -4,6 +4,7 @@ import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
+import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
 
 export const adminProductsRouter = Router()
 adminProductsRouter.use(requireAdmin)
@@ -30,19 +31,20 @@ interface ProductRow {
   primaryImage: string | null
   tracksExpiry: number
   defaultShelfLifeDays: number | null
+  sku: string | null
 }
 
 const SELECT_PRODUCT = `
   SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
          unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
-         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays"
+         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays", sku
   FROM products
 `
 
 const SELECT_PRODUCT_WITH_IMAGE = `
   SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice", p.cost,
          p.unit, p.emoji, p.available, p.bestseller, p.offer, p.order_count as "orderCount", p.stock, p.alert_threshold as "alertThreshold",
-         p.barcode, p.brand, p.tracks_expiry as "tracksExpiry", p.default_shelf_life_days as "defaultShelfLifeDays", img.image_url as "primaryImage"
+         p.barcode, p.brand, p.tracks_expiry as "tracksExpiry", p.default_shelf_life_days as "defaultShelfLifeDays", p.sku, img.image_url as "primaryImage"
   FROM products p
   LEFT JOIN LATERAL (
     SELECT image_url FROM product_images pi
@@ -79,7 +81,7 @@ adminProductsRouter.get('/', async (req, res) => {
   const params: unknown[] = []
   if (typeof req.query.search === 'string' && req.query.search.trim()) {
     params.push(`%${req.query.search.trim()}%`)
-    conditions.push(`(p.name ILIKE $${params.length} OR p.id ILIKE $${params.length} OR p.barcode ILIKE $${params.length})`)
+    conditions.push(`(p.name ILIKE $${params.length} OR p.id ILIKE $${params.length} OR p.barcode ILIKE $${params.length} OR p.sku ILIKE $${params.length})`)
   }
   if (typeof req.query.categoryId === 'string' && req.query.categoryId.trim()) {
     params.push(req.query.categoryId.trim())
@@ -147,6 +149,52 @@ adminProductsRouter.patch('/:id/expiry-settings', async (req, res) => {
     newValues: { tracksExpiry, defaultShelfLifeDays }
   })
   res.json({ product: serialize(rows[0]) })
+})
+
+// SKU مستقل عن نموذج المنتج الرئيسي (زي إعداد الصلاحية) — تعديل يدوي بسيط، أو توليد تلقائي
+// بصيغة ALA-XXXXXX (راجع productSkuService.ts). التوليد التلقائي أبداً ما بيكتبش فوق SKU
+// موجود بالفعل.
+adminProductsRouter.patch('/:id/sku', async (req, res) => {
+  const raw = req.body?.sku
+  if (raw !== null && typeof raw !== 'string') { res.status(400).json({ error: 'invalid_sku' }); return }
+
+  try {
+    const result = await setProductSku(String(req.params.id), raw)
+    if ('error' in result) { res.status(404).json({ error: result.error }); return }
+
+    await recordAuditLog({
+      adminUserId: req.user!.id, action: 'product_sku_updated', entityType: 'product',
+      entityId: String(req.params.id), newValues: { sku: result.sku }
+    })
+    res.json(result)
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'sku_taken' })
+      return
+    }
+    throw err
+  }
+})
+
+adminProductsRouter.post('/:id/generate-sku', async (req, res) => {
+  const result = await generateSkuForProduct(String(req.params.id))
+  if ('error' in result) {
+    res.status(result.error === 'product_not_found' ? 404 : 409).json({ error: result.error })
+    return
+  }
+
+  await recordAuditLog({
+    adminUserId: req.user!.id, action: 'product_sku_updated', entityType: 'product',
+    entityId: String(req.params.id), newValues: { sku: result.sku }
+  })
+  res.json(result)
+})
+
+// بحث بالباركود لصفحة "مسح الباركود" — تطابق تام (مسح فعلي أو إدخال يدوي/جهاز قارئ).
+adminProductsRouter.get('/by-barcode/:barcode', async (req, res) => {
+  const product = await findProductByBarcode(String(req.params.barcode))
+  if (!product) { res.status(404).json({ error: 'product_not_found' }); return }
+  res.json({ product })
 })
 
 async function validateBody(body: unknown) {

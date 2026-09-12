@@ -147,6 +147,7 @@ export interface AdminProduct {
   primaryImage?: string
   tracksExpiry: boolean
   defaultShelfLifeDays: number | null
+  sku: string | null
 }
 
 export type AdminProductInput = Omit<AdminProduct, 'orderCount'>
@@ -719,6 +720,12 @@ export const api = {
   getExpiryDashboard: () => request<ExpiryDashboard>('/admin/inventory-batches/expiry'),
   setProductExpirySettings: (id: string, body: { tracksExpiry: boolean, defaultShelfLifeDays: number | null }) =>
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/expiry-settings`, { method: 'PATCH', body: JSON.stringify(body) }),
+  setProductSku: (id: string, sku: string | null) =>
+    request<{ id: string, sku: string | null }>(`/admin/products/${encodeURIComponent(id)}/sku`, { method: 'PATCH', body: JSON.stringify({ sku }) }),
+  generateProductSku: (id: string) =>
+    request<{ id: string, sku: string | null }>(`/admin/products/${encodeURIComponent(id)}/generate-sku`, { method: 'POST' }),
+  findProductByBarcode: (barcode: string) =>
+    request<{ product: { id: string, name: string, barcode: string, sku: string | null, stock: number, price: number, emoji: string } }>(`/admin/products/by-barcode/${encodeURIComponent(barcode)}`),
   writeOffStock: (body: { productId: string, quantity: number, reason: WriteOffReason, note?: string, batchId?: string }) =>
     request<{ newStock: number }>('/admin/stock-write-offs', { method: 'POST', body: JSON.stringify(body) }),
   listSupplierReturns: (params: { status?: SupplierReturnStatus, supplierId?: string } = {}) =>

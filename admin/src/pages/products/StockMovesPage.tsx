@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
 import { api, ApiError, type AdminProduct, type AdminStockMovement, type StockMovementType } from '../../utils/api'
 import { formatDateTime } from '../../utils/format'
@@ -23,6 +23,10 @@ const LIMIT = 20
 
 export function StockMovesPage() {
   const { setHeader } = useOutletContext<LayoutContext>()
+  const [searchParams] = useSearchParams()
+  // لو الصفحة اتفتحت من مسح باركود منتج مُعيّن، بنفلتر الجدول على المنتج ده تلقائياً —
+  // بدل ما الإدمن يدوّر عليه يدوي في قايمة كل الحركات.
+  const filterProductId = searchParams.get('productId') ?? undefined
   const [movements, setMovements] = useState<AdminStockMovement[] | null>(null)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -59,14 +63,14 @@ export function StockMovesPage() {
   useEffect(() => { setPage(1) }, [debouncedQuery])
 
   useEffect(() => {
-    api.listStockMovements({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined })
+    api.listStockMovements({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, productId: filterProductId })
       .then(({ movements, totalPages, total }) => {
         setMovements(movements)
         setTotalPages(totalPages ?? 1)
         setTotal(total ?? movements.length)
       })
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل حركات المخزون' : 'حدث خطأ، حاول مرة أخرى'))
-  }, [page, debouncedQuery, refreshKey])
+  }, [page, debouncedQuery, refreshKey, filterProductId])
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'تحويلات المخزون', action: { label: 'تسجيل حركة', onClick: () => setShowCreate(v => !v) } })

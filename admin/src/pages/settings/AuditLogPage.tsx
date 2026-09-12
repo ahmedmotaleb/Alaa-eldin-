@@ -32,6 +32,7 @@ const ACTION_LABEL: Record<string, string> = {
   return_refunded: 'استرداد مرتجع عميل',
   return_rejected: 'رفض مرتجع عميل',
   return_cancelled: 'إلغاء مرتجع عميل',
+  product_sku_updated: 'تعديل SKU منتج',
   product_created: 'إنشاء منتج',
   product_updated: 'تعديل منتج',
   product_archived: 'أرشفة منتج',
