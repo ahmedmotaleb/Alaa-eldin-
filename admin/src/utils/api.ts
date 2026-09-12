@@ -363,6 +363,28 @@ export interface ExpiryDashboard {
 
 export type WriteOffReason = 'expired' | 'damaged' | 'lost' | 'inventory_adjustment' | 'supplier_return'
 
+export interface ReplenishmentSuggestion {
+  productId: string
+  productName: string
+  currentStock: number
+  avgDailySales7d: number
+  avgDailySales30d: number
+  daysOfCover: number | null
+  preferredSupplierId: string | null
+  preferredSupplierName: string | null
+  leadTimeDays: number | null
+  minimumOrderQty: number | null
+  suggestedReorderQty: number
+}
+
+export interface InventoryValuationSummary {
+  totalSellableQty: number
+  inventoryCostValue: number
+  expiredValue: number
+  lowStockValue: number
+  costBasis: 'latest_cost'
+}
+
 export type SupplierReturnStatus = 'draft' | 'approved' | 'sent' | 'completed' | 'cancelled'
 
 export interface AdminSupplierReturn {
@@ -744,6 +766,9 @@ export const api = {
     request<{ customerReturn: AdminCustomerReturn }>('/admin/customer-returns', { method: 'POST', body: JSON.stringify(body) }),
   setCustomerReturnStatus: (id: string, status: CustomerReturnStatus) =>
     request<{ customerReturn: AdminCustomerReturn }>(`/admin/customer-returns/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  getReplenishmentSuggestions: (targetDays: number) =>
+    request<{ suggestions: ReplenishmentSuggestion[], targetDays: number }>(`/admin/replenishment?targetDays=${targetDays}`),
+  getInventoryValuation: () => request<InventoryValuationSummary>('/admin/inventory-valuation'),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

@@ -1,6 +1,11 @@
 import type { PoolClient } from 'pg'
 import { pool } from '../db.js'
 
+// بعض القراءات هنا (رصيد قابل للبيع) مش لازم تتنفذ جوه معاملة/قفل — تشتغل بنفس الشكل
+// سواء اتنادت بـ pool مباشرة (قراءة عادية) أو بـ client جوه معاملة (زي وقت قفل منتجات
+// الطلب). النوع ده بياخد بس الجزء المشترك (query) بدل ما نجبر النوع الكامل PoolClient.
+type Queryable = Pick<PoolClient, 'query'>
+
 export interface ExpiryBatchRow {
   batchId: string
   productId: string
@@ -55,7 +60,7 @@ export async function getExpiryDashboard(): Promise<ExpiryDashboard> {
 // رصيد قابل للبيع فعلاً — بيستثني أي دفعة منتهية الصلاحية. بيرجع null لو المنتج مالوش أي
 // دفعات خالص (مخزون قديم قبل نظام الشراء/الاستلام) — الاستدعاء وقتها لازم يرجع لـ
 // products.stock الخام زي ما كان دايماً، مش يعتبر الرصيد صفر.
-export async function getSellableStock(client: PoolClient, productId: string): Promise<number | null> {
+export async function getSellableStock(client: Queryable, productId: string): Promise<number | null> {
   const { rows } = await client.query<{ hasBatches: boolean; sellable: string }>(
     `SELECT COUNT(*) > 0 as "hasBatches",
             COALESCE(SUM(quantity_remaining) FILTER (WHERE expiry_date IS NULL OR expiry_date >= CURRENT_DATE), 0) as sellable
@@ -69,7 +74,7 @@ export async function getSellableStock(client: PoolClient, productId: string): P
 // نفس فكرة getSellableStock لكن لمجموعة منتجات دفعة واحدة (تُستخدم وقت قفل منتجات الطلب) —
 // بترجع خريطة المنتجات اللي ليها دفعات بس؛ أي منتج مش موجود في الخريطة يبقى من غير دفعات
 // خالص، والمنادي لازم يفضل يستخدم products.stock الخام له.
-export async function getSellableStockMap(client: PoolClient, productIds: string[]): Promise<Map<string, number>> {
+export async function getSellableStockMap(client: Queryable, productIds: string[]): Promise<Map<string, number>> {
   if (!productIds.length) return new Map()
   const { rows } = await client.query<{ productId: string; sellable: string }>(
     `SELECT product_id as "productId",

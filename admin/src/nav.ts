@@ -35,6 +35,7 @@ export const NAV: NavGroup[] = [
       { id: 'expiry', label: 'الصلاحية' },
       { id: 'writeoff', label: 'شطب المخزون' },
       { id: 'barcode', label: 'مسح الباركود' },
+      { id: 'valuation', label: 'قيمة المخزون' },
       { id: 'moves', label: 'تحويلات المخزون' }
     ]
   },
@@ -43,7 +44,8 @@ export const NAV: NavGroup[] = [
       { id: 'suppliers', label: 'الموردين' },
       { id: 'orders', label: 'أوامر الشراء' },
       { id: 'receiving', label: 'استلام بضاعة' },
-      { id: 'supplier-returns', label: 'مرتجعات الموردين' }
+      { id: 'supplier-returns', label: 'مرتجعات الموردين' },
+      { id: 'replenishment', label: 'اقتراحات الشراء' }
     ]
   },
   {

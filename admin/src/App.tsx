@@ -25,6 +25,8 @@ const GoodsReceivingListPage = lazy(() => import('./pages/purchasing/GoodsReceiv
 const GoodsReceivingFormPage = lazy(() => import('./pages/purchasing/GoodsReceivingFormPage').then(m => ({ default: m.GoodsReceivingFormPage })))
 const SupplierReturnsListPage = lazy(() => import('./pages/purchasing/SupplierReturnsListPage').then(m => ({ default: m.SupplierReturnsListPage })))
 const SupplierReturnDetailPage = lazy(() => import('./pages/purchasing/SupplierReturnDetailPage').then(m => ({ default: m.SupplierReturnDetailPage })))
+const ReplenishmentPage = lazy(() => import('./pages/purchasing/ReplenishmentPage').then(m => ({ default: m.ReplenishmentPage })))
+const InventoryValuationPage = lazy(() => import('./pages/products/InventoryValuationPage').then(m => ({ default: m.InventoryValuationPage })))
 const CustomerReturnsListPage = lazy(() => import('./pages/CustomerReturnsListPage').then(m => ({ default: m.CustomerReturnsListPage })))
 const CustomerReturnDetailPage = lazy(() => import('./pages/CustomerReturnDetailPage').then(m => ({ default: m.CustomerReturnDetailPage })))
 const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
@@ -77,6 +79,7 @@ export default function App() {
               <Route path="/products/expiry" element={<ExpiryDashboardPage />} />
               <Route path="/products/writeoff" element={<StockWriteOffPage />} />
               <Route path="/products/barcode" element={<BarcodeScanPage />} />
+              <Route path="/products/valuation" element={<InventoryValuationPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
               <Route path="/purchasing" element={<Navigate to="/purchasing/suppliers" replace />} />
               <Route path="/purchasing/suppliers" element={<SuppliersListPage />} />
@@ -90,6 +93,7 @@ export default function App() {
               <Route path="/purchasing/supplier-returns" element={<SupplierReturnsListPage />} />
               <Route path="/purchasing/supplier-returns/new" element={<SupplierReturnDetailPage />} />
               <Route path="/purchasing/supplier-returns/:id" element={<SupplierReturnDetailPage />} />
+              <Route path="/purchasing/replenishment" element={<ReplenishmentPage />} />
               <Route path="/customers" element={<Navigate to="/customers/all" replace />} />
               <Route path="/customers/all" element={<CustomersListPage />} />
               <Route path="/customers/segments" element={<SegmentsPage />} />

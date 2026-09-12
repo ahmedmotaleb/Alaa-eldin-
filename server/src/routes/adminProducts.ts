@@ -316,6 +316,16 @@ adminProductsRouter.patch('/:id', async (req, res) => {
         [req.params.id, stockDiff, new Date().toISOString()]
       )
     }
+    // تعديل تكلفة يدوي من صفحة المنتج بيتسجّل في نفس تاريخ التكلفة اللي بيتسجّل منه
+    // الاستلام (source_type مختلف بس) — عشان تحليل الهامش يشوف كل تغيير تكلفة حقيقي،
+    // مش بس اللي جاي من استلام بضاعة.
+    if (data.cost !== existing.cost) {
+      await client.query(
+        `INSERT INTO product_cost_history (id, product_id, unit_cost, source_type, source_id)
+         VALUES ($1, $2, $3, 'manual_adjustment', $4)`,
+        [crypto.randomUUID(), req.params.id, data.cost, req.user!.id]
+      )
+    }
   })
 
   const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
