@@ -20,6 +20,9 @@
     "db:status:dev": "tsx src/dbStatus.ts",
     "db:cleanup": "node dist/cleanup.js",
     "db:cleanup:dev": "tsx src/cleanup.ts",
+    "db:backup": "bash scripts/backup.sh",
+    "db:restore": "bash scripts/restore.sh",
+    "smoke-test": "tsx src/scripts/smokeTest.ts",
     "test": "vitest run"
   },
   "keywords": [],
