@@ -1,6 +1,7 @@
 import { pool } from './db.js'
 
 export interface OrderItemDTO {
+  id: number
   productId: string
   name: string
   unit: string
@@ -17,7 +18,7 @@ export async function fetchItemsForOrders(orderIds: string[]): Promise<Map<strin
   if (orderIds.length === 0) return map
 
   const { rows } = await pool.query<OrderItemDTO & { orderId: string }>(
-    `SELECT order_id as "orderId", product_id as "productId", name, unit, unit_price as "unitPrice", quantity, line_total as "lineTotal"
+    `SELECT id, order_id as "orderId", product_id as "productId", name, unit, unit_price as "unitPrice", quantity, line_total as "lineTotal"
      FROM order_items WHERE order_id = ANY($1::text[])`,
     [orderIds]
   )

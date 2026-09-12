@@ -22,7 +22,8 @@ export const NAV: NavGroup[] = [
       { id: 'ready', label: 'جاهزة للتوصيل' },
       { id: 'out', label: 'خرجت للتوصيل' },
       { id: 'done', label: 'مكتملة' },
-      { id: 'cancel', label: 'ملغاة' }
+      { id: 'cancel', label: 'ملغاة' },
+      { id: 'returns', label: 'مرتجعات العملاء' }
     ]
   },
   {
@@ -40,7 +41,8 @@ export const NAV: NavGroup[] = [
     id: 'purchasing', label: 'المشتريات', icon: '🚚', children: [
       { id: 'suppliers', label: 'الموردين' },
       { id: 'orders', label: 'أوامر الشراء' },
-      { id: 'receiving', label: 'استلام بضاعة' }
+      { id: 'receiving', label: 'استلام بضاعة' },
+      { id: 'supplier-returns', label: 'مرتجعات الموردين' }
     ]
   },
   {

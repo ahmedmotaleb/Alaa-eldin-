@@ -23,6 +23,10 @@ const PurchaseOrdersListPage = lazy(() => import('./pages/purchasing/PurchaseOrd
 const PurchaseOrderFormPage = lazy(() => import('./pages/purchasing/PurchaseOrderFormPage').then(m => ({ default: m.PurchaseOrderFormPage })))
 const GoodsReceivingListPage = lazy(() => import('./pages/purchasing/GoodsReceivingListPage').then(m => ({ default: m.GoodsReceivingListPage })))
 const GoodsReceivingFormPage = lazy(() => import('./pages/purchasing/GoodsReceivingFormPage').then(m => ({ default: m.GoodsReceivingFormPage })))
+const SupplierReturnsListPage = lazy(() => import('./pages/purchasing/SupplierReturnsListPage').then(m => ({ default: m.SupplierReturnsListPage })))
+const SupplierReturnDetailPage = lazy(() => import('./pages/purchasing/SupplierReturnDetailPage').then(m => ({ default: m.SupplierReturnDetailPage })))
+const CustomerReturnsListPage = lazy(() => import('./pages/CustomerReturnsListPage').then(m => ({ default: m.CustomerReturnsListPage })))
+const CustomerReturnDetailPage = lazy(() => import('./pages/CustomerReturnDetailPage').then(m => ({ default: m.CustomerReturnDetailPage })))
 const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
 const StockWriteOffPage = lazy(() => import('./pages/products/StockWriteOffPage').then(m => ({ default: m.StockWriteOffPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
@@ -60,6 +64,9 @@ export default function App() {
               <Route path="/orders" element={<Navigate to="/orders/all" replace />} />
               <Route path="/orders/:tab" element={<OrdersPage />} />
               <Route path="/orders/:id/picking" element={<PickingViewPage />} />
+              <Route path="/orders/returns" element={<CustomerReturnsListPage />} />
+              <Route path="/orders/returns/new" element={<CustomerReturnDetailPage />} />
+              <Route path="/orders/returns/:id" element={<CustomerReturnDetailPage />} />
               <Route path="/products" element={<Navigate to="/products/all" replace />} />
               <Route path="/products/all" element={<ProductsListPage />} />
               <Route path="/products/add" element={<ProductFormPage />} />
@@ -78,6 +85,9 @@ export default function App() {
               <Route path="/purchasing/orders/edit/:id" element={<PurchaseOrderFormPage />} />
               <Route path="/purchasing/receiving" element={<GoodsReceivingListPage />} />
               <Route path="/purchasing/receiving/:poId" element={<GoodsReceivingFormPage />} />
+              <Route path="/purchasing/supplier-returns" element={<SupplierReturnsListPage />} />
+              <Route path="/purchasing/supplier-returns/new" element={<SupplierReturnDetailPage />} />
+              <Route path="/purchasing/supplier-returns/:id" element={<SupplierReturnDetailPage />} />
               <Route path="/customers" element={<Navigate to="/customers/all" replace />} />
               <Route path="/customers/all" element={<CustomersListPage />} />
               <Route path="/customers/segments" element={<SegmentsPage />} />

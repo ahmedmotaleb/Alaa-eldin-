@@ -57,6 +57,7 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 }
 
 export interface AdminOrderItem {
+  id: number
   productId: string
   name: string
   unit: string
@@ -361,6 +362,88 @@ export interface ExpiryDashboard {
 
 export type WriteOffReason = 'expired' | 'damaged' | 'lost' | 'inventory_adjustment' | 'supplier_return'
 
+export type SupplierReturnStatus = 'draft' | 'approved' | 'sent' | 'completed' | 'cancelled'
+
+export interface AdminSupplierReturn {
+  id: string
+  returnNumber: string
+  supplierId: string
+  supplierName: string
+  purchaseOrderId: string | null
+  status: SupplierReturnStatus
+  reason: string
+  createdByUserId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminSupplierReturnItem {
+  id: string
+  supplierReturnId: string
+  productId: string
+  productName: string
+  batchId: string | null
+  quantity: number
+  unitCost: number
+}
+
+export interface SupplierReturnItemInput {
+  productId: string
+  batchId?: string | null
+  quantity: number
+  unitCost?: number
+}
+
+export interface SupplierReturnInput {
+  supplierId: string
+  purchaseOrderId?: string | null
+  reason?: string
+  items: SupplierReturnItemInput[]
+}
+
+export type CustomerReturnStatus = 'requested' | 'approved' | 'received' | 'refunded' | 'rejected' | 'cancelled'
+export type ReturnItemCondition = 'return_to_stock' | 'damaged' | 'expired' | 'discard'
+
+export interface AdminCustomerReturn {
+  id: string
+  returnNumber: string
+  orderId: string
+  orderNumber: string
+  customerId: string | null
+  status: CustomerReturnStatus
+  reason: string
+  notes: string
+  refundAmount: number
+  createdByUserId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminCustomerReturnItem {
+  id: string
+  customerReturnId: string
+  productId: string
+  productName: string
+  orderItemId: number
+  quantity: number
+  condition: ReturnItemCondition
+  refundAmount: number
+}
+
+export interface CustomerReturnItemInput {
+  orderItemId: number
+  productId: string
+  quantity: number
+  condition?: ReturnItemCondition
+}
+
+export interface CustomerReturnInput {
+  orderId: string
+  reason?: string
+  notes?: string
+  items: CustomerReturnItemInput[]
+}
+
 // 'sale' و'cancel_restore' مُنشآن تلقائياً فقط من نظام الطلبات (checkout / إلغاء طلب) —
 // مش قيم قابلة للإنشاء اليدوي من نموذج "تسجيل حركة" في هذه اللوحة (راجع StockMovesPage).
 export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment' | 'sale' | 'cancel_restore'
@@ -638,6 +721,22 @@ export const api = {
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/expiry-settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   writeOffStock: (body: { productId: string, quantity: number, reason: WriteOffReason, note?: string, batchId?: string }) =>
     request<{ newStock: number }>('/admin/stock-write-offs', { method: 'POST', body: JSON.stringify(body) }),
+  listSupplierReturns: (params: { status?: SupplierReturnStatus, supplierId?: string } = {}) =>
+    request<{ returns: AdminSupplierReturn[] }>(`/admin/supplier-returns${buildQuery(params)}`),
+  getSupplierReturn: (id: string) =>
+    request<{ supplierReturn: AdminSupplierReturn, items: AdminSupplierReturnItem[] }>(`/admin/supplier-returns/${encodeURIComponent(id)}`),
+  createSupplierReturn: (body: SupplierReturnInput) =>
+    request<{ supplierReturn: AdminSupplierReturn }>('/admin/supplier-returns', { method: 'POST', body: JSON.stringify(body) }),
+  setSupplierReturnStatus: (id: string, status: SupplierReturnStatus) =>
+    request<{ supplierReturn: AdminSupplierReturn }>(`/admin/supplier-returns/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  listCustomerReturns: (params: { status?: CustomerReturnStatus, orderId?: string } = {}) =>
+    request<{ returns: AdminCustomerReturn[] }>(`/admin/customer-returns${buildQuery(params)}`),
+  getCustomerReturn: (id: string) =>
+    request<{ customerReturn: AdminCustomerReturn, items: AdminCustomerReturnItem[] }>(`/admin/customer-returns/${encodeURIComponent(id)}`),
+  createCustomerReturn: (body: CustomerReturnInput) =>
+    request<{ customerReturn: AdminCustomerReturn }>('/admin/customer-returns', { method: 'POST', body: JSON.stringify(body) }),
+  setCustomerReturnStatus: (id: string, status: CustomerReturnStatus) =>
+    request<{ customerReturn: AdminCustomerReturn }>(`/admin/customer-returns/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>
