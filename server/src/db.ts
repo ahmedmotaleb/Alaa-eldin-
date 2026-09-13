@@ -1,6 +1,15 @@
 import pg from 'pg'
+import { logger } from './logger.js'
 
 const { Pool } = pg
+
+// في الإنتاج، غياب DATABASE_URL لازم يوقف السيرفر فوراً برسالة واضحة — بدل ما نسيبه يحاول
+// يتصل بـ localhost:5432 الافتراضي (مش موجود في الإنتاج أصلاً) ويطلع ECONNREFUSED غامضة
+// بعد كام ثانية، اللي بتوهم إن المشكلة في قاعدة البيانات مش في إعداد الخدمة نفسها.
+if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+  logger.fatal('DATABASE_URL is not set — attach a Postgres database to this service and configure DATABASE_URL before deploying.')
+  process.exit(1)
+}
 
 // عمود NUMERIC/DECIMAL (OID 1700) بيرجعه الـ driver كـ string افتراضياً عشان يحافظ على الدقة
 // (float64 عادي ممكن يفقد دقة أرقام NUMERIC كبيرة جداً). أعمدة الفلوس عندنا NUMERIC(12,2) —
