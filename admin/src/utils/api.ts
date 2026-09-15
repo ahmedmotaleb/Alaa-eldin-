@@ -518,12 +518,16 @@ export interface ReplenishmentSuggestion {
   suggestedReorderQty: number
 }
 
+export type CostBasis = 'latest_cost' | 'weighted_average'
+
 export interface InventoryValuationSummary {
   totalSellableQty: number
   inventoryCostValue: number
   expiredValue: number
   lowStockValue: number
-  costBasis: 'latest_cost'
+  estimatedRevenueAtCurrentPrices: number
+  estimatedGrossMarginPercent: number | null
+  costBasis: CostBasis
 }
 
 export type SupplierReturnStatus = 'draft' | 'approved' | 'sent' | 'completed' | 'cancelled'
@@ -1000,7 +1004,8 @@ export const api = {
     request<{ customerReturn: AdminCustomerReturn }>(`/admin/customer-returns/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   getReplenishmentSuggestions: (targetDays: number) =>
     request<{ suggestions: ReplenishmentSuggestion[], targetDays: number }>(`/admin/replenishment?targetDays=${targetDays}`),
-  getInventoryValuation: () => request<InventoryValuationSummary>('/admin/inventory-valuation'),
+  getInventoryValuation: (costBasis: CostBasis = 'latest_cost') =>
+    request<InventoryValuationSummary>(`/admin/inventory-valuation${buildQuery({ costBasis })}`),
   getWhatsAppStatus: () => request<{ configured: boolean }>('/admin/whatsapp/status'),
   listWhatsAppTemplates: () => request<{ templates: WhatsAppTemplate[] }>('/admin/whatsapp/templates'),
   createWhatsAppTemplate: (body: WhatsAppTemplateInput) =>

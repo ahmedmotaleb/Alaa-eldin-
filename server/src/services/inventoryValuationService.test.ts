@@ -101,4 +101,65 @@ describe('inventoryValuationService', () => {
     expect(after.totalSellableQty - before.totalSellableQty).toBe(-5)
     expect(after.inventoryCostValue - before.inventoryCostValue).toBe(-20) // -5 * 4
   })
+
+  describe('weighted_average cost basis', () => {
+    it('falls back to latest_cost for a product with no batches at all', async () => {
+      const before = await getInventoryValuation('weighted_average')
+      await insertProduct(10, 4, 0)
+      const after = await getInventoryValuation('weighted_average')
+      expect(after.inventoryCostValue - before.inventoryCostValue).toBe(40) // 10 * 4، زي latest_cost بالظبط
+      expect(after.costBasis).toBe('weighted_average')
+    })
+
+    it('computes a real weighted average across the currently-sellable batches, matching a deliberately-engineered latest cost', async () => {
+      const beforeLatest = await getInventoryValuation('latest_cost')
+      const beforeWeighted = await getInventoryValuation('weighted_average')
+      await insertProduct(15, 4, 0) // آخر تكلفة = 4
+      // دفعتين: 5 وحدة بتكلفة 2، و10 وحدة بتكلفة 5 -> متوسط مرجّح = (5*2 + 10*5)/15 = 4
+      await pool.query(
+        `INSERT INTO inventory_batches (id, product_id, quantity_received, quantity_remaining, unit_cost, created_at)
+         VALUES ($1, $2, 5, 5, 2, now())`,
+        [crypto.randomUUID(), PRODUCT_ID]
+      )
+      await pool.query(
+        `INSERT INTO inventory_batches (id, product_id, quantity_received, quantity_remaining, unit_cost, created_at)
+         VALUES ($1, $2, 10, 10, 5, now())`,
+        [crypto.randomUUID(), PRODUCT_ID]
+      )
+      const afterLatest = await getInventoryValuation('latest_cost')
+      const afterWeighted = await getInventoryValuation('weighted_average')
+      // latest_cost بيستخدم products.cost (4) بغض النظر عن الدفعات -> 15 * 4 = 60
+      expect(afterLatest.inventoryCostValue - beforeLatest.inventoryCostValue).toBe(60)
+      // weighted_average بيستخدم متوسط الدفعات نفسها (طلع 4 هنا كمان بالمصادفة، بس محسوب فعلياً من الدفعات) -> 15 * 4 = 60
+      expect(afterWeighted.inventoryCostValue - beforeWeighted.inventoryCostValue).toBe(60)
+      expect(afterWeighted.costBasis).toBe('weighted_average')
+    })
+
+    it('diverges from latest_cost when the batch mix has a genuinely different average cost', async () => {
+      const beforeLatest = await getInventoryValuation('latest_cost')
+      const beforeWeighted = await getInventoryValuation('weighted_average')
+      await insertProduct(20, 10, 0) // آخر تكلفة = 10
+      // دفعة واحدة بتكلفة 3 -> متوسط الدفعات = 3، مختلف تماماً عن آخر تكلفة (10)
+      await pool.query(
+        `INSERT INTO inventory_batches (id, product_id, quantity_received, quantity_remaining, unit_cost, created_at)
+         VALUES ($1, $2, 20, 20, 3, now())`,
+        [crypto.randomUUID(), PRODUCT_ID]
+      )
+      const afterLatest = await getInventoryValuation('latest_cost')
+      const afterWeighted = await getInventoryValuation('weighted_average')
+      expect(afterLatest.inventoryCostValue - beforeLatest.inventoryCostValue).toBe(200) // 20 * 10
+      expect(afterWeighted.inventoryCostValue - beforeWeighted.inventoryCostValue).toBe(60) // 20 * 3
+    })
+  })
+
+  describe('estimated gross margin', () => {
+    it('computes revenue at current prices and a positive margin when price exceeds cost', async () => {
+      const before = await getInventoryValuation()
+      // السعر 10 (ثابت في insertProduct)، التكلفة 4 -> هامش تقديري موجب
+      await insertProduct(10, 4, 0)
+      const after = await getInventoryValuation()
+      expect(after.estimatedRevenueAtCurrentPrices - before.estimatedRevenueAtCurrentPrices).toBe(100) // 10 * 10
+      expect(after.estimatedGrossMarginPercent).not.toBeNull()
+    })
+  })
 })
