@@ -49,6 +49,7 @@ type BusinessEvent =
   | 'two_factor_enabled' | 'two_factor_disabled' | 'two_factor_login_failed'
   | 'session_revoked' | 'sessions_logout_others'
   | 'integration_test_connection'
+  | 'startup_config_summary' | 'startup_config_partial_warning'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

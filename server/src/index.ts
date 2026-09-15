@@ -12,6 +12,7 @@ import { isRequestOriginAllowed } from './csrfOriginCheck.js'
 import { attachRequestId } from './requestId.js'
 import { apiRequestLogger } from './httpLogger.js'
 import { logger, logEvent, logError } from './logger.js'
+import { logStartupConfigSummary } from './config.js'
 import { authRouter } from './routes/auth.js'
 import { ordersRouter } from './routes/orders.js'
 import { adminOrdersRouter } from './routes/adminOrders.js'
@@ -71,6 +72,7 @@ const isProduction = process.env.NODE_ENV === 'production'
 // لو في نقص بدل ما نشتغل بصمت على مخطط قديم/ناقص.
 await assertMigrationsUpToDate()
 logEvent('database_connected')
+logStartupConfigSummary()
 
 const app = express()
 app.disable('x-powered-by')
