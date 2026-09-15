@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
 import {
   saveSubscription, removeSubscription, getNotificationPreferences, setNotificationPreferences,
-  sendPushToUser, notifyOrderStatusChange, getVapidPublicKey, pushConfigured
+  sendPushToUser, notifyOrderStatusChange, getVapidPublicKey, pushConfigured, countPushSubscriptions
 } from './pushService.js'
 
 const USER_ID = 'test-user-push'
@@ -86,5 +86,12 @@ describe('pushService', () => {
   it('notifyOrderStatusChange respects a disabled order_updates preference without throwing', async () => {
     await setNotificationPreferences(USER_ID, { orderUpdates: false, promotions: false })
     await expect(notifyOrderStatusChange(USER_ID, 'ALA-100001', 'delivered')).resolves.toBeUndefined()
+  })
+
+  it('countPushSubscriptions reflects real rows in the table', async () => {
+    const before = await countPushSubscriptions()
+    await saveSubscription(USER_ID, { endpoint: ENDPOINT, keys: { p256dh: 'key1', auth: 'auth1' } })
+    const after = await countPushSubscriptions()
+    expect(after - before).toBe(1)
   })
 })

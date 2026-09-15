@@ -689,6 +689,13 @@ export interface AdminSettings {
   showExactLowStock: boolean
 }
 
+export interface IntegrationsStatus {
+  whatsapp: { configured: boolean }
+  push: { configured: boolean, subscriptionCount: number }
+  email: { configured: boolean }
+  cloudinary: { configured: boolean }
+}
+
 export interface AdminDeliveryZone {
   governorate: string
   deliveryFee: number
@@ -1125,6 +1132,11 @@ export const api = {
   deleteBannerImage: (id: number, variant: 'desktop' | 'mobile' = 'desktop') =>
     request<void>(`/admin/banners/${id}/image?variant=${variant}`, { method: 'DELETE' }),
   getSettings: () => request<{ settings: AdminSettings }>('/admin/settings'),
+  getIntegrationsStatus: () => request<IntegrationsStatus>('/admin/integrations'),
+  testWhatsAppConnection: (destination: string) =>
+    request<{ ok: boolean, sent?: boolean, reason?: string, error?: string }>('/admin/integrations/whatsapp/test', {
+      method: 'POST', body: JSON.stringify({ destination })
+    }),
   updateSettings: (body: Partial<AdminSettings>) =>
     request<{ settings: AdminSettings }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
   listDeliveryZones: () => request<{ zones: AdminDeliveryZone[] }>('/admin/delivery/zones'),

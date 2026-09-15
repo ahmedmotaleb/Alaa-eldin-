@@ -48,6 +48,7 @@ import { riderRouter } from './routes/rider.js'
 import { adminSettlementsRouter } from './routes/adminSettlements.js'
 import { adminAuditLogsRouter } from './routes/adminAuditLogs.js'
 import { adminAnalyticsRouter } from './routes/adminAnalytics.js'
+import { adminIntegrationsRouter } from './routes/adminIntegrations.js'
 import { adminPagesRouter } from './routes/adminPages.js'
 import { pagesRouter } from './routes/pages.js'
 import { trackRouter } from './routes/track.js'
@@ -200,6 +201,7 @@ app.use('/api/admin/riders', adminRidersRouter)
 app.use('/api/rider', riderRouter)
 app.use('/api/admin/settlements', adminSettlementsRouter)
 app.use('/api/admin/analytics', adminAnalyticsRouter)
+app.use('/api/admin/integrations', adminIntegrationsRouter)
 
 if (isProduction) {
   const clientDir = path.join(__dirname, '..', '..', 'dist')

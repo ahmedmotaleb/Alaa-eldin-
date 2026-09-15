@@ -38,6 +38,14 @@ export async function removeSubscription(endpoint: string): Promise<void> {
   await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint])
 }
 
+// عدد الاشتراكات الحالية المخزّنة — تشخيص بسيط بس (مش "الاشتراكات الفعّالة فعلاً"، لأن أي
+// اشتراك بيتأكد إنه بايت (404/410) بيتحذف تلقائياً وقت أول محاولة إرسال فاشلة له فعلياً
+// (راجع sendPushToUser تحت) — يعني العدد ده أقرب تقدير عملي، مش ضمان قاطع إن كل صف لسه حي.
+export async function countPushSubscriptions(): Promise<number> {
+  const { rows } = await pool.query<{ count: string }>('SELECT COUNT(*) as count FROM push_subscriptions')
+  return Number(rows[0].count)
+}
+
 export interface NotificationPreferences {
   orderUpdates: boolean
   promotions: boolean

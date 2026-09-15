@@ -4,6 +4,8 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY
 const RESEND_FROM = process.env.RESEND_FROM ?? 'علاء الدين <onboarding@resend.dev>'
 const isProduction = process.env.NODE_ENV === 'production'
 
+export const emailConfigured = !!RESEND_API_KEY
+
 export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   if (!RESEND_API_KEY) {
     // رابط الاستعادة بيحتوي على توكن صالح فعلياً — ممنوع منعاً باتاً يتكتب في لوجات
