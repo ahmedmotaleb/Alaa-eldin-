@@ -473,6 +473,8 @@ export interface ReplenishmentSuggestion {
   avgDailySales7d: number
   avgDailySales30d: number
   daysOfCover: number | null
+  incomingQty: number
+  lastReceivedCost: number | null
   preferredSupplierId: string | null
   preferredSupplierName: string | null
   leadTimeDays: number | null
@@ -923,6 +925,8 @@ export const api = {
     request<{ order: AdminPurchaseOrder }>('/admin/purchase-orders', { method: 'POST', body: JSON.stringify(body) }),
   updatePurchaseOrder: (id: string, body: PurchaseOrderInput) =>
     request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  mergeRecommendationsIntoDraftPO: (id: string, body: { supplierId: string, items: { productId: string, additionalQty: number, unitCost: number }[] }) =>
+    request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}/merge-recommendations`, { method: 'POST', body: JSON.stringify(body) }),
   setPurchaseOrderStatus: (id: string, status: PurchaseOrderStatus) =>
     request<{ order: AdminPurchaseOrder }>(`/admin/purchase-orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   listGoodsReceipts: (params: { purchaseOrderId?: string } = {}) =>

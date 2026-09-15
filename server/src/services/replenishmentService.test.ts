@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
 import { getReplenishmentSuggestions } from './replenishmentService.js'
@@ -14,7 +15,31 @@ async function insertSale(daysAgo: number, quantity: number) {
   )
 }
 
+async function insertOpenPurchaseOrder(id: string, status: 'submitted' | 'partially_received', orderedQty: number, receivedQty: number) {
+  await pool.query(
+    `INSERT INTO purchase_orders (id, po_number, supplier_id, status, subtotal, discount, shipping_cost, total)
+     VALUES ($1, $2, $3, $4, 0, 0, 0, 0)`,
+    [id, `PO-TEST-${id}`, SUPPLIER_ID, status]
+  )
+  await pool.query(
+    `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, received_qty, unit_cost, line_total)
+     VALUES ($1, $2, $3, $4, $5, 5, 0)`,
+    [`${id}-item`, id, PRODUCT_ID, orderedQty, receivedQty]
+  )
+}
+
+async function insertCostHistory(unitCost: number, daysAgo: number) {
+  await pool.query(
+    `INSERT INTO product_cost_history (id, product_id, supplier_id, unit_cost, source_type, recorded_at)
+     VALUES ($1, $2, $3, $4, 'purchase_receipt', now() - $5 * interval '1 day')`,
+    [crypto.randomUUID(), PRODUCT_ID, SUPPLIER_ID, unitCost, daysAgo]
+  )
+}
+
 async function resetFixtures() {
+  await pool.query('DELETE FROM product_cost_history WHERE product_id = $1', [PRODUCT_ID])
+  await pool.query('DELETE FROM purchase_order_items WHERE product_id = $1', [PRODUCT_ID])
+  await pool.query("DELETE FROM purchase_orders WHERE po_number LIKE 'PO-TEST-%'")
   await pool.query('DELETE FROM supplier_products')
   await pool.query('DELETE FROM stock_movements WHERE product_id = $1', [PRODUCT_ID])
   await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
@@ -36,6 +61,9 @@ async function resetFixtures() {
 describe('replenishmentService', () => {
   beforeEach(resetFixtures)
   afterAll(async () => {
+    await pool.query('DELETE FROM product_cost_history WHERE product_id = $1', [PRODUCT_ID])
+    await pool.query('DELETE FROM purchase_order_items WHERE product_id = $1', [PRODUCT_ID])
+    await pool.query("DELETE FROM purchase_orders WHERE po_number LIKE 'PO-TEST-%'")
     await pool.query('DELETE FROM supplier_products')
     await pool.query('DELETE FROM stock_movements WHERE product_id = $1', [PRODUCT_ID])
     await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
@@ -94,5 +122,54 @@ describe('replenishmentService', () => {
     await pool.query('UPDATE products SET available = 0 WHERE id = $1', [PRODUCT_ID])
     const rows = await getReplenishmentSuggestions(14)
     expect(rows.find(r => r.productId === PRODUCT_ID)).toBeUndefined()
+  })
+
+  it('subtracts incoming quantity from open purchase orders so it never double-orders', async () => {
+    // نفس بيانات "computes suggested reorder" (اقتراح خام = 8) لكن مع 5 وحدات في الطريق
+    // من أمر شراء مفتوح — الاقتراح النهائي المفروض يبقى 3 مش 8.
+    await insertSale(1, 7)
+    await insertSale(3, 7)
+    await insertOpenPurchaseOrder('po-incoming-1', 'submitted', 5, 0)
+    const rows = await getReplenishmentSuggestions(14)
+    const row = rows.find(r => r.productId === PRODUCT_ID)!
+    expect(row.incomingQty).toBe(5)
+    expect(row.suggestedReorderQty).toBe(3)
+  })
+
+  it('counts only the un-received remainder of a partially received purchase order as incoming', async () => {
+    await insertOpenPurchaseOrder('po-incoming-2', 'partially_received', 10, 6)
+    const rows = await getReplenishmentSuggestions(14)
+    const row = rows.find(r => r.productId === PRODUCT_ID)!
+    expect(row.incomingQty).toBe(4)
+  })
+
+  it('ignores received and cancelled purchase orders when computing incoming quantity', async () => {
+    await pool.query(
+      `INSERT INTO purchase_orders (id, po_number, supplier_id, status, subtotal, discount, shipping_cost, total)
+       VALUES ('po-done', 'PO-TEST-po-done', $1, 'received', 0, 0, 0, 0), ('po-cancelled', 'PO-TEST-po-cancelled', $1, 'cancelled', 0, 0, 0, 0)`,
+      [SUPPLIER_ID]
+    )
+    await pool.query(
+      `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, received_qty, unit_cost, line_total)
+       VALUES ('po-done-item', 'po-done', $1, 10, 10, 5, 0), ('po-cancelled-item', 'po-cancelled', $1, 10, 0, 5, 0)`,
+      [PRODUCT_ID]
+    )
+    const rows = await getReplenishmentSuggestions(14)
+    const row = rows.find(r => r.productId === PRODUCT_ID)!
+    expect(row.incomingQty).toBe(0)
+  })
+
+  it('reports the most recent purchase-receipt unit cost as lastReceivedCost', async () => {
+    await insertCostHistory(4.5, 10)
+    await insertCostHistory(5.25, 1)
+    const rows = await getReplenishmentSuggestions(14)
+    const row = rows.find(r => r.productId === PRODUCT_ID)!
+    expect(row.lastReceivedCost).toBe(5.25)
+  })
+
+  it('reports null lastReceivedCost when the product has never been received', async () => {
+    const rows = await getReplenishmentSuggestions(14)
+    const row = rows.find(r => r.productId === PRODUCT_ID)!
+    expect(row.lastReceivedCost).toBeNull()
   })
 })

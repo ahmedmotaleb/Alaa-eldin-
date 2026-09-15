@@ -189,6 +189,75 @@ export async function updateDraftPurchaseOrder(id: string, input: PurchaseOrderI
   })
 }
 
+export interface MergeRecommendationInput {
+  productId: string
+  additionalQty: number
+  unitCost: number
+}
+
+// دمج اقتراحات إعادة الطلب (من محرك الاقتراحات) داخل أمر شراء "مسودة" موجود بالفعل، بدل
+// إنشاء أمر جديد أو تكرار بند لنفس المنتج — لو المنتج موجود مسبقاً في المسودة، الكمية بتتجمع
+// وتكلفة الوحدة بتتحسب كمتوسط مرجّح بين الكمية/التكلفة القديمة والمُضافة (مش سطر تاني مكرر).
+// المورد لازم يتطابق مع مورد المسودة (بيتفحص هنا، مش بس على الواجهة)، والإجماليات بتتحسب من
+// الصفر من الخادم زي أي إنشاء/تعديل عادي — مفيش رقم إجمالي متبعت من الواجهة بيتصدّق.
+export async function mergeRecommendationsIntoDraftPurchaseOrder(
+  draftId: string,
+  supplierId: string,
+  items: MergeRecommendationInput[]
+): Promise<PurchaseOrderRow | { error: string }> {
+  if (!items.length) return { error: 'no_items' }
+  for (const item of items) {
+    if (!item.productId) return { error: 'invalid_item' }
+    if (!Number.isFinite(item.additionalQty) || item.additionalQty <= 0) return { error: 'invalid_quantity' }
+    if (!Number.isFinite(item.unitCost) || item.unitCost < 0) return { error: 'invalid_cost' }
+  }
+
+  return withTransaction(async client => {
+    const { rows: existing } = await client.query<{ status: PurchaseOrderStatus; supplierId: string; discount: number; shippingCost: number }>(
+      'SELECT status, supplier_id as "supplierId", discount, shipping_cost as "shippingCost" FROM purchase_orders WHERE id = $1 FOR UPDATE',
+      [draftId]
+    )
+    if (!existing[0]) return { error: 'not_found' }
+    if (existing[0].status !== 'draft') return { error: 'not_editable' }
+    if (existing[0].supplierId !== supplierId) return { error: 'supplier_mismatch' }
+
+    const { rows: existingItems } = await client.query<{ productId: string; orderedQty: number; unitCost: number }>(
+      'SELECT product_id as "productId", ordered_qty as "orderedQty", unit_cost as "unitCost" FROM purchase_order_items WHERE purchase_order_id = $1',
+      [draftId]
+    )
+    const merged = new Map(existingItems.map(i => [i.productId, { orderedQty: i.orderedQty, unitCost: i.unitCost }]))
+
+    for (const item of items) {
+      const current = merged.get(item.productId)
+      if (current) {
+        const totalQty = current.orderedQty + item.additionalQty
+        const weightedCost = Math.round(((current.orderedQty * current.unitCost) + (item.additionalQty * item.unitCost)) / totalQty * 100) / 100
+        merged.set(item.productId, { orderedQty: totalQty, unitCost: weightedCost })
+      } else {
+        merged.set(item.productId, { orderedQty: item.additionalQty, unitCost: item.unitCost })
+      }
+    }
+
+    const finalItems: PurchaseOrderItemInput[] = Array.from(merged.entries())
+      .map(([productId, v]) => ({ productId, orderedQty: v.orderedQty, unitCost: v.unitCost }))
+    const { lineTotals, subtotal, total } = computeTotals(finalItems, existing[0].discount, existing[0].shippingCost)
+
+    await client.query('DELETE FROM purchase_order_items WHERE purchase_order_id = $1', [draftId])
+    for (let i = 0; i < finalItems.length; i++) {
+      const item = finalItems[i]
+      await client.query(
+        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, unit_cost, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [crypto.randomUUID(), draftId, item.productId, item.orderedQty, item.unitCost, lineTotals[i]]
+      )
+    }
+    await client.query('UPDATE purchase_orders SET subtotal = $2, total = $3, updated_at = now() WHERE id = $1', [draftId, subtotal, total])
+
+    const { rows } = await client.query<PurchaseOrderRow>(`${PO_SELECT} WHERE po.id = $1`, [draftId])
+    return rows[0]
+  })
+}
+
 export async function updatePurchaseOrderStatus(id: string, toStatus: PurchaseOrderStatus): Promise<PurchaseOrderRow | { error: string }> {
   return withTransaction(async client => {
     const { rows: existing } = await client.query<{ status: PurchaseOrderStatus }>(

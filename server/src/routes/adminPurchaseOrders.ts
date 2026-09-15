@@ -3,7 +3,7 @@ import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import {
   listPurchaseOrders, getPurchaseOrderById, createPurchaseOrder, updateDraftPurchaseOrder, updatePurchaseOrderStatus,
-  type PurchaseOrderInput, type PurchaseOrderStatus
+  mergeRecommendationsIntoDraftPurchaseOrder, type PurchaseOrderInput, type PurchaseOrderStatus, type MergeRecommendationInput
 } from '../services/purchaseOrderService.js'
 
 export const adminPurchaseOrdersRouter = Router()
@@ -86,6 +86,44 @@ adminPurchaseOrdersRouter.patch('/:id', requirePermission('purchases.create'), a
     entityType: 'purchase_order',
     entityId: result.id,
     newValues: { total: result.total }
+  })
+  res.json({ order: result })
+})
+
+function parseMergeItems(body: unknown): { supplierId: string; items: MergeRecommendationInput[] } | null {
+  const b = body as Record<string, unknown>
+  if (typeof b?.supplierId !== 'string' || !b.supplierId.trim()) return null
+  if (!Array.isArray(b.items)) return null
+  const items = b.items.map((raw: unknown) => {
+    const item = raw as Record<string, unknown>
+    return {
+      productId: typeof item?.productId === 'string' ? item.productId : '',
+      additionalQty: typeof item?.additionalQty === 'number' ? item.additionalQty : NaN,
+      unitCost: typeof item?.unitCost === 'number' ? item.unitCost : NaN
+    }
+  })
+  return { supplierId: b.supplierId, items }
+}
+
+// دمج اقتراحات إعادة الطلب المُختارة داخل مسودة أمر شراء موجودة — بديل عن إنشاء أمر جديد،
+// يُستخدم من شاشة اقتراحات الشراء (المورد بيتفحص هنا كمان، مش بس فلترة الواجهة).
+adminPurchaseOrdersRouter.post('/:id/merge-recommendations', requirePermission('purchases.create'), async (req, res) => {
+  const input = parseMergeItems(req.body)
+  if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
+
+  const result = await mergeRecommendationsIntoDraftPurchaseOrder(String(req.params.id), input.supplierId, input.items)
+  if ('error' in result) {
+    const status = result.error === 'not_found' ? 404 : result.error === 'supplier_mismatch' || result.error === 'not_editable' ? 409 : 400
+    res.status(status).json({ error: result.error })
+    return
+  }
+
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'purchase_order_recommendations_merged',
+    entityType: 'purchase_order',
+    entityId: result.id,
+    newValues: { total: result.total, mergedProductIds: input.items.map(i => i.productId) }
   })
   res.json({ order: result })
 })
