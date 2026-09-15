@@ -98,8 +98,9 @@ export function ProductsListPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="admin-form-chip" onClick={exportCsv}>تصدير CSV</button>
-            <button className="admin-form-chip" onClick={() => importInputRef.current?.click()}>استيراد CSV</button>
+            <button className="admin-form-chip" onClick={() => importInputRef.current?.click()}>استيراد CSV (تحديث فقط)</button>
             <input ref={importInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f) }} />
+            <button className="admin-form-chip" onClick={() => navigate('/products/import')}>استيراد متقدّم (إنشاء + تحديث)</button>
           </div>
         </div>
         {csvNotice && <div className="admin-form-success" style={{ margin: '0 16px' }}>{csvNotice}</div>}

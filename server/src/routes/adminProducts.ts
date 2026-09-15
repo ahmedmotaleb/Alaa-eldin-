@@ -7,6 +7,7 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
+import { validateImportRows, importValidatedRows, type ImportConfirmRow } from '../services/productImportService.js'
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
@@ -186,6 +187,67 @@ adminProductsRouter.post('/import', requirePermission('products.edit'), csvUploa
 
   logEvent('admin_product_updated', { source: 'csv_import', updated, skippedCount: skipped.length })
   res.json({ updated, skipped })
+})
+
+// استيراد بمرحلتين بيسمح بإنشاء منتجات جديدة فعلاً (مش بس تحديث الموجود) — المرحلة الأولى
+// هنا بس قراءة وتحقق (preview)، مفيش أي تعديل على قاعدة البيانات؛ التأكيد الفعلي في
+// /import/confirm بعد ما المستخدم يشوف ويختار الصفوف الصالحة من المعاينة.
+adminProductsRouter.post('/import/preview', requirePermission('inventory.import'), csvUpload.single('file'), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'missing_file' })
+    return
+  }
+  const records = csvRecords(parseCsv(req.file.buffer.toString('utf-8')))
+  if (records.length > 5000) {
+    res.status(400).json({ error: 'file_too_large' })
+    return
+  }
+  const rows = await validateImportRows(records)
+  const summary = {
+    total: rows.length,
+    creatable: rows.filter(r => r.action === 'create').length,
+    updatable: rows.filter(r => r.action === 'update').length,
+    invalid: rows.filter(r => r.action === 'invalid').length
+  }
+  res.json({ rows, summary })
+})
+
+function parseConfirmRows(body: unknown): ImportConfirmRow[] | null {
+  const b = body as Record<string, unknown>
+  if (!Array.isArray(b?.rows)) return null
+  const rows: ImportConfirmRow[] = []
+  for (const raw of b.rows) {
+    const r = raw as Record<string, unknown>
+    if (typeof r?.rowNumber !== 'number') return null
+    if (r.action !== 'create' && r.action !== 'update') return null
+    if (r.action === 'update' && typeof r.productId !== 'string') return null
+    rows.push({
+      rowNumber: r.rowNumber,
+      action: r.action,
+      productId: typeof r.productId === 'string' ? r.productId : undefined,
+      data: (r.data ?? {}) as ImportConfirmRow['data']
+    })
+  }
+  return rows
+}
+
+adminProductsRouter.post('/import/confirm', requirePermission('inventory.import'), async (req, res) => {
+  const rows = parseConfirmRows(req.body)
+  if (!rows || rows.length === 0) {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+
+  const summary = await importValidatedRows(rows, req.user!.id)
+  logEvent('admin_product_updated', { source: 'csv_staged_import', created: summary.created, updated: summary.updated, failedCount: summary.failed.length })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_csv_import_confirmed',
+    entityType: 'product',
+    entityId: 'bulk',
+    newValues: { created: summary.created, updated: summary.updated, failed: summary.failed.length }
+  })
+  res.json(summary)
 })
 
 adminProductsRouter.get('/:id', requirePermission('products.view'), async (req, res) => {

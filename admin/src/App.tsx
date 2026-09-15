@@ -16,6 +16,7 @@ const PrintOrderPage = lazy(() => import('./pages/PrintOrderPage').then(m => ({ 
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage').then(m => ({ default: m.PlaceholderPage })))
 const ProductsListPage = lazy(() => import('./pages/products/ProductsListPage').then(m => ({ default: m.ProductsListPage })))
 const ProductFormPage = lazy(() => import('./pages/products/ProductFormPage').then(m => ({ default: m.ProductFormPage })))
+const ProductImportPage = lazy(() => import('./pages/products/ProductImportPage').then(m => ({ default: m.ProductImportPage })))
 const CategoriesPage = lazy(() => import('./pages/products/CategoriesPage').then(m => ({ default: m.CategoriesPage })))
 const InventoryPage = lazy(() => import('./pages/products/InventoryPage').then(m => ({ default: m.InventoryPage })))
 const StockMovesPage = lazy(() => import('./pages/products/StockMovesPage').then(m => ({ default: m.StockMovesPage })))
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="/products" element={<Navigate to="/products/all" replace />} />
               <Route path="/products/all" element={<ProductsListPage />} />
               <Route path="/products/add" element={<ProductFormPage />} />
+              <Route path="/products/import" element={<ProductImportPage />} />
               <Route path="/products/edit/:id" element={<ProductFormPage />} />
               <Route path="/products/cats" element={<CategoriesPage />} />
               <Route path="/products/inv" element={<InventoryPage />} />

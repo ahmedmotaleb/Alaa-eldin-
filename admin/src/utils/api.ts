@@ -255,6 +255,42 @@ export interface AdminProduct {
 
 export type AdminProductInput = Omit<AdminProduct, 'orderCount'>
 
+export type ImportRowAction = 'create' | 'update' | 'invalid'
+
+export interface ImportRowData {
+  sku?: string
+  barcode?: string
+  slug?: string
+  categoryId?: string
+  name?: string
+  description?: string
+  price?: number
+  oldPrice?: number | null
+  cost?: number
+  unit?: string
+  emoji?: string
+  stock?: number
+  alertThreshold?: number
+  available?: boolean
+  brand?: string
+}
+
+export interface ImportRowPreview {
+  rowNumber: number
+  action: ImportRowAction
+  productId?: string
+  data: ImportRowData
+  errors: string[]
+  warnings: string[]
+}
+
+export interface ImportConfirmRow {
+  rowNumber: number
+  action: 'create' | 'update'
+  productId?: string
+  data: ImportRowData
+}
+
 export interface AdminProductImage {
   id: string
   productId: string
@@ -981,6 +1017,12 @@ export const api = {
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
   exportProductsCsv: () => downloadFile('/admin/products/export', 'products.csv'),
   importProductsCsv: (file: File) => uploadFile<{ updated: number, skipped: { row: number, reason: string }[] }>('/admin/products/import', file),
+  previewProductsCsvImport: (file: File) =>
+    uploadFile<{ rows: ImportRowPreview[], summary: { total: number, creatable: number, updatable: number, invalid: number } }>('/admin/products/import/preview', file),
+  confirmProductsCsvImport: (rows: ImportConfirmRow[]) =>
+    request<{ created: number, updated: number, skipped: number, failed: { rowNumber: number, reason: string }[] }>(
+      '/admin/products/import/confirm', { method: 'POST', body: JSON.stringify({ rows }) }
+    ),
   listCycleCounts: () => request<{ cycleCounts: CycleCountSummary[] }>('/admin/cycle-counts'),
   createCycleCount: (body: { categoryId?: string | null, note?: string }) =>
     request<{ id: string }>('/admin/cycle-counts', { method: 'POST', body: JSON.stringify(body) }),
