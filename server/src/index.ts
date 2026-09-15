@@ -141,7 +141,7 @@ app.use(attachUser)
 // المسموح، حتى لو المتصفح (قديم أو مُعدّل) سمح بإرسال الكوكيز. طلب من غير هيدر Origin خالص
 // (curl، تطبيقات native) بيتقبل زي ما كان دايماً — نفس منطق إعدادات CORS فوق بالظبط.
 app.use('/api', (req, res, next) => {
-  if (isRequestOriginAllowed(req.method, req.headers.origin, ALLOWED_ORIGINS, isProduction)) { next(); return }
+  if (isRequestOriginAllowed(req.method, req.headers.origin, ALLOWED_ORIGINS, isProduction, req.headers.host)) { next(); return }
   res.status(403).json({ error: 'invalid_origin' })
 })
 

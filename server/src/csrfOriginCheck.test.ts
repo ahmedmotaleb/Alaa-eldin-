@@ -27,4 +27,24 @@ describe('isRequestOriginAllowed', () => {
   it('allows a state-changing request from any origin outside production (local dev)', () => {
     expect(isRequestOriginAllowed('POST', 'https://evil.example', ALLOWED, false)).toBe(true)
   })
+
+  it('allows a production same-origin request whose Origin host matches the request Host header', () => {
+    expect(isRequestOriginAllowed(
+      'POST', 'https://alaa-eldin-production.up.railway.app', ALLOWED, true, 'alaa-eldin-production.up.railway.app'
+    )).toBe(true)
+  })
+
+  it('allows a same-origin request even on a future custom domain, with no allowlist changes needed', () => {
+    expect(isRequestOriginAllowed('PATCH', 'https://shop.example.com', ALLOWED, true, 'shop.example.com')).toBe(true)
+  })
+
+  it('still rejects a foreign origin even when a requestHost is provided', () => {
+    expect(isRequestOriginAllowed(
+      'POST', 'https://evil.example', ALLOWED, true, 'alaa-eldin-production.up.railway.app'
+    )).toBe(false)
+  })
+
+  it('rejects a malformed Origin header rather than throwing', () => {
+    expect(isRequestOriginAllowed('POST', 'not-a-valid-url', ALLOWED, true, 'alaa-eldin-production.up.railway.app')).toBe(false)
+  })
 })
