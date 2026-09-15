@@ -1,7 +1,36 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { api, ApiError, type AdminSettings, type AdminDeliveryZone, type AdminDeliverySlot } from '../../utils/api'
+import {
+  api, ApiError, type AdminSettings, type AdminDeliveryZone, type AdminDeliverySlot,
+  type AdminDeliveryCalendarSettings, type AdminDeliveryDateOverride
+} from '../../utils/api'
 import type { LayoutContext } from '../../components/AdminLayout'
+
+const WEEKDAY_LABELS: Record<number, string> = {
+  1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس', 5: 'الجمعة', 6: 'السبت', 7: 'الأحد'
+}
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 7]
+
+// تاريخ "النهاردة" هنا بس لعرض قايمة الأيام في الواجهة (تقريب مريح، بيعتمد على توقيت
+// جهاز الأدمن) — المرجع الفعلي والوحيد لكل قرار (سعة، إتاحة يوم) هو توقيت القاهرة على
+// السيرفر نفسه (راجع server/src/cairoDate.ts)، مش أي حساب هنا في الواجهة.
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function addDaysIso(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return dt.toISOString().slice(0, 10)
+}
+
+function isoWeekday(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return day === 0 ? 7 : day
+}
 
 const ZONE_COLS = '2fr 1fr .6fr .8fr'
 
@@ -71,6 +100,7 @@ export function DeliverySettingsPage() {
 
       <DeliveryZonesSection />
       <DeliverySlotsSection />
+      <DeliveryCalendarSection />
     </>
   )
 }
@@ -314,6 +344,153 @@ function DeliverySlotsSection() {
             <button className="admin-form-save" disabled={saving} onClick={createSlot}>حفظ الميعاد</button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+const CALENDAR_WINDOW_DAYS = 30
+
+function DeliveryCalendarSection() {
+  const [settings, setSettings] = useState<AdminDeliveryCalendarSettings | null>(null)
+  const [draftDaysAhead, setDraftDaysAhead] = useState('7')
+  const [draftClosedWeekdays, setDraftClosedWeekdays] = useState<number[]>([])
+  const [overrides, setOverrides] = useState<Record<string, AdminDeliveryDateOverride>>({})
+  const [error, setError] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [savingDate, setSavingDate] = useState('')
+
+  const today = todayIso()
+  const windowEnd = addDaysIso(today, CALENDAR_WINDOW_DAYS)
+  const days = Array.from({ length: CALENDAR_WINDOW_DAYS }, (_, i) => addDaysIso(today, i))
+
+  function load() {
+    Promise.all([api.getDeliveryCalendarSettings(), api.listDeliveryDateOverrides(today, windowEnd)])
+      .then(([settingsRes, overridesRes]) => {
+        setSettings(settingsRes.settings)
+        setDraftDaysAhead(String(settingsRes.settings.daysAhead))
+        setDraftClosedWeekdays(settingsRes.settings.closedWeekdays)
+        setOverrides(Object.fromEntries(overridesRes.overrides.map(o => [o.date, o])))
+      })
+      .catch(() => setError('تعذر تحميل إعدادات تقويم التوصيل'))
+  }
+
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleWeekday(day: number) {
+    setDraftClosedWeekdays(current => current.includes(day) ? current.filter(d => d !== day) : [...current, day])
+  }
+
+  async function saveCalendarSettings() {
+    const daysAhead = Number(draftDaysAhead)
+    if (!Number.isInteger(daysAhead) || daysAhead < 1 || daysAhead > 60) {
+      setError('عدد الأيام لازم يكون رقم صحيح بين 1 و60')
+      return
+    }
+    setSavingSettings(true)
+    setError('')
+    try {
+      const { settings: updated } = await api.updateDeliveryCalendarSettings({ daysAhead, closedWeekdays: draftClosedWeekdays })
+      setSettings(updated)
+    } catch {
+      setError('تعذر حفظ إعدادات التقويم')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  async function toggleDateOverride(date: string) {
+    const existing = overrides[date]
+    const weeklyOpen = settings ? !settings.closedWeekdays.includes(isoWeekday(date)) : true
+    const currentlyOpen = existing ? existing.active : weeklyOpen
+    setSavingDate(date)
+    setError('')
+    try {
+      if (existing) {
+        // إلغاء الاستثناء بالكامل بيرجّع اليوم لقاعدة أيام الأسبوع الافتراضية.
+        await api.removeDeliveryDateOverride(date)
+        setOverrides(current => { const next = { ...current }; delete next[date]; return next })
+      } else {
+        // مفيش استثناء لسه — بنعمل واحد جديد بعكس الحالة الحالية (المشتقة من قاعدة الأسبوع).
+        const notes = window.prompt('ملاحظة (اختياري) — مثال: عطلة رسمية') ?? ''
+        const { override } = await api.setDeliveryDateOverride(date, { active: !currentlyOpen, notes: notes.trim() })
+        setOverrides(current => ({ ...current, [date]: override }))
+      }
+    } catch {
+      setError('تعذر تحديث حالة اليوم ده')
+    } finally {
+      setSavingDate('')
+    }
+  }
+
+  if (error && !settings) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
+  if (!settings) return null
+
+  return (
+    <div className="admin-form-grid" style={{ marginTop: 16 }}>
+      <div className="admin-form-card">
+        <div>
+          <div className="admin-form-card-title">مواعيد التوصيل — التقويم</div>
+          <div className="admin-form-card-sub">أيام الأسبوع المتاحة افتراضياً، وعدد الأيام القادمة اللي يشوفها العميل عند الدفع</div>
+        </div>
+        <label>عدد الأيام القادمة المعروضة للعميل
+          <input type="number" min={1} max={60} value={draftDaysAhead} onChange={e => setDraftDaysAhead(e.target.value)} style={{ width: 100 }} />
+        </label>
+        <label>أيام الأسبوع المقفولة افتراضياً (توصيل متوقف فيها كل أسبوع)
+          <span className="admin-form-chips" style={{ flexWrap: 'wrap' }}>
+            {WEEKDAY_ORDER.map(day => (
+              <button
+                key={day}
+                type="button"
+                className={`admin-form-chip ${draftClosedWeekdays.includes(day) ? 'active' : ''}`}
+                onClick={() => toggleWeekday(day)}
+              >
+                {WEEKDAY_LABELS[day]}
+              </button>
+            ))}
+          </span>
+        </label>
+        {error && <div className="admin-form-error">{error}</div>}
+        <button className="admin-form-save" disabled={savingSettings} onClick={saveCalendarSettings}>حفظ إعدادات التقويم</button>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-tools">
+          <div className="admin-form-card-title">الأيام القادمة ({CALENDAR_WINDOW_DAYS} يوم)</div>
+          <div style={{ color: '#68746B', fontWeight: 600, fontSize: 12 }}>فتح/قفل استثنائي ليوم بعينه — بيتغلّب على قاعدة الأسبوع فوق</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 14, maxHeight: 420, overflowY: 'auto' }}>
+          {days.map(date => {
+            const weekday = isoWeekday(date)
+            const weeklyOpen = !settings.closedWeekdays.includes(weekday)
+            const override = overrides[date]
+            const effectiveOpen = override ? override.active : weeklyOpen
+            const hasOverride = !!override
+            return (
+              <div
+                key={date}
+                className="admin-table-row"
+                style={{ gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 10, background: effectiveOpen ? undefined : '#FFF0EF' }}
+              >
+                <span style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 800, fontSize: 13 }}>{WEEKDAY_LABELS[weekday]} — {date}</span>
+                  {hasOverride && <span style={{ fontSize: 11, color: '#8A948C' }}>{override.notes || (override.active ? 'فتح استثنائي' : 'إغلاق استثنائي')}</span>}
+                </span>
+                <span className="admin-pill" style={{ background: effectiveOpen ? '#EAF8EF' : '#FFF0EF', color: effectiveOpen ? '#12813C' : '#B42318' }}>
+                  {effectiveOpen ? 'مفتوح' : 'مقفول'}
+                  {hasOverride && ' (استثناء)'}
+                </span>
+                <button
+                  className="admin-category-card-btn"
+                  disabled={savingDate === date}
+                  onClick={() => toggleDateOverride(date)}
+                >
+                  {hasOverride ? 'إلغاء الاستثناء' : (effectiveOpen ? 'إغلاق استثنائي' : 'فتح استثنائي')}
+                </button>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

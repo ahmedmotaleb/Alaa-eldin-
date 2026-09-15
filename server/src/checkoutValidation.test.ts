@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { validateCheckoutInput } from './checkoutValidation.js'
+import { todayInCairo, addCalendarDays } from './cairoDate.js'
 
 const validCustomer = { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع الاختبار رقم 1' }
+const validDate = todayInCairo()
 
 function withCustomer(overrides: Partial<typeof validCustomer>) {
   return {
     deliverySlot: 'now' as const,
+    deliveryDate: validDate,
     paymentMethod: 'COD',
     customer: { ...validCustomer, ...overrides },
     items: [{ productId: 'p1', quantity: 1 }]
@@ -16,6 +19,7 @@ describe('validateCheckoutInput', () => {
   it('accepts a well-formed request and strips it down to the safe shape', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'now',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 2 }]
@@ -32,6 +36,7 @@ describe('validateCheckoutInput', () => {
   it('never lets client-submitted price fields through, even when present in the raw JSON', () => {
     const maliciousBody = {
       deliverySlot: 'now',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 2, unitPrice: 0.01, lineTotal: 0.02, name: 'مزوّر', unit: 'وحدة' }],
@@ -53,6 +58,7 @@ describe('validateCheckoutInput', () => {
   it('merges duplicate productId lines instead of locking the same product twice', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'now',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 2 }, { productId: 'p1', quantity: 3 }]
@@ -66,6 +72,7 @@ describe('validateCheckoutInput', () => {
   it('rejects a blank delivery slot', () => {
     const result = validateCheckoutInput({
       deliverySlot: '   ',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 1 }]
@@ -76,6 +83,7 @@ describe('validateCheckoutInput', () => {
   it('accepts any non-empty delivery slot id at the structural-validation stage', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'yesterday',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 1 }]
@@ -83,9 +91,48 @@ describe('validateCheckoutInput', () => {
     expect(result.ok).toBe(true)
   })
 
+  // نفس فلسفة الميعاد: الشكل بس بيتحقق هنا (تاريخ حقيقي، مش في الماضي) — هل التاريخ ده
+  // فعلاً يوم مفتوح للتوصيل وله سعة متاحة بيتأكد منه orderService.createOrder.
+  it('rejects a missing delivery date', () => {
+    const result = validateCheckoutInput({
+      deliverySlot: 'now',
+      paymentMethod: 'COD',
+      customer: validCustomer,
+      items: [{ productId: 'p1', quantity: 1 }]
+    })
+    expect(result).toEqual({ ok: false, error: 'invalid_delivery_date' })
+  })
+
+  it('rejects a malformed delivery date string', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryDate: '17-09-2026' })
+    expect(result).toEqual({ ok: false, error: 'invalid_delivery_date' })
+  })
+
+  it('rejects a calendar-invalid delivery date (e.g. Feb 30)', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryDate: '2026-02-30' })
+    expect(result).toEqual({ ok: false, error: 'invalid_delivery_date' })
+  })
+
+  it('rejects a delivery date in the past', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryDate: addCalendarDays(validDate, -1) })
+    expect(result).toEqual({ ok: false, error: 'invalid_delivery_date' })
+  })
+
+  it('accepts today as a valid delivery date', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryDate: validDate })
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts a future delivery date at the structural-validation stage', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), deliveryDate: addCalendarDays(validDate, 5) })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.deliveryDate).toBe(addCalendarDays(validDate, 5))
+  })
+
   it('rejects a payment method other than COD', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'now',
+      deliveryDate: validDate,
       paymentMethod: 'CREDIT_CARD',
       customer: validCustomer,
       items: [{ productId: 'p1', quantity: 1 }]
@@ -96,6 +143,7 @@ describe('validateCheckoutInput', () => {
   it('rejects an empty items array', () => {
     const result = validateCheckoutInput({
       deliverySlot: 'now',
+      deliveryDate: validDate,
       paymentMethod: 'COD',
       customer: validCustomer,
       items: []

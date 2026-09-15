@@ -7,6 +7,7 @@ import { pool } from '../db.js'
 import { createOrder, cancelOrder, getOrderByNumberForGuestToken } from './orderService.js'
 import { listOrderStatusHistory } from './orderStatusHistoryService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
+import { todayInCairo, addCalendarDays } from '../cairoDate.js'
 
 const CATEGORY_ID = 'test-cat'
 const PRODUCT_ID = 'test-prod-1'
@@ -46,7 +47,11 @@ async function resetFixtures() {
   // مش fixture لكل اختبار) — بس الصفوف اللي اختبارات الملف ده بتلعب فيها بترجع لحالتها الافتراضية
   // عشان أي تعديل (تعطيل/تغيير رسم) من اختبار سابق ميأثرش على الاختبار الجاي أو ملفات تانية.
   await pool.query(`UPDATE delivery_zones SET delivery_fee = 30, is_active = 1 WHERE governorate = 'القاهرة'`)
-  await pool.query(`UPDATE delivery_slots SET is_active = 1 WHERE id = 'now'`)
+  await pool.query(`UPDATE delivery_slots SET is_active = 1, max_orders_per_day = NULL WHERE id = 'now'`)
+  // مش بيانات مرجعية دائمة (عكس delivery_zones/delivery_slots) — لازم تترجع فاضية قبل كل
+  // اختبار عشان استثناء تاريخ من اختبار سابق ميأثرش على اختبار تاني.
+  await pool.query('DELETE FROM delivery_date_overrides')
+  await pool.query('DELETE FROM delivery_slot_date_capacity')
 }
 
 async function setStock(quantity: number) {
@@ -61,6 +66,7 @@ async function getStock(): Promise<number> {
 function baseInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
     deliverySlot: 'now',
+    deliveryDate: todayInCairo(),
     paymentMethod: 'COD',
     customer: { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
     items: [{ productId: PRODUCT_ID, quantity: 5 }],
@@ -167,6 +173,50 @@ describe('createOrder — server-authoritative delivery zones and slots', () => 
     const { order: second } = await createOrder(baseInput(), null, nextKey())
     expect(second.status).toBe('placed')
     await pool.query(`UPDATE delivery_slots SET max_orders_per_day = NULL WHERE id = 'now'`)
+  })
+
+  it('persists the requested delivery date on the created order', async () => {
+    const date = addCalendarDays(todayInCairo(), 2)
+    const { order } = await createOrder(baseInput({ deliveryDate: date }), null, nextKey())
+    expect(order.deliveryDate).toBe(date)
+  })
+
+  it('capacity is scoped per delivery date — a full day does not block a different date for the same slot', async () => {
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = 1 WHERE id = 'now'`)
+    const today = todayInCairo()
+    const tomorrow = addCalendarDays(today, 1)
+    await createOrder(baseInput({ deliveryDate: today }), null, nextKey())
+    // النهاردة بقى ممتلئ، لكن بكرة لسه فاضي تماماً لنفس الميعاد.
+    await expect(createOrder(baseInput({ deliveryDate: today }), null, nextKey())).rejects.toMatchObject({ status: 409, code: 'delivery_slot_full' })
+    const { order } = await createOrder(baseInput({ deliveryDate: tomorrow }), null, nextKey())
+    expect(order.status).toBe('placed')
+    await pool.query(`UPDATE delivery_slots SET max_orders_per_day = NULL WHERE id = 'now'`)
+  })
+
+  it('rejects a delivery date explicitly disabled by an admin override', async () => {
+    const date = addCalendarDays(todayInCairo(), 3)
+    await pool.query(
+      `INSERT INTO delivery_date_overrides (delivery_date, active, notes) VALUES ($1, false, 'عطلة رسمية')`,
+      [date]
+    )
+    await expect(createOrder(baseInput({ deliveryDate: date }), null, nextKey())).rejects.toMatchObject({ status: 400, code: 'delivery_date_unavailable' })
+  })
+
+  it('rejects a delivery date that falls on a weekly closed day with no override', async () => {
+    const date = addCalendarDays(todayInCairo(), 4)
+    const { isoWeekdayOf } = await import('../cairoDate.js')
+    await pool.query('UPDATE store_settings SET delivery_closed_weekdays = $1 WHERE id = 1', [String(isoWeekdayOf(date))])
+    await expect(createOrder(baseInput({ deliveryDate: date }), null, nextKey())).rejects.toMatchObject({ status: 400, code: 'delivery_date_unavailable' })
+  })
+
+  it('allows a delivery date on a normally-closed weekday when explicitly overridden open', async () => {
+    const date = addCalendarDays(todayInCairo(), 5)
+    const { isoWeekdayOf } = await import('../cairoDate.js')
+    await pool.query('UPDATE store_settings SET delivery_closed_weekdays = $1 WHERE id = 1', [String(isoWeekdayOf(date))])
+    await pool.query(`INSERT INTO delivery_date_overrides (delivery_date, active, notes) VALUES ($1, true, 'فتح استثنائي')`, [date])
+    const { order } = await createOrder(baseInput({ deliveryDate: date }), null, nextKey())
+    expect(order.status).toBe('placed')
+    await pool.query(`UPDATE store_settings SET delivery_closed_weekdays = '' WHERE id = 1`)
   })
 })
 

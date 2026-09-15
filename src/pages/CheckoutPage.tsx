@@ -7,10 +7,33 @@ import { useCatalog } from '../store/CatalogContext'
 import type { CustomerDetails, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
-import { api, ApiError, type ApiAddress } from '../utils/api'
+import { api, ApiError, type ApiAddress, type ApiDeliveryDayAvailability } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
+
+// اسم اليوم ورقمه بيتاستخرجوا مباشرة من نص التاريخ (YYYY-MM-DD) من غير المرور بـ
+// Date().toLocaleString أو أي حساب بيعتمد على توقيت جهاز العميل نفسه — ده بيضمن نفس اليوم
+// اللي السيرفر قصده بالظبط (بتوقيت القاهرة)، وبيضمن كمان إن الأرقام تفضل غربية دايماً
+// (مجرد جزء من النص الأصلي، مش تنسيق محلي ممكن يرجّع أرقام هندية).
+function isoWeekdayIndex(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return day === 0 ? 6 : day - 1
+}
+
+function dayNumberOf(dateStr: string): string {
+  return String(Number(dateStr.slice(8, 10)))
+}
+
+// أول عنصر في القايمة هو "النهاردة" وتاني عنصر "بكرة" دايماً — لأن السيرفر بيرجّع النافذة
+// مبتدئة من تاريخ النهاردة بتوقيت القاهرة نفسه (راجع GET /api/delivery/availability)، فمفيش
+// داعي نقارن بتاريخ جهاز العميل (ممكن يكون غلط أو منطقة زمنية مختلفة أثناء السفر مثلاً).
+function dateChipLabel(dateStr: string, index: number): string {
+  if (index === 0) return ar.checkout.deliveryDateToday
+  if (index === 1) return ar.checkout.deliveryDateTomorrow
+  return ar.checkout.deliveryDateWeekdayShort[isoWeekdayIndex(dateStr)]
+}
 
 // بيبني سطر عنوان واحد من الحقول المنفصلة للعنوان المحفوظ — الطلب نفسه لسه بياخد سطر
 // عنوان واحد بس (نفس شكل الدفع الحالي)، من غير ما نغيّر شكل بيانات الطلب.
@@ -32,7 +55,10 @@ export function CheckoutPage() {
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
   const [deliveryInstructions, setDeliveryInstructions] = useState('')
-  const [slot, setSlot] = useState<string>(() => deliverySlots[0]?.id ?? '')
+  const [availability, setAvailability] = useState<ApiDeliveryDayAvailability[] | null>(null)
+  const [availabilityError, setAvailabilityError] = useState('')
+  const [selectedDate, setSelectedDate] = useState('')
+  const [slot, setSlot] = useState('')
   const [touched, setTouched] = useState(false)
   const [apiError, setApiError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -88,7 +114,9 @@ export function CheckoutPage() {
   const mobileValid = isValidEgyptianMobile(customer.mobile.trim())
   const governorateValid = customer.governorate.trim().length > 0
   const addressValid = customer.address.trim().length >= 5 && customer.address.trim().length <= 300
-  const formValid = nameValid && mobileValid && governorateValid && addressValid
+  const selectedDay = availability?.find(d => d.date === selectedDate)
+  const slotValid = !!selectedDay?.slots.find(s => s.id === slot && s.available)
+  const formValid = nameValid && mobileValid && governorateValid && addressValid && slotValid
 
   const nameError = touched && !nameValid ? ar.checkout.nameError : ''
   const mobileError = touched && !customer.mobile.trim()
@@ -108,17 +136,37 @@ export function CheckoutPage() {
     if (cartWasEmptyOnEntry || hasBlockingIssues) navigate('/cart', { replace: true })
   }, [cartWasEmptyOnEntry, hasBlockingIssues, navigate])
 
-  // لو العميل دخل الصفحة قبل ما مواعيد التوصيل تتحمّل (طبيعي جداً مع التحميل غير المتزامن)،
-  // أو الميعاد الافتراضي طلع ممتلئ، بنختار أول ميعاد متاح تلقائياً بدل ما نسيب الاختيار فاضي.
+  // بنجيب تقويم مواعيد التوصيل الحقيقي من السيرفر مرة واحدة عند فتح الصفحة — الأيام المقفولة
+  // أو الممتلئة بالكامل بتوصل هنا بنفس الحالة، والسيرفر برضه هو اللي بيتأكد فعلياً وقت الدفع
+  // (العرض هنا تجربة استخدام بس، مش مصدر الحقيقة).
   useEffect(() => {
-    if (deliverySlots.length === 0) return
-    const current = deliverySlots.find(s => s.id === slot)
+    let cancelled = false
+    api.getDeliveryAvailability().then(({ days }) => {
+      if (cancelled) return
+      setAvailability(days)
+      const firstOpenDay = days.find(d => d.open && d.slots.some(s => s.available))
+      if (firstOpenDay) {
+        setSelectedDate(firstOpenDay.date)
+        setSlot(firstOpenDay.slots.find(s => s.available)!.id)
+      }
+    }).catch(() => {
+      if (!cancelled) setAvailabilityError(ar.checkout.deliveryDateLoadError)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // لو العميل غيّر يوم التوصيل، أو التقويم لسه بيتحمّل، بنعيد اختيار الميعاد المناسب لليوم
+  // الجديد ده تلقائياً لو الميعاد الحالي مش متاح فيه (بدل ما نسيبه محتفظ بميعاد يوم تاني).
+  useEffect(() => {
+    if (!availability) return
+    const day = availability.find(d => d.date === selectedDate)
+    const current = day?.slots.find(s => s.id === slot)
     if (!current || !current.available) {
-      const firstAvailable = deliverySlots.find(s => s.available) ?? deliverySlots[0]
-      setSlot(firstAvailable.id)
+      const firstAvailable = day?.slots.find(s => s.available)
+      setSlot(firstAvailable?.id ?? '')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliverySlots])
+  }, [selectedDate, availability])
 
   function update<K extends keyof CustomerDetails>(key: K, value: CustomerDetails[K]) {
     setCustomer(current => ({ ...current, [key]: value }))
@@ -142,6 +190,7 @@ export function CheckoutPage() {
     try {
       const { order: created } = await api.createOrder({
         deliverySlot: slot,
+        deliveryDate: selectedDate,
         paymentMethod: 'COD',
         customer,
         items,
@@ -251,9 +300,30 @@ export function CheckoutPage() {
       </div>
 
       <div className="form-card">
+        <h2>{ar.checkout.deliveryDateTitle}</h2>
+        {availabilityError && <div className="field-error">{availabilityError}</div>}
+        <div className="date-chip-row">
+          {availability?.map((day, i) => (
+            <button
+              key={day.date}
+              type="button"
+              className={`date-chip ${selectedDate === day.date ? 'active' : ''}`}
+              disabled={!day.open || !day.slots.some(s => s.available)}
+              onClick={() => setSelectedDate(day.date)}
+            >
+              <span className="date-chip-weekday">{dateChipLabel(day.date, i)}</span>
+              <span className="date-chip-day">{dayNumberOf(day.date)}</span>
+              {(!day.open || !day.slots.some(s => s.available)) && (
+                <span className="date-chip-note">{!day.open ? ar.checkout.deliveryDateClosed : ar.checkout.deliveryDateFullyBooked}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <h2>{ar.checkout.deliverySlotTitle}</h2>
+        {!selectedDate && <div className="field-error">{ar.checkout.deliverySlotPickDateFirst}</div>}
         <div className="slot-list">
-          {deliverySlots.map(option => (
+          {(selectedDay?.slots ?? []).map(option => (
             <button
               key={option.id}
               className={`slot-option ${slot === option.id ? 'active' : ''}`}

@@ -109,6 +109,7 @@ export interface Order {
   createdAt: string
   customer: CustomerDetails
   deliverySlot: DeliverySlotId
+  deliveryDate?: string
   paymentMethod: string
   items: OrderLine[]
   subtotal: number

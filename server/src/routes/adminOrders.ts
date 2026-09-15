@@ -19,6 +19,7 @@ interface OrderRow {
   orderNumber: string
   createdAt: string
   deliverySlot: string
+  deliveryDate: string | null
   paymentMethod: string
   customerFullName: string
   customerMobile: string
@@ -43,6 +44,7 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
     orderNumber: row.orderNumber,
     createdAt: row.createdAt,
     deliverySlot: row.deliverySlot,
+    deliveryDate: row.deliveryDate ?? undefined,
     paymentMethod: row.paymentMethod,
     customer: {
       fullName: row.customerFullName,
@@ -66,7 +68,7 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
 }
 
 const SELECT_ORDER = `
-  SELECT o.id as id, o.order_number as "orderNumber", o.created_at as "createdAt", o.delivery_slot as "deliverySlot", o.payment_method as "paymentMethod",
+  SELECT o.id as id, o.order_number as "orderNumber", o.created_at as "createdAt", o.delivery_slot as "deliverySlot", o.delivery_date as "deliveryDate", o.payment_method as "paymentMethod",
          o.customer_full_name as "customerFullName", o.customer_mobile as "customerMobile", o.customer_governorate as "customerGovernorate", o.customer_address as "customerAddress",
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",

@@ -663,6 +663,23 @@ export interface AdminDeliverySlot {
   maxOrdersPerDay: number | null
 }
 
+export interface AdminDeliveryCalendarSettings {
+  daysAhead: number
+  closedWeekdays: number[]
+}
+
+export interface AdminDeliveryDateOverride {
+  date: string
+  active: boolean
+  notes: string
+}
+
+export interface AdminSlotDateCapacityOverride {
+  date: string
+  slotId: string
+  maxOrders: number
+}
+
 export interface AnalyticsRevenueDay {
   date: string
   revenue: number
@@ -1014,6 +1031,19 @@ export const api = {
     request<{ slot: AdminDeliverySlot }>('/admin/delivery/slots', { method: 'POST', body: JSON.stringify(body) }),
   updateDeliverySlot: (id: string, body: { label: string, note: string, isActive: boolean, maxOrdersPerDay: number | null }) =>
     request<{ slot: AdminDeliverySlot }>(`/admin/delivery/slots/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  getDeliveryCalendarSettings: () => request<{ settings: AdminDeliveryCalendarSettings }>('/admin/delivery/calendar-settings'),
+  updateDeliveryCalendarSettings: (body: AdminDeliveryCalendarSettings) =>
+    request<{ settings: AdminDeliveryCalendarSettings }>('/admin/delivery/calendar-settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  listDeliveryDateOverrides: (from: string, to: string) =>
+    request<{ overrides: AdminDeliveryDateOverride[] }>(`/admin/delivery/date-overrides${buildQuery({ from, to })}`),
+  setDeliveryDateOverride: (date: string, body: { active: boolean, notes: string }) =>
+    request<{ override: AdminDeliveryDateOverride }>(`/admin/delivery/date-overrides/${encodeURIComponent(date)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  removeDeliveryDateOverride: (date: string) =>
+    request<void>(`/admin/delivery/date-overrides/${encodeURIComponent(date)}`, { method: 'DELETE' }),
+  listSlotDateCapacity: (from: string, to: string) =>
+    request<{ overrides: AdminSlotDateCapacityOverride[] }>(`/admin/delivery/slot-capacity${buildQuery({ from, to })}`),
+  setSlotDateCapacity: (body: { date: string, slotId: string, maxOrders: number | null }) =>
+    request<void>('/admin/delivery/slot-capacity', { method: 'PUT', body: JSON.stringify(body) }),
   getAnalyticsOverview: () => request<AnalyticsOverview>('/admin/analytics/overview'),
   getAnalyticsSales: () => request<AnalyticsSales>('/admin/analytics/sales'),
   getAnalyticsProducts: () => request<AnalyticsProducts>('/admin/analytics/products'),

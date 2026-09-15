@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { useCatalog } from '../store/CatalogContext'
 import { formatMoney } from '../utils/money'
+import { formatDate } from '../utils/format'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { saveGuestTracking } from '../utils/guestTracking'
 import { ar } from '../i18n/ar'
@@ -45,6 +46,9 @@ export function ConfirmationPage() {
       <div className="order-id-card">
         <div><div className="order-id-label">{ar.confirmation.orderNumber}</div><div className="order-id-value">{order.orderNumber}</div></div>
         <div><div className="order-id-label">{ar.confirmation.expectedDelivery}</div><div className="order-id-value small">{slot}</div></div>
+        {order.deliveryDate && (
+          <div><div className="order-id-label">{ar.confirmation.deliveryDateLabel}</div><div className="order-id-value small">{formatDate(order.deliveryDate, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}</div></div>
+        )}
       </div>
 
       {order.deliveryInstructions && (

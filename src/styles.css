@@ -352,6 +352,14 @@ h1, h2, h3, p { margin: 0; }
 .form-card label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 12.5px; color: #3b4a40; }
 .form-card input, .form-card select, .form-card textarea { border: 1px solid #dce4de; border-radius: 12px; padding: 11px 12px; font-weight: 600; font-size: 14px; outline: none; background: #fbfcfb; color: #17221a; font-family: inherit; resize: vertical; }
 .form-card input:focus, .form-card select:focus, .form-card textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.10); }
+.date-chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.date-chip-row::-webkit-scrollbar { display: none; }
+.date-chip { flex: none; min-width: 58px; border: 1.5px solid var(--border); background: #fff; border-radius: 14px; padding: 9px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.date-chip.active { border-color: var(--green); background: #f4fbf6; }
+.date-chip:disabled { opacity: .45; }
+.date-chip-weekday { font-weight: 700; font-size: 11px; color: var(--muted); }
+.date-chip-day { font-weight: 900; font-size: 16px; color: #1c2b20; }
+.date-chip-note { font-weight: 600; font-size: 9.5px; color: var(--danger); }
 .slot-list { display: flex; flex-direction: column; gap: 8px; }
 .slot-option { border: 1.5px solid var(--border); background: #fff; border-radius: 14px; padding: 12px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: start; }
 .slot-option.active { border-color: var(--green); background: #f4fbf6; }
@@ -430,7 +438,8 @@ h1, h2, h3, p { margin: 0; }
 .courier-call { border: 0; background: var(--green); width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; flex: none; }
 .courier-call:hover { background: var(--green-dark); }
 .tracking-timeline-card { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 17px 15px; }
-.tracking-timeline-card h2 { font-weight: 900; font-size: 15.5px; margin-bottom: 14px; }
+.tracking-timeline-card h2 { font-weight: 900; font-size: 15.5px; margin-bottom: 4px; }
+.tracking-delivery-date { font-weight: 700; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 .tracking-step { display: flex; gap: 12px; }
 .tracking-step-rail { display: flex; flex-direction: column; align-items: center; width: 22px; flex: none; }
 .tracking-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid #e3e9e5; flex: none; }

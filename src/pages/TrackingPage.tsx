@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { getGuestTrackingToken } from '../utils/guestTracking'
-import { formatTime } from '../utils/format'
+import { formatDate, formatTime } from '../utils/format'
 import { formatMoney } from '../utils/money'
 import type { OrderStatus } from '../types/models'
 import { ar } from '../i18n/ar'
@@ -120,6 +120,11 @@ export function TrackingPage() {
 
       <div className="tracking-timeline-card">
         <h2>{ar.tracking.statusTitle(order.orderNumber)}</h2>
+        {order.deliveryDate && (
+          <div className="tracking-delivery-date">
+            {ar.confirmation.deliveryDateLabel}: {formatDate(order.deliveryDate, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
+          </div>
+        )}
         <div className="tracking-timeline">
           {STEPS.map((step, i) => {
             const done = i <= lastDoneIndex

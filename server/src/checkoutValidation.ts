@@ -1,4 +1,5 @@
 import { isValidEgyptianMobile } from './phone.js'
+import { isValidCalendarDateString, todayInCairo } from './cairoDate.js'
 
 // الدفع عند الاستلام هو الطريقة الوحيدة المدعومة فعلياً حالياً.
 export const PAYMENT_METHOD_COD = 'COD'
@@ -17,6 +18,7 @@ export interface CheckoutCustomerInput {
 
 export interface CheckoutInput {
   deliverySlot: string
+  deliveryDate: string
   paymentMethod: string
   customer: CheckoutCustomerInput
   items: CheckoutItemInput[]
@@ -32,6 +34,7 @@ export type CheckoutValidationError =
   | 'customer_governorate_required'
   | 'customer_address_required'
   | 'invalid_delivery_slot'
+  | 'invalid_delivery_date'
   | 'payment_method_not_supported'
   | 'invalid_items'
   | 'invalid_discount_code'
@@ -85,6 +88,13 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'invalid_delivery_slot' }
   }
 
+  // نفس المنطق: الشكل بس بيتحقق هنا (تاريخ حقيقي، مش في الماضي بالنسبة لتوقيت القاهرة) —
+  // كون التاريخ ده فعلاً متاح (مش يوم مقفول، مش ممتلئ) بيتأكد منه orderService.createOrder.
+  const rawDeliveryDate = typeof b.deliveryDate === 'string' ? b.deliveryDate.trim() : ''
+  if (!isValidCalendarDateString(rawDeliveryDate) || rawDeliveryDate < todayInCairo()) {
+    return { ok: false, error: 'invalid_delivery_date' }
+  }
+
   if (typeof b.paymentMethod !== 'string' || b.paymentMethod.toUpperCase() !== PAYMENT_METHOD_COD) {
     return { ok: false, error: 'payment_method_not_supported' }
   }
@@ -120,6 +130,7 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     ok: true,
     data: {
       deliverySlot: rawDeliverySlot,
+      deliveryDate: rawDeliveryDate,
       paymentMethod: PAYMENT_METHOD_COD,
       customer: {
         fullName: rawName,

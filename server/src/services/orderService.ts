@@ -10,7 +10,7 @@ import {
 } from './inventoryService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
-import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacity } from './deliveryService.js'
+import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen } from './deliveryService.js'
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { logEvent, logWarn } from '../logger.js'
 
@@ -33,6 +33,7 @@ interface OrderRow {
   orderNumber: string
   createdAt: string
   deliverySlot: string
+  deliveryDate: string | null
   paymentMethod: string
   customerFullName: string
   customerMobile: string
@@ -54,6 +55,7 @@ export interface SerializedOrder {
   orderNumber: string
   createdAt: string
   deliverySlot: string
+  deliveryDate?: string
   paymentMethod: string
   customer: { fullName: string, mobile: string, governorate: string, address: string }
   items: OrderItemDTO[]
@@ -73,7 +75,7 @@ export interface SerializedOrder {
 }
 
 const SELECT_ORDER_FIELDS = `
-  id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", payment_method as "paymentMethod",
+  id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", delivery_date as "deliveryDate", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
   request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions"
@@ -86,6 +88,7 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     orderNumber: row.orderNumber,
     createdAt: row.createdAt,
     deliverySlot: row.deliverySlot,
+    deliveryDate: row.deliveryDate ?? undefined,
     paymentMethod: row.paymentMethod,
     customer: {
       fullName: row.customerFullName,
@@ -109,6 +112,7 @@ function computeFingerprint(userId: string | null, input: CheckoutInput): string
   const normalized = JSON.stringify({
     userId,
     deliverySlot: input.deliverySlot,
+    deliveryDate: input.deliveryDate,
     customer: input.customer,
     items: [...input.items].sort((a, b) => a.productId.localeCompare(b.productId)),
     discountCode: input.discountCode ?? null
@@ -176,7 +180,11 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       if (zoneDeliveryFee === null) throw new OrderError(400, 'delivery_zone_unavailable')
       logEvent('delivery_zone_selected', { governorate: input.customer.governorate, deliveryFee: zoneDeliveryFee })
       if (!(await isActiveDeliverySlot(client, input.deliverySlot))) throw new OrderError(400, 'invalid_delivery_slot')
-      if (!(await checkDeliverySlotCapacity(client, input.deliverySlot))) throw new OrderError(409, 'delivery_slot_full')
+      // تاريخ التوصيل: لازم يكون فعلاً يوم مفتوح للتوصيل (مش يوم أسبوع مقفول افتراضياً ولا
+      // معطّل بتاريخه بالذات من الأدمن) وليه سعة متاحة لنفس الميعاد في نفس التاريخ ده تحديداً —
+      // مش سعة "النهاردة" العامة زي التصميم القديم.
+      if (!(await isDeliveryDateOpen(client, input.deliveryDate))) throw new OrderError(400, 'delivery_date_unavailable')
+      if (!(await checkDeliverySlotCapacityForDate(client, input.deliverySlot, input.deliveryDate))) throw new OrderError(409, 'delivery_slot_full')
 
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined
 
@@ -241,13 +249,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       try {
         await client.query(
           `INSERT INTO orders (
-             id, order_number, user_id, created_at, delivery_slot, payment_method,
+             id, order_number, user_id, created_at, delivery_slot, delivery_date, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
              subtotal, delivery_fee, total, status, discount_code, discount_amount,
              idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'placed',$14,$15,$16,$17,$18,$19)`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20)`,
           [
-            id, orderNumber, userId, createdAt, input.deliverySlot, input.paymentMethod,
+            id, orderNumber, userId, createdAt, input.deliverySlot, input.deliveryDate, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
             subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
             idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? ''
@@ -355,6 +363,7 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
     orderNumber: row.orderNumber,
     createdAt: row.createdAt,
     deliverySlot: row.deliverySlot,
+    deliveryDate: row.deliveryDate ?? undefined,
     paymentMethod: row.paymentMethod,
     customer: {
       fullName: row.customerFullName,

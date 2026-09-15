@@ -132,8 +132,17 @@ export const ar = {
     governoratePlaceholder: 'اختر المحافظة',
     addressLabel: 'العنوان بالتفصيل',
     addressPlaceholder: 'الشارع، رقم العمارة، الدور، الشقة',
+    deliveryDateTitle: 'يوم التوصيل',
+    deliveryDateToday: 'النهاردة',
+    deliveryDateTomorrow: 'بكرة',
+    deliveryDateClosed: 'مقفول',
+    deliveryDateFullyBooked: 'محجوز بالكامل',
+    deliveryDateWeekdayShort: ['اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت', 'حد'] as string[],
+    deliveryDateLoadError: 'تعذر تحميل مواعيد التوصيل المتاحة، حاول تاني',
+    deliveryDateRequired: 'اختر يوم توصيل متاح',
     deliverySlotTitle: 'موعد التوصيل',
-    deliverySlotFull: 'الميعاد ده امتلأ النهاردة، اختر ميعاد تاني',
+    deliverySlotFull: 'الميعاد ده امتلأ في اليوم ده، اختر ميعاد تاني',
+    deliverySlotPickDateFirst: 'اختر يوم التوصيل الأول',
     paymentTitle: 'طريقة الدفع',
     cashOnDelivery: 'الدفع عند الاستلام',
     cashOnDeliveryNote: 'كاش للمندوب وقت التسليم',
@@ -168,7 +177,8 @@ export const ar = {
     backHome: 'العودة للرئيسية',
     whatsappNote: 'تم إرسال نسخة من الطلب على واتساب المتجر — تقدر تعدّل أي حاجة قبل الخروج للتوصيل.',
     guestDetailsUnavailable: 'تفاصيل الطلب متاحة مباشرة بعد إتمامه فقط. لو محتاج تتابع طلبك، تقدر تسجّل دخول لحسابك أو تكلمنا على واتساب.',
-    deliveryInstructions: 'تعليمات التوصيل'
+    deliveryInstructions: 'تعليمات التوصيل',
+    deliveryDateLabel: 'يوم التوصيل'
   },
 
   tracking: {

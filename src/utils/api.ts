@@ -61,6 +61,7 @@ export interface ApiOrder {
   orderNumber: string
   createdAt: string
   deliverySlot: string
+  deliveryDate?: string
   paymentMethod: string
   customer: { fullName: string, mobile: string, governorate: string, address: string }
   items: ApiOrderItem[]
@@ -262,6 +263,13 @@ export interface ApiDeliverySlot {
   available: boolean
 }
 
+export interface ApiDeliveryDayAvailability {
+  date: string
+  weekday: number
+  open: boolean
+  slots: { id: string, label: string, note: string, available: boolean, remainingCapacity: number | null }[]
+}
+
 export interface ApiSettings {
   name: string
   whatsappNumber: string
@@ -324,6 +332,8 @@ export const api = {
   listCategories: () => request<{ categories: ApiCategory[] }>('/categories'),
   listDeliveryZones: () => request<{ zones: ApiDeliveryZone[] }>('/delivery/zones'),
   listDeliverySlots: () => request<{ slots: ApiDeliverySlot[] }>('/delivery/slots'),
+  getDeliveryAvailability: (days?: number) =>
+    request<{ days: ApiDeliveryDayAvailability[] }>(`/delivery/availability${buildQuery({ days })}`),
   // كل الفلترة/الفرز/التقسيم لصفحات بيحصل في السيرفر — الواجهة الأمامية مبتحملش الكتالوج
   // كامل أبداً ولا بتعمل أي فلترة بنفسها.
   listProducts: (params: ListProductsParams = {}) =>
@@ -345,6 +355,7 @@ export const api = {
   // عشان لو نفس الطلب اتنفذ فعلياً على السيرفر قبل كده، يرجعله نفس الطلب بدل ما يتكرر.
   createOrder: (body: {
     deliverySlot: string
+    deliveryDate: string
     paymentMethod: string
     customer: { fullName: string, mobile: string, governorate: string, address: string }
     items: { productId: string, quantity: number }[]
