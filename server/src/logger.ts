@@ -47,6 +47,7 @@ type BusinessEvent =
   | 'password_reset_email_skipped' | 'password_reset_email_failed'
   | 'catalog_search' | 'product_view' | 'delivery_zone_selected' | 'role_changed' | 'permission_role_changed'
   | 'two_factor_enabled' | 'two_factor_disabled' | 'two_factor_login_failed'
+  | 'session_revoked' | 'sessions_logout_others'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

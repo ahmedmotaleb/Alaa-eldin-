@@ -211,6 +211,7 @@ export const ar = {
     savedAddresses: 'عناويني المحفوظة',
     favorites: 'المفضلة',
     shoppingLists: 'قوائم التسوق',
+    security: 'الأمان',
     returnPolicy: 'سياسة الاسترجاع والاستبدال',
     settingsAndNotifications: 'الإعدادات والإشعارات',
     logout: 'تسجيل الخروج',
@@ -234,6 +235,23 @@ export const ar = {
     saveError: 'تعذر حفظ التعديلات، تحقق من البيانات وحاول مرة أخرى',
     nameError: 'الاسم لازم يكون بين حرفين و100 حرف',
     mobileError: 'أدخل رقم موبايل مصري صحيح مكون من 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015، أو اتركه فاضي'
+  },
+
+  security: {
+    title: 'الأمان',
+    devicesTitle: 'أجهزتي',
+    devicesNote: 'الأجهزة اللي مسجّل دخول منها حالياً على حسابك.',
+    currentDeviceBadge: 'هذا الجهاز',
+    lastActivity: (when: string) => `آخر نشاط: ${when}`,
+    loginDate: (when: string) => `تسجيل الدخول: ${when}`,
+    removeButton: 'إزالة',
+    logoutThisDevice: 'تسجيل الخروج من هذا الجهاز',
+    logoutOtherDevices: 'تسجيل الخروج من كل الأجهزة الأخرى',
+    logoutOtherDevicesConfirm: 'هيتم تسجيل الخروج من كل أجهزتك التانية عدا الجهاز ده. متأكد؟',
+    logoutOtherDevicesSuccess: (count: number) => count > 0 ? `تم تسجيل الخروج من ${count} جهاز آخر` : 'مفيش أجهزة تانية مسجّل دخول منها',
+    removeConfirm: 'هيتم تسجيل الخروج من هذا الجهاز. متأكد؟',
+    loadError: 'تعذر تحميل قائمة الأجهزة، حاول تاني',
+    empty: 'مفيش أجهزة مسجّلة حالياً'
   },
 
   shoppingLists: {

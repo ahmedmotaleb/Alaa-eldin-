@@ -40,6 +40,15 @@ export interface ApiUser {
   isAdmin: boolean
 }
 
+export interface ApiSession {
+  id: string
+  deviceName: string | null
+  userAgent: string | null
+  createdAt: string
+  lastSeenAt: string | null
+  isCurrent: boolean
+}
+
 export interface NotificationPreferences {
   orderUpdates: boolean
   promotions: boolean
@@ -291,6 +300,9 @@ export const api = {
   me: () => request<{ user: ApiUser }>('/auth/me'),
   updateProfile: (body: { fullName: string, mobile: string }) =>
     request<{ user: ApiUser }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
+  listSessions: () => request<{ sessions: ApiSession[] }>('/auth/sessions'),
+  removeSession: (id: string) => request<void>(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  logoutOtherSessions: () => request<{ revoked: number }>('/auth/sessions/logout-others', { method: 'POST' }),
   forgotPassword: (email: string) => request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>
     request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),

@@ -7,6 +7,12 @@ import { userHasPermission, type Permission } from './services/permissionService
 export const SESSION_COOKIE = 'session_token'
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 const RESET_TTL_MS = 60 * 60 * 1000 // ساعة واحدة
+// حد أدنى بين تحديثات last_seen_at لنفس الجلسة — أي عدد طلبات عادي من نفس الجهاز في أقل من
+// ربع ساعة ما بيعملش أي UPDATE إضافي، عشان مانحملش قاعدة البيانات بكتابة على كل request.
+const SESSION_ACTIVITY_THROTTLE_MS = 15 * 60 * 1000
+// السر ده بيتأكد من env، وإلا بيتولّد عشوائي لكل عملية تشغيل — كافي لأن ip_hash مش مطلوب
+// يفضل ثابت بين إعادة تشغيل السيرفر (مستخدم بس لتدقيق أمني داخلي، مش لأي منطق يعتمد عليه).
+const IP_HASH_SALT = process.env.SESSION_IP_HASH_SALT || crypto.randomBytes(16).toString('hex')
 
 export function hashPassword(password: string) {
   return bcrypt.hashSync(password, 10)
@@ -16,19 +22,101 @@ export function verifyPassword(password: string, hash: string) {
   return bcrypt.compareSync(password, hash)
 }
 
-export async function createSession(userId: string) {
+// معرّف الجلسة العام (يتعرض في الـ API) — نفس تعبير العمود المحسوب id في جدول sessions
+// (md5(token))، عشان الراوت يقدر يقارن التوكن الحالي بالـ id الراجع من القايمة من غير ما
+// يرجّع التوكن السري نفسه في أي رد.
+export function sessionIdFromToken(token: string): string {
+  return crypto.createHash('md5').update(token).digest('hex')
+}
+
+function hashIp(ip: string): string {
+  return crypto.createHash('sha256').update(IP_HASH_SALT + ip).digest('hex').slice(0, 32)
+}
+
+// وصف مختصر للجهاز/المتصفح من الـ User-Agent — تحليل بسيط بالأنماط الشائعة بس (مش مكتبة
+// fingerprinting)، والهدف عرض تعريف مفيد للمستخدم زي "Chrome على أندرويد" مش تتبّع دقيق.
+export function deriveDeviceName(userAgent: string | undefined | null): string {
+  if (!userAgent) return 'جهاز غير معروف'
+  const ua = userAgent
+  let os = 'جهاز'
+  if (/iPhone/.test(ua)) os = 'iPhone'
+  else if (/iPad/.test(ua)) os = 'iPad'
+  else if (/Android/.test(ua)) os = 'أندرويد'
+  else if (/Windows/.test(ua)) os = 'ويندوز'
+  else if (/Macintosh/.test(ua)) os = 'ماك'
+  else if (/Linux/.test(ua)) os = 'لينكس'
+
+  let browser = ''
+  if (/Edg\//.test(ua)) browser = 'Edge'
+  else if (/CriOS/.test(ua)) browser = 'Chrome'
+  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome'
+  else if (/Firefox\//.test(ua)) browser = 'Firefox'
+  else if (/Version\/.*Safari\//.test(ua)) browser = 'Safari'
+
+  return browser ? `${browser} على ${os}` : os
+}
+
+export interface SessionMeta {
+  userAgent?: string
+  ip?: string
+}
+
+export async function createSession(userId: string, meta: SessionMeta = {}) {
   const token = crypto.randomBytes(32).toString('hex')
   const now = new Date()
   const expires = new Date(now.getTime() + SESSION_TTL_MS)
+  const userAgent = meta.userAgent ? meta.userAgent.slice(0, 300) : null
+  const deviceName = deriveDeviceName(meta.userAgent)
+  const ipHash = meta.ip ? hashIp(meta.ip) : null
   await pool.query(
-    'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)',
-    [token, userId, now.toISOString(), expires.toISOString()]
+    `INSERT INTO sessions (token, user_id, created_at, expires_at, user_agent, device_name, ip_hash, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $3)`,
+    [token, userId, now.toISOString(), expires.toISOString(), userAgent, deviceName, ipHash]
   )
   return { token, expires }
 }
 
 export async function destroySession(token: string) {
   await pool.query('DELETE FROM sessions WHERE token = $1', [token])
+}
+
+// بتتنادى من attachUser على كل طلب فيه جلسة صالحة — بس بتعمل UPDATE فعلي لو مر أكتر من
+// SESSION_ACTIVITY_THROTTLE_MS من آخر تحديث (أو الجلسة لسه ما اتحدثتش خالص)، عشان تفضل
+// "آخر نشاط" دقيقة بما يكفي من غير ما تبقى كتابة على كل request.
+async function touchSessionActivity(token: string, lastSeenAt: string | null) {
+  const now = Date.now()
+  if (lastSeenAt && now - new Date(lastSeenAt).getTime() < SESSION_ACTIVITY_THROTTLE_MS) return
+  await pool.query('UPDATE sessions SET last_seen_at = $1 WHERE token = $2', [new Date(now).toISOString(), token])
+}
+
+export interface SessionSummary {
+  id: string
+  deviceName: string | null
+  userAgent: string | null
+  createdAt: string
+  lastSeenAt: string | null
+}
+
+export async function listUserSessions(userId: string): Promise<SessionSummary[]> {
+  const { rows } = await pool.query<SessionSummary>(
+    `SELECT id, device_name as "deviceName", user_agent as "userAgent", created_at as "createdAt", last_seen_at as "lastSeenAt"
+     FROM sessions WHERE user_id = $1 AND expires_at > $2
+     ORDER BY COALESCE(last_seen_at, created_at) DESC`,
+    [userId, new Date().toISOString()]
+  )
+  return rows
+}
+
+// بيتأكد إن الجلسة المطلوب حذفها ملك المستخدم الحالي فعلاً (فلترة user_id إجبارية) —
+// من غير كده أي مستخدم عارف يخمّن id جلسة حد تاني كان يقدر يمسحها.
+export async function deleteUserSession(userId: string, sessionId: string): Promise<boolean> {
+  const { rowCount } = await pool.query('DELETE FROM sessions WHERE user_id = $1 AND id = $2', [userId, sessionId])
+  return (rowCount ?? 0) > 0
+}
+
+export async function deleteOtherUserSessions(userId: string, currentSessionId: string): Promise<number> {
+  const { rowCount } = await pool.query('DELETE FROM sessions WHERE user_id = $1 AND id != $2', [userId, currentSessionId])
+  return rowCount ?? 0
 }
 
 export async function createPasswordResetToken(userId: string) {
@@ -68,14 +156,16 @@ export interface AuthedUser {
   roleId: string | null
 }
 
-async function getUserBySession(token: string): Promise<AuthedUser | null> {
-  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null }>(`
-    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role", u.role_id as "roleId"
+async function getUserBySession(token: string): Promise<{ user: AuthedUser, lastSeenAt: string | null } | null> {
+  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null, lastSeenAt: string | null }>(`
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role", u.role_id as "roleId", s.last_seen_at as "lastSeenAt"
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = $1 AND s.expires_at > $2
   `, [token, new Date().toISOString()])
   const row = rows[0]
-  return row ? { ...row, mobile: row.mobile ?? undefined, isAdmin: !!row.isAdmin } : null
+  if (!row) return null
+  const { lastSeenAt, ...userRow } = row
+  return { user: { ...userRow, mobile: userRow.mobile ?? undefined, isAdmin: !!userRow.isAdmin }, lastSeenAt }
 }
 
 declare global {
@@ -94,8 +184,11 @@ export function extractSessionToken(req: Request): string | undefined {
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {
   const token = extractSessionToken(req)
   if (token) {
-    const user = await getUserBySession(token)
-    if (user) req.user = user
+    const result = await getUserBySession(token)
+    if (result) {
+      req.user = result.user
+      touchSessionActivity(token, result.lastSeenAt).catch(() => {})
+    }
   }
   next()
 }

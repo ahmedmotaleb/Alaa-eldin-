@@ -2,7 +2,11 @@ import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
-import { hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken, consumePasswordResetToken, requireAuth, SESSION_COOKIE } from '../auth.js'
+import {
+  hashPassword, verifyPassword, createSession, destroySession, extractSessionToken, createPasswordResetToken,
+  consumePasswordResetToken, requireAuth, SESSION_COOKIE, sessionIdFromToken, listUserSessions, deleteUserSession,
+  deleteOtherUserSessions, type SessionMeta
+} from '../auth.js'
 import { sendPasswordResetEmail } from '../email.js'
 import { isValidEgyptianMobile } from '../phone.js'
 import { isStrongPassword } from '../passwordPolicy.js'
@@ -30,6 +34,12 @@ const PUBLIC_APP_URL = publicOrigin()
 const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true })
 const forgotPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false })
 const resetPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
+
+function sessionMetaFrom(req: import('express').Request): SessionMeta {
+  const rawUserAgent = req.headers['user-agent']
+  const userAgent = Array.isArray(rawUserAgent) ? rawUserAgent[0] : rawUserAgent
+  return { userAgent, ip: req.ip }
+}
 
 function setSessionCookie(res: import('express').Response, token: string, expires: Date) {
   res.cookie(SESSION_COOKIE, token, {
@@ -70,7 +80,7 @@ authRouter.post('/register', async (req, res) => {
     [id, email.toLowerCase(), hashPassword(password), fullName.trim(), createdAt]
   )
 
-  const { token, expires } = await createSession(id)
+  const { token, expires } = await createSession(id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   res.status(201).json({
     user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const }
@@ -102,7 +112,7 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
     return
   }
 
-  const { token, expires } = await createSession(row.id)
+  const { token, expires } = await createSession(row.id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
@@ -137,7 +147,7 @@ authRouter.post('/2fa/verify-login', loginRateLimit, async (req, res) => {
     return
   }
 
-  const { token, expires } = await createSession(row.id)
+  const { token, expires } = await createSession(row.id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id, twoFactor: true })
   res.json({
@@ -267,4 +277,37 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
   await pool.query('UPDATE users SET full_name = $1, mobile = $2 WHERE id = $3', [fullName, mobile, req.user!.id])
   logEvent('profile_updated', { userId: req.user!.id })
   res.json({ user: { ...req.user, fullName, mobile: mobile ?? undefined } })
+})
+
+// إدارة الجلسات/الأجهزة (حسابي → الأمان → أجهزتي) — كل العمليات هنا مقتصرة على جلسات
+// المستخدم الحالي نفسه بس (فلترة user_id في كل استعلام)، مفيش أي endpoint إداري بيدير جلسات
+// مستخدم تاني هنا.
+authRouter.get('/sessions', requireAuth, async (req, res) => {
+  const token = extractSessionToken(req)!
+  const currentId = sessionIdFromToken(token)
+  const sessions = await listUserSessions(req.user!.id)
+  res.json({ sessions: sessions.map(s => ({ ...s, isCurrent: s.id === currentId })) })
+})
+
+authRouter.delete('/sessions/:id', requireAuth, async (req, res) => {
+  const token = extractSessionToken(req)!
+  const currentId = sessionIdFromToken(token)
+  const sessionId = String(req.params.id)
+  const deleted = await deleteUserSession(req.user!.id, sessionId)
+  if (!deleted) {
+    res.status(404).json({ error: 'session_not_found' })
+    return
+  }
+  const isCurrent = sessionId === currentId
+  if (isCurrent) res.clearCookie(SESSION_COOKIE, { path: '/' })
+  logEvent('session_revoked', { userId: req.user!.id, isCurrent })
+  res.status(204).end()
+})
+
+authRouter.post('/sessions/logout-others', requireAuth, async (req, res) => {
+  const token = extractSessionToken(req)!
+  const currentId = sessionIdFromToken(token)
+  const revoked = await deleteOtherUserSessions(req.user!.id, currentId)
+  logEvent('sessions_logout_others', { userId: req.user!.id, revoked })
+  res.json({ revoked })
 })
