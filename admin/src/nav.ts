@@ -69,7 +69,8 @@ export const NAV: NavGroup[] = [
       { id: 'customers', label: 'العملاء' },
       { id: 'orders', label: 'الطلبات' },
       { id: 'regions', label: 'المناطق' },
-      { id: 'riders', label: 'أداء المناديب' }
+      { id: 'riders', label: 'أداء المناديب' },
+      { id: 'inventory-purchasing', label: 'المخزون والمشتريات' }
     ]
   },
   {

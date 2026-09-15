@@ -809,6 +809,59 @@ export interface RiderPerformance {
   unsettledAmount: number
 }
 
+export interface PurchasingProductMovementRow {
+  productId: string
+  name: string
+  categoryId: string
+  sellableStock: number
+  unitsSoldInPeriod: number
+  avgDailySales: number
+  daysOfCover: number | null
+  marginPercent: number | null
+}
+
+export interface PurchasingSupplierMetricsRow {
+  supplierId: string
+  supplierName: string
+  purchaseValue: number
+  fillRatePercent: number | null
+  avgLeadTimeDays: number | null
+}
+
+export interface PurchasingPriceChangeRow {
+  productId: string
+  name: string
+  oldestCost: number
+  newestCost: number
+  percentChange: number
+}
+
+export interface PurchasingCategoryMarginRow {
+  categoryId: string
+  categoryName: string
+  revenue: number
+  approxCogs: number
+  marginPercent: number | null
+}
+
+export interface PurchasingInventoryAnalytics {
+  fromDate: string
+  toDate: string
+  periodDays: number
+  turnover: { costOfGoodsSoldEstimate: number, currentInventoryCostValue: number, turnoverRatio: number | null }
+  daysOfCoverAverage: number | null
+  deadStock: PurchasingProductMovementRow[]
+  slowStock: PurchasingProductMovementRow[]
+  fastStock: PurchasingProductMovementRow[]
+  stockouts: { totalIncidents: number, byProduct: { productId: string, name: string, incidentCount: number }[] }
+  expiry: { expiredValue: number, nearExpiryValue: number }
+  suppliers: PurchasingSupplierMetricsRow[]
+  priceChanges: PurchasingPriceChangeRow[]
+  marginByProduct: PurchasingProductMovementRow[]
+  marginByCategory: PurchasingCategoryMarginRow[]
+  lostSales: { incidentCount: number, estimatedValue: number }
+}
+
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 
 export interface Alert {
@@ -1101,6 +1154,8 @@ export const api = {
   getAnalyticsRegions: () => request<AnalyticsRegions>('/admin/analytics/regions'),
   getAnalyticsOrdersBreakdown: () => request<AnalyticsOrdersBreakdown>('/admin/analytics/orders-breakdown'),
   getAnalyticsRiders: () => request<{ riders: RiderPerformance[] }>('/admin/analytics/riders'),
+  getPurchasingInventoryAnalytics: (params: { days?: number, fromDate?: string, toDate?: string, supplierId?: string, categoryId?: string, limit?: number } = {}) =>
+    request<PurchasingInventoryAnalytics>(`/admin/analytics/purchasing-inventory${buildQuery(params)}`),
   getAlerts: () => request<{ alerts: Alert[], count: number }>('/admin/alerts'),
   getAnalyticsHomeSummary: () => request<AnalyticsHomeSummary>('/admin/analytics/home-summary'),
   listRiders: () => request<{ riders: AdminRider[] }>('/admin/riders'),

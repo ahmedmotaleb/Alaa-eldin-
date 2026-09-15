@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import { StatsGrid } from '../components/StatsGrid'
 import {
-  api, ApiError, type AdminCustomer,
+  api, ApiError, type AdminCustomer, type AdminCategory, type AdminSupplier,
   type AnalyticsOverview, type AnalyticsSales, type AnalyticsProducts, type AnalyticsRegions, type AnalyticsOrdersBreakdown,
-  type AnalyticsRevenueDay, type AnalyticsCategoryRevenue, type RiderPerformance
+  type AnalyticsRevenueDay, type AnalyticsCategoryRevenue, type RiderPerformance, type PurchasingInventoryAnalytics
 } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from '../orderStatus'
@@ -117,16 +117,236 @@ function BreakdownCard({ title, rows }: { title: string, rows: { label: string, 
   )
 }
 
+const PURCHASING_DAY_OPTIONS = [7, 30, 90]
+
+function PercentCell({ value }: { value: number | null }) {
+  if (value === null) return <span style={{ color: '#8A948C' }}>—</span>
+  return <span style={{ color: value >= 0 ? '#12813C' : '#B42318' }}>{value}%</span>
+}
+
+function PurchasingInventoryTab() {
+  const [days, setDays] = useState(30)
+  const [categoryId, setCategoryId] = useState('')
+  const [supplierId, setSupplierId] = useState('')
+  const [categories, setCategories] = useState<AdminCategory[]>([])
+  const [suppliers, setSuppliers] = useState<AdminSupplier[]>([])
+  const [data, setData] = useState<PurchasingInventoryAnalytics | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.listCategories().then(({ categories }) => setCategories(categories)).catch(() => {})
+    api.listSuppliers().then(({ suppliers }) => setSuppliers(suppliers)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setError('')
+    api.getPurchasingInventoryAnalytics({ days, categoryId: categoryId || undefined, supplierId: supplierId || undefined })
+      .then(setData)
+      .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل التحليلات' : 'حدث خطأ، حاول مرة أخرى'))
+  }, [days, categoryId, supplierId])
+
+  if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
+  if (!data) return null
+
+  return (
+    <>
+      <div className="admin-table-tools" style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <span className="admin-form-chips">
+          {PURCHASING_DAY_OPTIONS.map(d => (
+            <button key={d} type="button" className={`admin-form-chip ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>{d} يوم</button>
+          ))}
+        </span>
+        <select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+          <option value="">كل الأقسام</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+          <option value="">كل الموردين</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+
+      <StatsGrid stats={[
+        { label: 'معدّل دوران المخزون', value: data.turnover.turnoverRatio !== null ? data.turnover.turnoverRatio.toFixed(2) : '—', note: 'تقديري — تكلفة المبيعات ÷ قيمة المخزون الحالية', icon: '🔄', tint: '#EAF2FF' },
+        { label: 'متوسط أيام التغطية', value: data.daysOfCoverAverage !== null ? String(data.daysOfCoverAverage) : '—', note: 'للمنتجات اللي ليها مبيعات في الفترة', icon: '📅', tint: '#EAF8EF' },
+        { label: 'قيمة منتهية/قريبة الانتهاء', value: formatMoney(data.expiry.expiredValue + data.expiry.nearExpiryValue), note: `منتهية: ${formatMoney(data.expiry.expiredValue)}`, icon: '⛔', tint: '#FFF0EF', noteColor: '#B42318' },
+        { label: 'مؤشر مبيعات ضائعة', value: formatMoney(data.lostSales.estimatedValue), note: `${data.lostSales.incidentCount} حالة عدم توفر وقت التجهيز`, icon: '⚠️', tint: '#FFF3E3', noteColor: '#B45309' }
+      ]} />
+
+      <div className="admin-placeholder-card">
+        <div className="admin-placeholder-note">
+          كل الأرقام هنا تقديرات تشغيلية للفترة المختارة ({data.fromDate} إلى {data.toDate})، مش تقييم محاسبي معتمد.
+          تكلفة البضاعة المباعة وهامش الربح بيستخدموا تكلفة المنتج الحالية (مش تكلفة تاريخية وقت البيع الفعلي).
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 640 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+              <div>راكد (Dead Stock)</div><div>المخزون</div><div>مبيعات/يوم</div><div>أيام تغطية</div>
+            </div>
+            {data.deadStock.map(r => (
+              <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+                <div className="admin-cell-plain">{r.name}</div>
+                <div className="admin-cell-plain">{r.sellableStock}</div>
+                <div className="admin-cell-plain">{r.avgDailySales}</div>
+                <div className="admin-cell-plain">{r.daysOfCover ?? '—'}</div>
+              </div>
+            ))}
+            {data.deadStock.length === 0 && <div className="admin-table-empty">مفيش مخزون راكد في هذه الفترة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 640 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+              <div>بطيء الحركة (Slow Stock)</div><div>المخزون</div><div>مبيعات/يوم</div><div>أيام تغطية</div>
+            </div>
+            {data.slowStock.map(r => (
+              <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+                <div className="admin-cell-plain">{r.name}</div>
+                <div className="admin-cell-plain">{r.sellableStock}</div>
+                <div className="admin-cell-plain">{r.avgDailySales}</div>
+                <div className="admin-cell-plain">{r.daysOfCover ?? '—'}</div>
+              </div>
+            ))}
+            {data.slowStock.length === 0 && <div className="admin-table-empty">مفيش مخزون بطيء الحركة في هذه الفترة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 640 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+              <div>سريع الحركة (Fast Stock)</div><div>المخزون</div><div>مبيعات/يوم</div><div>أيام تغطية</div>
+            </div>
+            {data.fastStock.slice(0, 10).map(r => (
+              <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr .8fr .8fr .8fr' }}>
+                <div className="admin-cell-plain">{r.name}</div>
+                <div className="admin-cell-plain">{r.sellableStock}</div>
+                <div className="admin-cell-plain">{r.avgDailySales}</div>
+                <div className="admin-cell-plain">{r.daysOfCover ?? '—'}</div>
+              </div>
+            ))}
+            {data.fastStock.length === 0 && <div className="admin-table-empty">مفيش مبيعات في هذه الفترة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 560 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '2fr 1fr' }}>
+              <div>تواتر عدم التوفر وقت التجهيز</div><div>عدد المرات</div>
+            </div>
+            {data.stockouts.byProduct.map(r => (
+              <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr 1fr' }}>
+                <div className="admin-cell-plain">{r.name}</div>
+                <div className="admin-cell-plain" style={{ fontWeight: 800, color: '#B42318' }}>{r.incidentCount}</div>
+              </div>
+            ))}
+            {data.stockouts.byProduct.length === 0 && <div className="admin-table-empty">مفيش حالات عدم توفر مسجّلة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 700 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '1.6fr 1fr 1fr 1fr' }}>
+              <div>المورد</div><div>قيمة المشتريات</div><div>معدّل التنفيذ</div><div>متوسط مهلة التوريد</div>
+            </div>
+            {data.suppliers.map(s => (
+              <div key={s.supplierId} className="admin-table-row" style={{ gridTemplateColumns: '1.6fr 1fr 1fr 1fr' }}>
+                <div className="admin-cell-plain" style={{ fontWeight: 700 }}>{s.supplierName}</div>
+                <div className="admin-cell-plain">{formatMoney(s.purchaseValue)}</div>
+                <div className="admin-cell-plain">{s.fillRatePercent !== null ? `${s.fillRatePercent}%` : '—'}</div>
+                <div className="admin-cell-plain">{s.avgLeadTimeDays !== null ? `${s.avgLeadTimeDays} يوم` : '—'}</div>
+              </div>
+            ))}
+            {data.suppliers.length === 0 && <div className="admin-table-empty">لا توجد أوامر شراء في هذه الفترة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="admin-table-scroll">
+          <div style={{ minWidth: 640 }}>
+            <div className="admin-table-head" style={{ gridTemplateColumns: '2fr 1fr 1fr .8fr' }}>
+              <div>تغيّر التكلفة</div><div>الأقدم</div><div>الأحدث</div><div>النسبة</div>
+            </div>
+            {data.priceChanges.map(r => (
+              <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr 1fr 1fr .8fr' }}>
+                <div className="admin-cell-plain">{r.name}</div>
+                <div className="admin-cell-plain">{formatMoney(r.oldestCost)}</div>
+                <div className="admin-cell-plain">{formatMoney(r.newestCost)}</div>
+                <div className="admin-cell-plain"><PercentCell value={r.percentChange} /></div>
+              </div>
+            ))}
+            {data.priceChanges.length === 0 && <div className="admin-table-empty">مفيش تغيّر تكلفة مسجّل في هذه الفترة</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-layout-with-side has-side">
+        <div className="admin-table-card">
+          <div className="admin-table-scroll">
+            <div style={{ minWidth: 480 }}>
+              <div className="admin-table-head" style={{ gridTemplateColumns: '2fr .8fr' }}>
+                <div>هامش الربح لكل منتج</div><div>الهامش</div>
+              </div>
+              {data.marginByProduct.slice(0, 15).map(r => (
+                <div key={r.productId} className="admin-table-row" style={{ gridTemplateColumns: '2fr .8fr' }}>
+                  <div className="admin-cell-plain">{r.name}</div>
+                  <div className="admin-cell-plain"><PercentCell value={r.marginPercent} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="admin-side-panels">
+          <div className="admin-side-card">
+            <div className="admin-side-title">هامش الربح لكل قسم</div>
+            {data.marginByCategory.map(r => (
+              <div key={r.categoryId} className="admin-breakdown-row">
+                <div className="admin-breakdown-head">
+                  <span>{r.categoryName}</span>
+                  <span style={{ fontWeight: 700 }}><PercentCell value={r.marginPercent} /></span>
+                </div>
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: '#8A948C' }}>
+                  إيراد {formatMoney(r.revenue)} — تكلفة تقديرية {formatMoney(r.approxCogs)}
+                </div>
+              </div>
+            ))}
+            {data.marginByCategory.length === 0 && <div style={{ color: '#8A948C', fontSize: 12.5, fontWeight: 600 }}>لا توجد بيانات بعد</div>}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 export function AnalyticsPage() {
   const { tab } = useParams()
   const { setHeader } = useOutletContext<LayoutContext>()
   const activeTab = tab && ANALYTICS_NAV.children.find(c => c.id === tab) ? tab : 'overview'
   const tabLabel = ANALYTICS_NAV.children.find(c => c.id === activeTab)?.label ?? 'نظرة عامة'
-  const { overview, sales, products, regions, ordersBreakdown, customers, riders, error } = useAnalyticsData()
 
   useEffect(() => {
     setHeader({ crumb: 'التحليلات', title: tabLabel })
   }, [tabLabel, setHeader])
+
+  if (activeTab === 'inventory-purchasing') return <PurchasingInventoryTab />
+
+  return <AnalyticsMainTabs activeTab={activeTab} />
+}
+
+function AnalyticsMainTabs({ activeTab }: { activeTab: string }) {
+  const { overview, sales, products, regions, ordersBreakdown, customers, riders, error } = useAnalyticsData()
 
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!overview || !sales || !products || !regions || !ordersBreakdown) return null
