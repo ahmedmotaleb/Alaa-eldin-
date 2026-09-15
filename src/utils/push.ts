@@ -29,6 +29,13 @@ export async function subscribeToPush(): Promise<PushSubscribeResult> {
   const { publicKey, configured } = await api.getVapidPublicKey()
   if (!configured || !publicKey) return { ok: false, reason: 'not_configured' }
 
+  // لو الإذن اتُرفض قبل كده، المتصفح نفسه بيرجّع 'denied' فوراً من غير ما يعرض أي نافذة طلب
+  // إذن تانية (المواصفة القياسية بتمنع إعادة الطلب بعد الرفض) — بنتأكد صراحة هنا برضه عشان
+  // الكود يوضّح النية ومايعتمدش على سلوك ضمني للمتصفح بس.
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+    return { ok: false, reason: 'permission_denied' }
+  }
+
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return { ok: false, reason: 'permission_denied' }
 
@@ -65,12 +72,25 @@ export async function unsubscribeFromPush(): Promise<void> {
   }
 }
 
-export async function getPushSubscriptionStatus(): Promise<'subscribed' | 'not_subscribed' | 'unsupported'> {
+export type PushCapabilityState = 'unsupported' | 'denied' | 'subscribed' | 'not_subscribed'
+
+export async function getPushSubscriptionStatus(): Promise<PushCapabilityState> {
   if (!isPushSupported()) return 'unsupported'
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return 'denied'
   try {
     const registration = await navigator.serviceWorker.ready
     const subscription = await registration.pushManager.getSubscription()
-    return subscription ? 'subscribed' : 'not_subscribed'
+    if (!subscription) return 'not_subscribed'
+
+    // اشتراك محلي موجود بالفعل — بنعيد مزامنته مع السيرفر بصمت (upsert، من غير أي طلب إذن
+    // جديد) عشان نصلّح حالة "اشتراك محلي لسه موجود بس السطر اتمسح من السيرفر" اللي ممكن
+    // تحصل بعد فشل إرسال (404/410) بيمسح السطر من جانب السيرفر بس مايقدرش يمسح تسجيل
+    // المتصفح نفسه.
+    const json = subscription.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
+    if (json.endpoint && json.keys?.p256dh && json.keys?.auth) {
+      api.subscribePush({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } }).catch(() => {})
+    }
+    return 'subscribed'
   } catch {
     return 'unsupported'
   }

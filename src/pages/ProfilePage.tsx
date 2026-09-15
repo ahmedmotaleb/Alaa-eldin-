@@ -5,7 +5,7 @@ import { useAuth } from '../store/AuthContext'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
 import { api, type NotificationPreferences } from '../utils/api'
-import { subscribeToPush, unsubscribeFromPush, getPushSubscriptionStatus } from '../utils/push'
+import { subscribeToPush, unsubscribeFromPush, getPushSubscriptionStatus, type PushCapabilityState } from '../utils/push'
 
 export function ProfilePage() {
   const { user, loading: authLoading } = useRequireAuth()
@@ -18,7 +18,8 @@ export function ProfilePage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const [pushStatus, setPushStatus] = useState<'subscribed' | 'not_subscribed' | 'unsupported'>('not_subscribed')
+  const [pushStatus, setPushStatus] = useState<PushCapabilityState>('not_subscribed')
+  const [pushServerConfigured, setPushServerConfigured] = useState<boolean | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState('')
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
@@ -33,6 +34,9 @@ export function ProfilePage() {
   useEffect(() => {
     if (!user) return
     getPushSubscriptionStatus().then(setPushStatus)
+    // بنجيب حالة الإعداد على السيرفر مقدماً (قبل أي ضغطة) عشان لو الخدمة مش مفعّلة حالياً
+    // نعرض رسالة واضحة بدل ما نسيب زرار قابل للضغط هيفشل أكيد.
+    api.getVapidPublicKey().then(({ configured }) => setPushServerConfigured(configured)).catch(() => setPushServerConfigured(null))
     api.getNotificationPreferences().then(({ preferences }) => setPreferences(preferences)).catch(() => {})
   }, [user])
 
@@ -116,6 +120,13 @@ export function ProfilePage() {
         <strong style={{ display: 'block', marginBottom: 10 }}>{ar.notifications.title}</strong>
         {pushStatus === 'unsupported' ? (
           <div className="admin-form-help">{ar.notifications.unsupported}</div>
+        ) : pushStatus === 'denied' ? (
+          // الإذن اتُرفض قبل كده من إعدادات المتصفح — مفيش أي طريقة برمجية تعيد عرض نافذة
+          // الطلب تاني (قرار المتصفح نفسه)، فمفيش داعي لزرار هيفشل أكيد؛ المستخدم لازم
+          // يفعّله يدوياً من إعدادات الموقع في المتصفح لو حبّ.
+          <div className="admin-form-help">{ar.notifications.permissionDenied}</div>
+        ) : pushServerConfigured === false ? (
+          <div className="admin-form-help">{ar.notifications.notConfigured}</div>
         ) : (
           <>
             <button className="secondary-button" disabled={pushBusy} onClick={togglePush}>

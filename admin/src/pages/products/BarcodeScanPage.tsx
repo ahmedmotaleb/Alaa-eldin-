@@ -33,9 +33,12 @@ export function BarcodeScanPage() {
   const [restockQty, setRestockQty] = useState(1)
   const [adjustQty, setAdjustQty] = useState(0)
   const [actionMessage, setActionMessage] = useState('')
-  const [cameraSupported, setCameraSupported] = useState(false)
-  const [scanning, setScanning] = useState(false)
-  const [cameraError, setCameraError] = useState('')
+  // حالات صريحة لقدرة الكاميرا بدل ما نكتفي بـ true/false عام: 'checking' لحد ما نتأكد من
+  // دعم المتصفح، 'unsupported' (المتصفح مالوش BarcodeDetector خالص)، 'ready' (مدعوم، لسه
+  // ما اتطلبش إذن)، 'permission-denied' (المستخدم رفض إذن الكاميرا صراحة)، 'unavailable'
+  // (مفيش كاميرا فعلياً على الجهاز أو تعذّر الوصول لسبب تاني)، 'scanning' (شغالة دلوقتي).
+  // الإدخال اليدوي متاح دايماً بغض النظر عن الحالة دي.
+  const [cameraCapability, setCameraCapability] = useState<'checking' | 'unsupported' | 'ready' | 'permission-denied' | 'unavailable' | 'scanning'>('checking')
   const inputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -46,7 +49,7 @@ export function BarcodeScanPage() {
   }, [setHeader])
 
   useEffect(() => {
-    setCameraSupported(typeof window !== 'undefined' && 'BarcodeDetector' in window)
+    setCameraCapability(typeof window !== 'undefined' && 'BarcodeDetector' in window ? 'ready' : 'unsupported')
   }, [])
 
   useEffect(() => {
@@ -92,12 +95,14 @@ export function BarcodeScanPage() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
-    setScanning(false)
+    setCameraCapability(current => (current === 'scanning' ? 'ready' : current))
   }
 
-  // إذن الكاميرا بيتطلب بس لما المستخدم يضغط "ابدأ المسح بالكاميرا" صراحة — مش تلقائي عند فتح الصفحة.
+  // إذن الكاميرا بيتطلب بس لما المستخدم يضغط "ابدأ المسح بالكاميرا" صراحة — مش تلقائي عند فتح
+  // الصفحة. لو رفض قبل كده (NotAllowedError)، بنعرض حالة "رفض الإذن" واضحة وما بنطلبش تاني
+  // تلقائي — طلب إذن جديد لازم يكون بإجراء صريح تاني من المستخدم نفسه (زي إعادة الضغط على
+  // الزرار)، مش تلقائي بمجرد إعادة تحميل الصفحة.
   async function startCameraScan() {
-    setCameraError('')
     if (!window.BarcodeDetector) return
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -106,7 +111,7 @@ export function BarcodeScanPage() {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-      setScanning(true)
+      setCameraCapability('scanning')
       const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code'] })
       const tick = async () => {
         if (!videoRef.current || !streamRef.current) return
@@ -125,8 +130,9 @@ export function BarcodeScanPage() {
         rafRef.current = requestAnimationFrame(tick)
       }
       rafRef.current = requestAnimationFrame(tick)
-    } catch {
-      setCameraError('تعذر الوصول للكاميرا — تأكد من إعطاء الإذن، أو استخدم الإدخال اليدوي')
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : ''
+      setCameraCapability(name === 'NotAllowedError' || name === 'PermissionDeniedError' ? 'permission-denied' : 'unavailable')
       stopCamera()
     }
   }
@@ -173,16 +179,28 @@ export function BarcodeScanPage() {
           </label>
         </form>
 
-        {cameraSupported ? (
+        {cameraCapability === 'unsupported' && (
+          <div className="admin-form-help">المسح بالكاميرا غير مدعوم في هذا المتصفح — استخدم الإدخال اليدوي أو قارئ باركود فيزيائي.</div>
+        )}
+        {cameraCapability === 'permission-denied' && (
           <>
-            {!scanning
+            <div className="admin-form-error">تم رفض إذن الكاميرا — فعّله يدوياً من إعدادات الموقع في المتصفح لو حبيت تستخدم المسح بالكاميرا، أو استمر بالإدخال اليدوي.</div>
+            <button type="button" className="admin-form-chip" onClick={startCameraScan}>إعادة المحاولة</button>
+          </>
+        )}
+        {cameraCapability === 'unavailable' && (
+          <>
+            <div className="admin-form-error">تعذر الوصول للكاميرا — تأكد إن الجهاز فيه كاميرا شغالة، أو استخدم الإدخال اليدوي.</div>
+            <button type="button" className="admin-form-chip" onClick={startCameraScan}>إعادة المحاولة</button>
+          </>
+        )}
+        {(cameraCapability === 'ready' || cameraCapability === 'scanning') && (
+          <>
+            {cameraCapability === 'ready'
               ? <button type="button" className="admin-form-chip" onClick={startCameraScan}>ابدأ المسح بالكاميرا</button>
               : <button type="button" className="admin-form-chip" onClick={stopCamera}>إيقاف الكاميرا</button>}
-            {scanning && <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 8, marginTop: 8 }} />}
-            {cameraError && <div className="admin-form-error">{cameraError}</div>}
+            {cameraCapability === 'scanning' && <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 8, marginTop: 8 }} />}
           </>
-        ) : (
-          <div className="admin-form-help">المسح بالكاميرا غير مدعوم في هذا المتصفح — استخدم الإدخال اليدوي أو قارئ باركود فيزيائي.</div>
         )}
 
         {error && <div className="admin-form-error">{error}</div>}
