@@ -155,6 +155,13 @@ export function TrackingPage() {
           )}
         </div>
       </div>
+
+      <button
+        className="secondary-button"
+        onClick={() => navigate(user ? `/orders/${order.orderNumber}/receipt` : `/orders/${order.orderNumber}/receipt?t=${encodeURIComponent(guestToken!)}`)}
+      >
+        {ar.receipt.title}
+      </button>
     </div>
   )
 }

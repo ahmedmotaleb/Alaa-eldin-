@@ -38,6 +38,7 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage').then(m => ({ defa
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })))
 const SearchPage = lazy(() => import('./pages/SearchPage').then(m => ({ default: m.SearchPage })))
 const TrackingPage = lazy(() => import('./pages/TrackingPage').then(m => ({ default: m.TrackingPage })))
+const ReceiptPage = lazy(() => import('./pages/ReceiptPage').then(m => ({ default: m.ReceiptPage })))
 
 function RouteLoader() {
   return (
@@ -95,6 +96,7 @@ export default function App() {
                         <Route path="/checkout" element={<CheckoutPage />} />
                         <Route path="/confirmation/:orderNumber" element={<ConfirmationPage />} />
                         <Route path="/track/:orderNumber" element={<TrackingPage />} />
+                        <Route path="/orders/:orderNumber/receipt" element={<ReceiptPage />} />
                         <Route path="/orders" element={<OrdersPage />} />
                         <Route path="/account" element={<AccountPage />} />
                         <Route path="/account/addresses" element={<AddressesPage />} />

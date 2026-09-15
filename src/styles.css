@@ -529,3 +529,36 @@ h1, h2, h3, p { margin: 0; }
   .bottom-nav, .sticky-action-bar { max-width: 560px; inset-inline-start: 50%; transform: translateX(50%); }
   .bottom-nav { border-radius: 22px 22px 0 0; border-inline: 1px solid var(--border); }
 }
+
+/* ---------- إيصال الطلب ---------- */
+.receipt-page { display: flex; flex-direction: column; gap: 14px; }
+.receipt-card { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.receipt-header { text-align: center; border-bottom: 1px dashed var(--border); padding-bottom: 12px; }
+.receipt-store-name { font-weight: 900; font-size: 17px; }
+.receipt-title { font-weight: 700; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.receipt-meta { display: flex; flex-direction: column; gap: 6px; }
+.receipt-meta > div { display: flex; justify-content: space-between; font-size: 13px; }
+.receipt-meta > div > span:first-child { font-weight: 600; color: var(--muted); }
+.receipt-meta > div > span:last-child { font-weight: 700; }
+.receipt-items { border-top: 1px dashed var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.receipt-items-title { font-weight: 900; font-size: 14px; }
+.receipt-item-row { display: flex; flex-direction: column; gap: 2px; }
+.receipt-item-main { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; }
+.receipt-item-badge { font-size: 10.5px; font-weight: 700; border-radius: 8px; padding: 2px 7px; }
+.receipt-item-badge.substituted { background: #fff3e3; color: #b4740e; }
+.receipt-item-badge.unavailable { background: #ffecec; color: #b42318; }
+.receipt-item-details { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-weight: 600; }
+.receipt-item-line-total { color: #17221a; font-weight: 800; }
+.receipt-item-note { font-size: 11.5px; color: var(--muted); }
+.receipt-totals { border-top: 1px dashed var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.receipt-totals > div { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
+.receipt-discount { color: var(--danger); }
+.receipt-grand-total { font-size: 16px; font-weight: 900; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+.receipt-actions { display: flex; gap: 10px; }
+.receipt-actions button { flex: 1; }
+
+@media print {
+  .sub-header, .bottom-nav, .no-print { display: none !important; }
+  .page-content { padding: 0 !important; max-width: none !important; }
+  .receipt-card { border: none; padding: 0; }
+}

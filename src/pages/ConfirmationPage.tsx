@@ -93,6 +93,14 @@ export function ConfirmationPage() {
           {ar.confirmation.trackOrder}
         </button>
       )}
+      {(user || order.guestTrackingToken) && (
+        <button
+          className="secondary-button"
+          onClick={() => navigate(user ? `/orders/${order.orderNumber}/receipt` : `/orders/${order.orderNumber}/receipt?t=${encodeURIComponent(order.guestTrackingToken!)}`)}
+        >
+          {ar.receipt.title}
+        </button>
+      )}
       <button className="secondary-button" onClick={() => navigate('/')}>{ar.confirmation.backHome}</button>
 
       <div className="whatsapp-note">

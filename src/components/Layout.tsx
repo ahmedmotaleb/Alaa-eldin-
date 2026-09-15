@@ -22,6 +22,7 @@ function useSubTitle() {
   if (pathname === '/checkout') return t.checkout
   if (pathname.startsWith('/confirmation/')) return t.confirmation
   if (pathname.startsWith('/track/')) return t.tracking
+  if (pathname.endsWith('/receipt')) return ar.receipt.title
   if (pathname === '/orders') return t.orders
   if (pathname === '/account') return t.account
   if (pathname === '/login') return ar.auth.loginTitle
@@ -36,8 +37,8 @@ export function Layout() {
   const subTitle = useSubTitle()
 
   const isHome = pathname === '/'
-  const hideHeaderCart = pathname === '/cart' || pathname === '/checkout' || pathname.startsWith('/confirmation/')
-  const hideNav = pathname === '/checkout' || pathname.startsWith('/confirmation/')
+  const hideHeaderCart = pathname === '/cart' || pathname === '/checkout' || pathname.startsWith('/confirmation/') || pathname.endsWith('/receipt')
+  const hideNav = pathname === '/checkout' || pathname.startsWith('/confirmation/') || pathname.endsWith('/receipt')
 
   const navItems = [
     { key: 'home', to: '/', end: true, icon: '🏠', label: ar.nav.home },

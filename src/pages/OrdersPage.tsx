@@ -98,7 +98,10 @@ export function OrdersPage() {
                 </span>
               </span>
             </button>
-            <button className="order-row-reorder" onClick={() => reorder(order)} disabled={reordering === order.id}>{ar.account.reorder}</button>
+            <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+              <button className="order-row-reorder" onClick={() => navigate(`/orders/${order.orderNumber}/receipt`)}>{ar.receipt.title}</button>
+              <button className="order-row-reorder" onClick={() => reorder(order)} disabled={reordering === order.id}>{ar.account.reorder}</button>
+            </div>
           </div>
         )
       })}

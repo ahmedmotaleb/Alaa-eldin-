@@ -200,6 +200,41 @@ export const ar = {
     itemNote: (note: string) => `ملاحظة: ${note}`
   },
 
+  receipt: {
+    title: 'إيصال الطلب',
+    storeLabel: 'المتجر',
+    orderNumberLabel: 'رقم الطلب',
+    orderDateLabel: 'تاريخ الطلب',
+    deliveryDateLabel: 'تاريخ التوصيل',
+    customerLabel: 'العميل',
+    statusLabel: 'حالة الطلب',
+    paymentMethodLabel: 'طريقة الدفع',
+    cashOnDelivery: 'الدفع عند الاستلام',
+    itemsTitle: 'المنتجات',
+    quantityShort: 'الكمية',
+    substitutedBadge: 'تم الاستبدال',
+    unavailableBadge: 'غير متوفر',
+    subtotalLabel: 'الإجمالي الفرعي',
+    discountLabel: (code: string) => `خصم (${code})`,
+    deliveryFeeLabel: 'رسوم التوصيل',
+    freeLabel: 'مجاني',
+    totalLabel: 'الإجمالي الكلي',
+    printButton: 'طباعة',
+    shareButton: 'مشاركة',
+    shareTitle: (orderNumber: string) => `إيصال الطلب ${orderNumber}`,
+    linkCopied: 'تم نسخ رابط الإيصال',
+    statusValues: {
+      placed: 'تم استلام الطلب',
+      preparing: 'جارِ التجهيز',
+      ready_for_delivery: 'جاهز للتوصيل',
+      out_for_delivery: 'خرج للتوصيل',
+      delivered: 'تم التسليم',
+      cancelled: 'تم الإلغاء'
+    },
+    notFound: 'تعذر العثور على الإيصال',
+    loginRequired: 'سجّل الدخول لعرض إيصال الطلب'
+  },
+
   account: {
     memberSince: (year: number) => `عميل منذ ${year}`,
     guestTitle: 'سجّل الدخول لعرض حسابك',
