@@ -7,6 +7,18 @@ import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
 
+function buildProductSlug(name: string) {
+  const base = name
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72)
+  const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+  return `${base || 'product'}-${suffix}`
+}
+
 const emptyForm: AdminProductInput = {
   id: '', slug: '', categoryId: '', name: '', description: '', price: 0, oldPrice: undefined,
   cost: 0, unit: 'عبوة', emoji: '📦', available: true, bestseller: false, offer: false,
@@ -58,7 +70,12 @@ export function ProductFormPage() {
     setSuccess('')
     setSaving(true)
     try {
-      const payload: AdminProductInput = { ...form, offer: !!form.oldPrice && form.oldPrice > form.price }
+      const payload: AdminProductInput = {
+        ...form,
+        slug: isEdit ? form.slug : buildProductSlug(form.name),
+        barcode: form.barcode.trim(),
+        offer: !!form.oldPrice && form.oldPrice > form.price
+      }
       if (isEdit && id) {
         const { product } = await api.updateProduct(id, payload)
         setForm(product)
@@ -69,7 +86,7 @@ export function ProductFormPage() {
         navigate(`/products/edit/${product.id}`, { replace: true })
       }
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'slug_taken') setError('هذا الرابط (slug) مستخدم بالفعل لمنتج آخر')
+      if (err instanceof ApiError && err.code === 'slug_taken') setError('تعذر إنشاء رابط فريد للمنتج، حاول الحفظ مرة أخرى')
       else setError('تعذر حفظ المنتج، تحقق من البيانات وحاول مرة أخرى')
     } finally {
       setSaving(false)
@@ -205,11 +222,10 @@ export function ProductFormPage() {
           <div className="admin-form-card-title">المخزون والتعريف</div>
           <div className="admin-form-card-sub">التتبع والتنبيهات</div>
         </div>
-        <label>الرابط (slug)
-          <input value={form.slug} onChange={e => set('slug', e.target.value)} placeholder="oil" />
-        </label>
-        <label>الباركود
-          <input value={form.barcode} onChange={e => set('barcode', e.target.value)} />
+        <span className="admin-form-help">رابط المنتج (slug) يتم إنشاؤه تلقائياً من اسم المنتج عند الحفظ.</span>
+        <label>الباركود (اختياري)
+          <input value={form.barcode} onChange={e => set('barcode', e.target.value)} placeholder="اتركه فارغاً إذا لم يوجد باركود" />
+          <span className="admin-form-help">يمكن حفظ المنتج بدون باركود وإضافته لاحقاً من صفحة تعديل المنتج.</span>
         </label>
         <div className="admin-row-2">
           <label>الكمية المتاحة
