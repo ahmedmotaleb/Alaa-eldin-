@@ -806,6 +806,7 @@ export interface AnalyticsHomeSummary {
   newOrdersCount: number
   revenueByDay: AnalyticsRevenueDay[]
   topProducts: AnalyticsProductRevenue[]
+  alerts: Alert[]
 }
 
 export interface RiderPerformance {

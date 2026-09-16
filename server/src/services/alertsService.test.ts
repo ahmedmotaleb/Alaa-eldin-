@@ -10,6 +10,8 @@ const RIDER_ID = 'test-rider-alerts'
 const ORDER_ID = 'test-order-alerts'
 const CUSTOMER_RETURN_ID = 'test-cr-alerts'
 const SUPPLIER_RETURN_ID = 'test-sr-alerts'
+const PURCHASE_ORDER_ID = 'test-po-alerts'
+const WHATSAPP_MESSAGE_ID = 'test-wa-alerts'
 
 // كل التنبيهات هنا محسوبة على مستوى النظام كله (مش على فلتر id معيّن)، فيها بيانات تانية
 // حقيقية أو تجريبية موجودة أصلاً في القاعدة — الاختبارات هنا بتقارن العدد *قبل وبعد* إضافة
@@ -23,7 +25,9 @@ async function resetFixtures() {
   await pool.query('DELETE FROM order_items WHERE order_id = $1', [ORDER_ID])
   await pool.query('DELETE FROM customer_returns WHERE id = $1', [CUSTOMER_RETURN_ID])
   await pool.query('DELETE FROM supplier_returns WHERE id = $1', [SUPPLIER_RETURN_ID])
+  await pool.query('DELETE FROM whatsapp_messages WHERE id = $1', [WHATSAPP_MESSAGE_ID])
   await pool.query('DELETE FROM orders WHERE id = $1', [ORDER_ID])
+  await pool.query('DELETE FROM purchase_orders WHERE id = $1', [PURCHASE_ORDER_ID])
   await pool.query('DELETE FROM riders WHERE id = $1', [RIDER_ID])
   await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
   await pool.query('DELETE FROM products WHERE id = $1', [PRODUCT_ID])
@@ -54,6 +58,18 @@ describe('alertsService.getAlerts', () => {
       [PRODUCT_ID, CATEGORY_ID]
     )
     expect(await alertCount('low_stock')).toBe(before)
+  })
+
+  it('counts a fully out-of-stock product as out_of_stock, not low_stock', async () => {
+    const beforeOutOfStock = await alertCount('out_of_stock')
+    const beforeLowStock = await alertCount('low_stock')
+    await pool.query(
+      `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, alert_threshold, created_at)
+       VALUES ($1, 'alerts-out-of-stock', $2, 'منتج نافد', 'وصف', 10, 5, 'وحدة', '🧪', 1, 0, 5, now())`,
+      [PRODUCT_ID, CATEGORY_ID]
+    )
+    expect(await alertCount('out_of_stock')).toBe(beforeOutOfStock + 1)
+    expect(await alertCount('low_stock')).toBe(beforeLowStock)
   })
 
   it('counts an order stuck in a non-final status for more than 6 hours', async () => {
@@ -112,6 +128,34 @@ describe('alertsService.getAlerts', () => {
       [ORDER_ID, RIDER_ID]
     )
     expect(await alertCount('unsettled_rider_cash')).toBe(before + 1)
+  })
+
+  it('counts a submitted purchase order awaiting receipt as pending, not a draft one', async () => {
+    await pool.query(`INSERT INTO suppliers (id, name) VALUES ($1, 'مورد اختبار')`, [SUPPLIER_ID])
+    const before = await alertCount('pending_purchase_orders')
+    await pool.query(
+      `INSERT INTO purchase_orders (id, po_number, supplier_id, status) VALUES ($1, $1, $2, 'draft')`,
+      [PURCHASE_ORDER_ID, SUPPLIER_ID]
+    )
+    expect(await alertCount('pending_purchase_orders')).toBe(before)
+
+    await pool.query(`UPDATE purchase_orders SET status = 'submitted' WHERE id = $1`, [PURCHASE_ORDER_ID])
+    expect(await alertCount('pending_purchase_orders')).toBe(before + 1)
+  })
+
+  it('counts a recently failed WhatsApp message but not an old or successful one', async () => {
+    const before = await alertCount('whatsapp_failed')
+    await pool.query(
+      `INSERT INTO whatsapp_messages (id, to_number, body, status, created_at) VALUES ($1, '01000000000', 'رسالة', 'failed', now() - interval '30 hours')`,
+      [WHATSAPP_MESSAGE_ID]
+    )
+    expect(await alertCount('whatsapp_failed')).toBe(before)
+
+    await pool.query(`UPDATE whatsapp_messages SET created_at = now() WHERE id = $1`, [WHATSAPP_MESSAGE_ID])
+    expect(await alertCount('whatsapp_failed')).toBe(before + 1)
+
+    await pool.query(`UPDATE whatsapp_messages SET status = 'sent' WHERE id = $1`, [WHATSAPP_MESSAGE_ID])
+    expect(await alertCount('whatsapp_failed')).toBe(before)
   })
 
   it('omits a category entirely when its count is zero', async () => {

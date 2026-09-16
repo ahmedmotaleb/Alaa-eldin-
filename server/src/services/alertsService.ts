@@ -19,16 +19,24 @@ const STUCK_ORDER_HOURS = 6
 // كل التنبيهات هنا محسوبة حيّة من الجداول الفعلية وقت الطلب — مفيش جدول تنبيهات منفصل ولا
 // حالة "مقروء/غير مقروء" بتتخزن، لأن كل تنبيه هنا بيعبّر عن حالة حقيقية قائمة دلوقتي (عدد
 // منتجات منخفضة المخزون الآن، طلبات عالقة الآن...) مش حدث تاريخي يحتاج تتبع/أرشفة.
+// نافذة "حديثاً" لرسائل واتساب الفاشلة — آخر ٢٤ ساعة بس، عشان فشل قديم اتعالج أو بقى معروف
+// مش يفضل ظاهر كتنبيه نشط للأبد.
+const WHATSAPP_FAILURE_WINDOW_HOURS = 24
+
 export async function getAlerts(): Promise<Alert[]> {
   const [
+    outOfStockRows,
     lowStockRows,
     expiryDashboard,
     stuckOrdersRows,
     pendingCustomerReturnsRows,
     pendingSupplierReturnsRows,
-    unsettledRiderRows
+    unsettledRiderRows,
+    pendingPurchaseOrdersRows,
+    whatsappFailedRows
   ] = await Promise.all([
-    pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products WHERE available = 1 AND stock <= alert_threshold`),
+    pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products WHERE available = 1 AND stock <= 0`),
+    pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products WHERE available = 1 AND stock > 0 AND stock <= alert_threshold`),
     getExpiryDashboard(),
     pool.query<{ n: string }>(
       `SELECT COUNT(*) as n FROM orders WHERE status NOT IN ('delivered', 'cancelled') AND created_at < now() - interval '${STUCK_ORDER_HOURS} hours'`
@@ -38,10 +46,19 @@ export async function getAlerts(): Promise<Alert[]> {
     pool.query<{ riderCount: string; amount: string }>(
       `SELECT COUNT(DISTINCT rider_id) as "riderCount", COALESCE(SUM(total), 0) as amount
        FROM orders WHERE status = 'delivered' AND settlement_id IS NULL AND rider_id IS NOT NULL`
+    ),
+    pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM purchase_orders WHERE status IN ('submitted', 'partially_received')`),
+    pool.query<{ n: string }>(
+      `SELECT COUNT(*) as n FROM whatsapp_messages WHERE status = 'failed' AND created_at > now() - interval '${WHATSAPP_FAILURE_WINDOW_HOURS} hours'`
     )
   ])
 
   const alerts: Alert[] = []
+
+  const outOfStockCount = Number(outOfStockRows.rows[0].n)
+  if (outOfStockCount > 0) {
+    alerts.push({ category: 'out_of_stock', label: 'منتجات نفدت تماماً', count: outOfStockCount, severity: 'critical', link: '/products/inv' })
+  }
 
   const lowStockCount = Number(lowStockRows.rows[0].n)
   if (lowStockCount > 0) {
@@ -75,6 +92,16 @@ export async function getAlerts(): Promise<Alert[]> {
   const unsettledRiderCount = Number(unsettledRiderRows.rows[0].riderCount)
   if (unsettledRiderCount > 0) {
     alerts.push({ category: 'unsettled_rider_cash', label: `مناديب عندهم كاش غير مُسوّى`, count: unsettledRiderCount, severity: 'warning', link: '/wallet/settle' })
+  }
+
+  const pendingPurchaseOrdersCount = Number(pendingPurchaseOrdersRows.rows[0].n)
+  if (pendingPurchaseOrdersCount > 0) {
+    alerts.push({ category: 'pending_purchase_orders', label: 'أوامر شراء بانتظار الاستلام', count: pendingPurchaseOrdersCount, severity: 'info', link: '/purchasing/orders' })
+  }
+
+  const whatsappFailedCount = Number(whatsappFailedRows.rows[0].n)
+  if (whatsappFailedCount > 0) {
+    alerts.push({ category: 'whatsapp_failed', label: 'رسائل واتساب فشل إرسالها', count: whatsappFailedCount, severity: 'warning', link: '/settings/integrations' })
   }
 
   return alerts

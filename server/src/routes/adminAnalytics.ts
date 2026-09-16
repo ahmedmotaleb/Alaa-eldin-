@@ -6,6 +6,7 @@ import {
   getRiderPerformance
 } from '../services/analyticsService.js'
 import { getPurchasingInventoryAnalytics } from '../services/purchasingInventoryAnalyticsService.js'
+import { getAlerts } from '../services/alertsService.js'
 import { todayInCairo, addCalendarDays, isValidCalendarDateString } from '../cairoDate.js'
 
 export const adminAnalyticsRouter = Router()
@@ -55,15 +56,17 @@ adminAnalyticsRouter.get('/riders', async (_req, res) => {
 })
 
 adminAnalyticsRouter.get('/home-summary', async (_req, res) => {
-  const [summary, revenueByDay, topProducts] = await Promise.all([
+  const [summary, revenueByDay, topProducts, alerts] = await Promise.all([
     getHomeSummary(),
     getRevenueByDay(HOME_CHART_DAYS),
-    getTopProducts()
+    getTopProducts(),
+    getAlerts()
   ])
   res.json({
     ...summary,
     revenueByDay,
-    topProducts: topProducts.slice().sort((a, b) => b.qty - a.qty).slice(0, HOME_TOP_PRODUCTS_LIMIT)
+    topProducts: topProducts.slice().sort((a, b) => b.qty - a.qty).slice(0, HOME_TOP_PRODUCTS_LIMIT),
+    alerts
   })
 })
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../components/StatsGrid'
 import { OrderTable } from '../components/OrderTable'
+import { AlertShortcuts } from '../components/AlertShortcuts'
 import { api, ApiError, type AdminOrder, type AnalyticsHomeSummary } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { useAuth } from '../store/AuthContext'
@@ -52,6 +53,8 @@ export function HomePage() {
         { label: 'متوسط قيمة الطلب', value: formatMoney(summary.todayOrderCount ? summary.todayRevenue / summary.todayOrderCount : 0), note: 'لطلبات اليوم', icon: '🛒', tint: '#FFF3E3' },
         { label: 'طلبات جديدة', value: String(summary.newOrdersCount), note: 'بانتظار القبول', icon: '🔔', tint: '#F3EEFB', noteColor: '#B45309' }
       ]} />
+
+      <AlertShortcuts alerts={summary.alerts} />
 
       <div className="admin-chart-card">
         <div className="admin-chart-head">
