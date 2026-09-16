@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ProductGrid } from '../components/ProductGrid'
 import { Section } from '../components/Section'
+import { RecentlyViewedSection } from '../components/RecentlyViewedSection'
 import { useCatalog } from '../store/CatalogContext'
+import { useAuth } from '../store/AuthContext'
 import { hasOnboarded } from '../utils/onboarding'
 import { api, type ApiBanner, type ApiProduct } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
@@ -15,15 +17,24 @@ const HOME_SECTION_LIMIT = 6
 export function HomePage() {
   const navigate = useNavigate()
   const { categories } = useCatalog()
+  const { user } = useAuth()
   const settings = getSettings()
   const [banners, setBanners] = useState<ApiBanner[]>([])
   const [bannerIndex, setBannerIndex] = useState(0)
   const [offers, setOffers] = useState<ApiProduct[]>([])
   const [bestsellers, setBestsellers] = useState<ApiProduct[]>([])
+  const [buyAgain, setBuyAgain] = useState<ApiProduct[]>([])
 
   useEffect(() => {
     api.listBanners().then(({ banners }) => setBanners(banners)).catch(() => {})
   }, [])
+
+  // "اشتريها تاني" مبني على تاريخ شراء حقيقي، فمتاح بس للعميل المسجّل دخول — الزائر يشوف
+  // الصفحة الرئيسية العامة العادية بدون هذا القسم.
+  useEffect(() => {
+    if (!user) { setBuyAgain([]); return }
+    api.listFrequentlyPurchased().then(({ products }) => setBuyAgain(products)).catch(() => {})
+  }, [user])
 
   useEffect(() => {
     setPageMeta({
@@ -90,6 +101,14 @@ export function HomePage() {
           ))}
         </div>
       </Section>
+
+      {buyAgain.length > 0 && (
+        <Section title={ar.home.buyAgainTitle}>
+          <ProductGrid products={buyAgain} layout="rail" />
+        </Section>
+      )}
+
+      <RecentlyViewedSection />
 
       {settings.showTodaysOffers && (
         <Section

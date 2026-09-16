@@ -6,6 +6,10 @@ export const DEFAULT_LIMIT = 20
 const AUTOCOMPLETE_LIMIT = 8
 const SIMILAR_LIMIT = 6
 const MIN_SEARCH_LENGTH = 2
+const FBT_LIMIT = 6
+// أقل عدد طلبات مستقلة اشتُري فيها المنتجين مع بعض عشان الاقتراح يتحسب — رقم واحد بس
+// (طلب واحد اتفق فيه المنتجين صدفة) مش كافي إحصائياً، بيديك اقتراحات عشوائية بلا معنى.
+const FBT_MIN_CO_OCCURRENCE = 2
 
 export type SortOption = 'popular' | 'price_asc' | 'price_desc' | 'name' | 'newest'
 export type StockState = 'in_stock' | 'low_stock' | 'out_of_stock'
@@ -209,6 +213,55 @@ export async function resolveProducts(ids: string[]): Promise<ProductCard[]> {
   return rows.map(serializeCard)
 }
 
+// كاش بالذاكرة فقط لترتيب المنتجات المرتبطة تاريخياً (الجزء المكلف: تجميع كل الطلبات
+// القديمة) — مش لسعر/توفر المنتج نفسه. أي طلب بيعيد استيثاق السعر/التوفر الحالي دايماً
+// من غير كاش (عبر resolveProducts تحت) عشان الاقتراح ميعرضش بيانات قديمة، بس ترتيب "مين
+// بيتشرى مع مين" مبني على تاريخ بيتغيّر ببطء وميستهلكش استعلام تجميع ثقيل كل طلب.
+const FBT_CACHE_TTL_MS = 15 * 60 * 1000
+const fbtRankingCache = new Map<string, { expiresAt: number; ids: string[] }>()
+
+async function getFrequentlyBoughtTogetherIds(productId: string): Promise<string[]> {
+  const cached = fbtRankingCache.get(productId)
+  if (cached && cached.expiresAt > Date.now()) return cached.ids
+
+  const { rows } = await pool.query<{ productId: string }>(
+    `SELECT oi2.product_id as "productId"
+     FROM order_items oi1
+     JOIN order_items oi2 ON oi2.order_id = oi1.order_id AND oi2.product_id != oi1.product_id
+     JOIN orders o ON o.id = oi1.order_id
+     WHERE oi1.product_id = $1 AND o.status != 'cancelled'
+     GROUP BY oi2.product_id
+     HAVING COUNT(DISTINCT oi1.order_id) >= $2
+     ORDER BY COUNT(DISTINCT oi1.order_id) DESC
+     LIMIT $3`,
+    [productId, FBT_MIN_CO_OCCURRENCE, FBT_LIMIT * 3]
+  )
+
+  const ids = rows.map(r => r.productId)
+  fbtRankingCache.set(productId, { expiresAt: Date.now() + FBT_CACHE_TTL_MS, ids })
+  return ids
+}
+
+// للاستخدام في الاختبارات فقط — الكاش بالذاكرة عمره طويل عمداً (15 دقيقة) عشان مش بيانات
+// حساسة للحظة، لكن ده يعني اختبارات متتالية بنفس معرف المنتج محتاجة تصفّي الكاش بينها.
+export function clearFrequentlyBoughtTogetherCache() {
+  fbtRankingCache.clear()
+}
+
+// "يشترى معه غالباً" — مبني على تكرار ظهور المنتجين فعلياً في نفس الطلب عبر تاريخ طلبات
+// حقيقي (مش علاقات مضروبة يدوياً)، بعتبة حد أدنى، ومستبعد منه أي منتج غير متاح حالياً.
+export async function getFrequentlyBoughtTogether(productId: string, limit = FBT_LIMIT): Promise<ProductCard[]> {
+  const candidateIds = await getFrequentlyBoughtTogetherIds(productId)
+  if (candidateIds.length === 0) return []
+
+  const resolved = await resolveProducts(candidateIds)
+  const byId = new Map(resolved.map(p => [p.id, p]))
+  return candidateIds
+    .map(id => byId.get(id))
+    .filter((p): p is ProductCard => !!p && p.available)
+    .slice(0, limit)
+}
+
 export async function autocompleteProducts(rawQuery: string) {
   const trimmed = rawQuery.trim()
   if (trimmed.length < MIN_SEARCH_LENGTH) return []
@@ -256,14 +309,15 @@ export async function getProductBySlug(slug: string) {
   const product = rows[0]
   if (!product) return null
 
-  const [{ rows: images }, alternatives, similarRes] = await Promise.all([
+  const [{ rows: images }, alternatives, similarRes, frequentlyBoughtTogether] = await Promise.all([
     pool.query<GalleryImageRow>(
       `SELECT id, image_url as "url", alt_text as "altText", is_primary as "isPrimary", sort_order as "sortOrder"
        FROM product_images WHERE product_id = $1 ORDER BY is_primary DESC, sort_order ASC`,
       [product.id]
     ),
     listPublicAlternatives(product.id),
-    listProducts({ category: product.categoryId, limit: SIMILAR_LIMIT + 1 })
+    listProducts({ category: product.categoryId, limit: SIMILAR_LIMIT + 1 }),
+    getFrequentlyBoughtTogether(product.id)
   ])
 
   const similarProducts = similarRes.products.filter(p => p.id !== product.id).slice(0, SIMILAR_LIMIT)
@@ -292,6 +346,7 @@ export async function getProductBySlug(slug: string) {
       sortOrder: img.sortOrder
     })),
     alternatives,
-    similarProducts
+    similarProducts,
+    frequentlyBoughtTogether
   }
 }

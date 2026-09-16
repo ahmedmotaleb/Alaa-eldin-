@@ -204,6 +204,7 @@ export interface ApiProductDetail {
   gallery: ApiProductGalleryImage[]
   alternatives: ApiAlternativeProduct[]
   similarProducts: ApiProduct[]
+  frequentlyBoughtTogether: ApiProduct[]
 }
 
 export type ProductSort = 'popular' | 'price_asc' | 'price_desc' | 'name' | 'newest'

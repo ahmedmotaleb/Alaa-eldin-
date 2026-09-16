@@ -11,6 +11,8 @@ import { setPageMeta, setProductJsonLd, clearProductJsonLd } from '../utils/page
 import { getSettings } from '../store/settingsStore'
 import { api, type ApiProductDetail } from '../utils/api'
 import { formatMoney } from '../utils/money'
+import { recordProductView } from '../utils/recentlyViewed'
+import { ProductGrid } from '../components/ProductGrid'
 import { ar } from '../i18n/ar'
 
 export function ProductPage() {
@@ -36,6 +38,10 @@ export function ProductPage() {
     setPageTitle(product?.name ?? '')
     return () => setPageTitle('')
   }, [product?.name])
+
+  useEffect(() => {
+    if (product) recordProductView(product.id)
+  }, [product?.id])
 
   useEffect(() => {
     if (!product || !slug) return
@@ -156,6 +162,13 @@ export function ProductPage() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {product.frequentlyBoughtTogether.length > 0 && (
+          <div>
+            <h2 className="related-title">{ar.product.frequentlyBoughtTogether}</h2>
+            <ProductGrid products={product.frequentlyBoughtTogether} layout="rail" />
           </div>
         )}
       </div>

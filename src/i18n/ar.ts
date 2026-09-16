@@ -49,7 +49,9 @@ export const ar = {
     allOffers: 'كل العروض',
     bestSellersTitle: 'الأكثر مبيعاً',
     orderBeforeTitle: 'اطلب قبل 6 مساءً',
-    orderBeforeNote: 'ويوصلك الطلب نفس اليوم داخل المدينة.'
+    orderBeforeNote: 'ويوصلك الطلب نفس اليوم داخل المدينة.',
+    recentlyViewedTitle: 'شوهد مؤخراً',
+    buyAgainTitle: 'اشتريها تاني'
   },
 
   categories: {
@@ -77,6 +79,7 @@ export const ar = {
     checkBeforeDelivery: 'فحص قبل التسليم',
     similarProducts: 'منتجات مشابهة',
     similarAlternatives: 'بدائل مشابهة',
+    frequentlyBoughtTogether: 'يشترى معه غالباً',
     viewImageLarger: 'اعرض الصورة بحجم أكبر',
     imageNumber: (n: number) => `صورة ${n}`,
     addToCart: 'أضف إلى السلة',
