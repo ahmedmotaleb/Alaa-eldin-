@@ -7,6 +7,23 @@ import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
 
+// رسائل خطأ محددة حسب كود الخطأ الراجع من السيرفر — بدل رسالة عامة واحدة تخفي أي حقل
+// فعلياً الغلط فيه. كود مش موجود هنا (خطأ غير متوقع) بيرجع للرسالة العامة كـ fallback.
+const SAVE_ERROR_MESSAGES: Record<string, string> = {
+  invalid_category: 'اختر تصنيف صحيح للمنتج',
+  invalid_name: 'اسم المنتج مطلوب',
+  invalid_description: 'الوصف غير صالح',
+  invalid_price: 'سعر البيع لازم يكون رقم أكبر من صفر',
+  invalid_cost: 'تكلفة المنتج لازم تكون رقم صفر أو أكبر',
+  invalid_unit: 'اختر وحدة صحيحة للمنتج',
+  invalid_emoji: 'الإيموجي غير صالح',
+  invalid_available: 'حالة العرض غير صالحة',
+  invalid_stock: 'الكمية المتاحة لازم تكون رقم صفر أو أكبر',
+  invalid_alert_threshold: 'حد تنبيه المخزون لازم يكون رقم صفر أو أكبر',
+  category_not_found: 'التصنيف المختار غير موجود، اختر تصنيف تاني',
+  product_not_found: 'المنتج غير موجود، ربما تم حذفه'
+}
+
 const emptyForm: AdminProductInput = {
   id: '', slug: '', categoryId: '', name: '', description: '', price: 0, oldPrice: undefined,
   cost: 0, unit: 'عبوة', emoji: '📦', available: true, bestseller: false, offer: false,
@@ -69,7 +86,7 @@ export function ProductFormPage() {
         navigate(`/products/edit/${product.id}`, { replace: true })
       }
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'slug_taken') setError('هذا الرابط (slug) مستخدم بالفعل لمنتج آخر')
+      if (err instanceof ApiError && SAVE_ERROR_MESSAGES[err.code]) setError(SAVE_ERROR_MESSAGES[err.code])
       else setError('تعذر حفظ المنتج، تحقق من البيانات وحاول مرة أخرى')
     } finally {
       setSaving(false)
@@ -205,11 +222,8 @@ export function ProductFormPage() {
           <div className="admin-form-card-title">المخزون والتعريف</div>
           <div className="admin-form-card-sub">التتبع والتنبيهات</div>
         </div>
-        <label>الرابط (slug)
-          <input value={form.slug} onChange={e => set('slug', e.target.value)} placeholder="oil" />
-        </label>
-        <label>الباركود
-          <input value={form.barcode} onChange={e => set('barcode', e.target.value)} />
+        <label>الباركود (اختياري)
+          <input value={form.barcode} onChange={e => set('barcode', e.target.value)} placeholder="اتركه فارغاً لو المنتج من غير باركود" />
         </label>
         <div className="admin-row-2">
           <label>الكمية المتاحة

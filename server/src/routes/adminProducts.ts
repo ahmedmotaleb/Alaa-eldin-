@@ -1,50 +1,18 @@
 import { Router } from 'express'
-import crypto from 'node:crypto'
 import multer from 'multer'
-import { pool, withTransaction } from '../db.js'
+import { pool } from '../db.js'
 import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, type ImportConfirmRow } from '../services/productImportService.js'
+import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
 export const adminProductsRouter = Router()
 adminProductsRouter.use(requireAdmin)
-
-interface ProductRow {
-  id: string
-  slug: string
-  categoryId: string
-  name: string
-  description: string
-  price: number
-  oldPrice: number | null
-  cost: number
-  unit: string
-  emoji: string
-  available: number
-  bestseller: number
-  offer: number
-  orderCount: number
-  stock: number
-  alertThreshold: number
-  barcode: string
-  brand: string
-  primaryImage: string | null
-  tracksExpiry: number
-  defaultShelfLifeDays: number | null
-  sku: string | null
-}
-
-const SELECT_PRODUCT = `
-  SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
-         unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
-         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays", sku
-  FROM products
-`
 
 const SELECT_PRODUCT_WITH_IMAGE = `
   SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice", p.cost,
@@ -58,18 +26,6 @@ const SELECT_PRODUCT_WITH_IMAGE = `
     LIMIT 1
   ) img ON true
 `
-
-function serialize(row: ProductRow) {
-  return {
-    ...row,
-    oldPrice: row.oldPrice ?? undefined,
-    available: !!row.available,
-    bestseller: !!row.bestseller,
-    offer: !!row.offer,
-    primaryImage: row.primaryImage ?? undefined,
-    tracksExpiry: !!row.tracksExpiry
-  }
-}
 
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 20
@@ -96,7 +52,7 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
 
   if (!paginationRequested) {
     const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT_WITH_IMAGE} ${whereClause} ORDER BY p.name`, params)
-    res.json({ products: rows.map(serialize) })
+    res.json({ products: rows.map(serializeProduct) })
     return
   }
 
@@ -108,7 +64,7 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
     [...params, limit, offset]
   )
   res.json({
-    products: rows.map(serialize),
+    products: rows.map(serializeProduct),
     page,
     limit,
     total,
@@ -257,7 +213,7 @@ adminProductsRouter.get('/:id', requirePermission('products.view'), async (req, 
     res.status(404).json({ error: 'product_not_found' })
     return
   }
-  res.json({ product: serialize(row) })
+  res.json({ product: serializeProduct(row) })
 })
 
 // إعداد تتبع الصلاحية منفصل عن نموذج المنتج الرئيسي عن قصد — تعديل بسيط ومعزول، بدل ما
@@ -287,7 +243,7 @@ adminProductsRouter.patch('/:id/expiry-settings', requirePermission('products.ed
     entityId: String(req.params.id),
     newValues: { tracksExpiry, defaultShelfLifeDays }
   })
-  res.json({ product: serialize(rows[0]) })
+  res.json({ product: serializeProduct(rows[0]) })
 })
 
 // SKU مستقل عن نموذج المنتج الرئيسي (زي إعداد الصلاحية) — تعديل يدوي بسيط، أو توليد تلقائي
@@ -336,79 +292,68 @@ adminProductsRouter.get('/by-barcode/:barcode', requirePermission('products.view
   res.json({ product })
 })
 
-async function validateBody(body: unknown) {
-  const b = body as Record<string, unknown>
-  if (
-    typeof b?.slug !== 'string' || !b.slug.trim() ||
-    typeof b?.categoryId !== 'string' || !b.categoryId.trim() ||
-    typeof b?.name !== 'string' || !b.name.trim() ||
-    typeof b?.description !== 'string' ||
-    typeof b?.price !== 'number' || b.price <= 0 ||
-    typeof b?.cost !== 'number' || b.cost < 0 ||
-    typeof b?.unit !== 'string' || !b.unit.trim() ||
-    typeof b?.emoji !== 'string' ||
-    typeof b?.available !== 'boolean' ||
-    typeof b?.stock !== 'number' || b.stock < 0 ||
-    typeof b?.alertThreshold !== 'number' || b.alertThreshold < 0
-  ) return null
+type ValidateBodyResult = { ok: true; data: ProductWriteInput } | { ok: false; error: string }
+
+// بيرجّع خطأ محدد لكل حقل غلط بدل خطأ عام واحد (missing_fields) — عشان رسالة الخطأ في لوحة
+// التحكم توضّح فعلياً الحقل المطلوب تصليحه. ملحوظة: الرابط (slug) مش من ضمن الحقول المتحقق
+// منها هنا خالص — أبداً مش بيتاخد أو بيتوثق فيه من الفرونت إند (راجع productService.ts:
+// توليد السيرفر للرابط وقت الإنشاء بس، وثبوته الكامل وقت التعديل).
+async function validateBody(body: unknown): Promise<ValidateBodyResult> {
+  const b = (body ?? {}) as Record<string, unknown>
+
+  if (typeof b.categoryId !== 'string' || !b.categoryId.trim()) return { ok: false, error: 'invalid_category' }
+  if (typeof b.name !== 'string' || !b.name.trim()) return { ok: false, error: 'invalid_name' }
+  if (typeof b.description !== 'string') return { ok: false, error: 'invalid_description' }
+  if (typeof b.price !== 'number' || !Number.isFinite(b.price) || b.price <= 0) return { ok: false, error: 'invalid_price' }
+  if (typeof b.cost !== 'number' || !Number.isFinite(b.cost) || b.cost < 0) return { ok: false, error: 'invalid_cost' }
+  if (typeof b.unit !== 'string' || !b.unit.trim()) return { ok: false, error: 'invalid_unit' }
+  if (typeof b.emoji !== 'string') return { ok: false, error: 'invalid_emoji' }
+  if (typeof b.available !== 'boolean') return { ok: false, error: 'invalid_available' }
+  if (typeof b.stock !== 'number' || !Number.isFinite(b.stock) || b.stock < 0) return { ok: false, error: 'invalid_stock' }
+  if (typeof b.alertThreshold !== 'number' || !Number.isFinite(b.alertThreshold) || b.alertThreshold < 0) return { ok: false, error: 'invalid_alert_threshold' }
 
   const { rows: categoryRows } = await pool.query('SELECT id FROM categories WHERE id = $1', [b.categoryId])
-  if (!categoryRows[0]) return null
+  if (!categoryRows[0]) return { ok: false, error: 'category_not_found' }
 
   return {
-    slug: b.slug.trim(),
-    categoryId: b.categoryId as string,
-    name: (b.name as string).trim(),
-    description: (b.description as string).trim(),
-    price: b.price as number,
-    oldPrice: typeof b.oldPrice === 'number' && b.oldPrice > 0 ? b.oldPrice : null,
-    cost: b.cost as number,
-    unit: (b.unit as string).trim(),
-    emoji: (b.emoji as string).trim(),
-    available: b.available as boolean,
-    bestseller: !!b.bestseller,
-    offer: !!b.offer,
-    stock: b.stock as number,
-    alertThreshold: b.alertThreshold as number,
-    barcode: typeof b.barcode === 'string' ? b.barcode.trim() : '',
-    brand: typeof b.brand === 'string' ? b.brand.trim() : ''
+    ok: true,
+    data: {
+      categoryId: b.categoryId as string,
+      name: (b.name as string).trim(),
+      description: (b.description as string).trim(),
+      price: b.price as number,
+      oldPrice: typeof b.oldPrice === 'number' && b.oldPrice > 0 ? b.oldPrice : null,
+      cost: b.cost as number,
+      unit: (b.unit as string).trim(),
+      emoji: (b.emoji as string).trim(),
+      available: b.available as boolean,
+      bestseller: !!b.bestseller,
+      offer: !!b.offer,
+      stock: b.stock as number,
+      alertThreshold: b.alertThreshold as number,
+      barcode: typeof b.barcode === 'string' ? b.barcode.trim() : '',
+      brand: typeof b.brand === 'string' ? b.brand.trim() : ''
+    }
   }
 }
 
 adminProductsRouter.post('/', requirePermission('products.create'), async (req, res) => {
-  const data = await validateBody(req.body)
-  if (!data) {
-    res.status(400).json({ error: 'missing_fields' })
+  const result = await validateBody(req.body)
+  if (!result.ok) {
+    res.status(400).json({ error: result.error })
     return
   }
 
-  const { rows: existingRows } = await pool.query('SELECT id FROM products WHERE slug = $1', [data.slug])
-  if (existingRows[0]) {
-    res.status(409).json({ error: 'slug_taken' })
-    return
-  }
-
-  const id = 'p' + crypto.randomBytes(4).toString('hex')
-  await pool.query(
-    `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, $14, $15, $16, $17, $18)`,
-    [
-      id, data.slug, data.categoryId, data.name, data.description, data.price, data.oldPrice, data.cost, data.unit, data.emoji,
-      data.available ? 1 : 0, data.bestseller ? 1 : 0, data.offer ? 1 : 0, data.stock, data.alertThreshold, data.barcode, data.brand,
-      new Date().toISOString()
-    ]
-  )
-
-  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
-  logEvent('admin_product_created', { productId: id })
+  const product = await createProduct(result.data)
+  logEvent('admin_product_created', { productId: product.id })
   await recordAuditLog({
     adminUserId: req.user!.id,
     action: 'product_created',
     entityType: 'product',
-    entityId: id,
-    newValues: serialize(rows[0])
+    entityId: product.id,
+    newValues: product
   })
-  res.status(201).json({ product: serialize(rows[0]) })
+  res.status(201).json({ product })
 })
 
 adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req, res) => {
@@ -419,57 +364,21 @@ adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req
     return
   }
 
-  const data = await validateBody({ ...serialize(existing), ...(req.body ?? {}) })
-  if (!data) {
-    res.status(400).json({ error: 'missing_fields' })
+  // أي slug جاي من الفرونت إند بيتجاهل تماماً هنا — الرابط الحالي للمنتج ثابت دايماً على
+  // التعديل (راجع productService.updateProduct)، حتى لو الاسم اتغيّر أو الفرونت إند بعت
+  // حقل slug بالغلط.
+  const result = await validateBody({ ...serializeProduct(existing), ...(req.body ?? {}) })
+  if (!result.ok) {
+    res.status(400).json({ error: result.error })
     return
   }
 
-  if (data.slug) {
-    const { rows: slugOwnerRows } = await pool.query('SELECT id FROM products WHERE slug = $1 AND id != $2', [data.slug, req.params.id])
-    if (slugOwnerRows[0]) {
-      res.status(409).json({ error: 'slug_taken' })
-      return
-    }
+  const update = await updateProduct(String(req.params.id), result.data, req.user!.id)
+  if (!update) {
+    res.status(404).json({ error: 'product_not_found' })
+    return
   }
-
-  const stockDiff = data.stock - existing.stock
-
-  await withTransaction(async client => {
-    await client.query(
-      `UPDATE products SET slug=$1, category_id=$2, name=$3, description=$4, price=$5,
-         old_price=$6, cost=$7, unit=$8, emoji=$9, available=$10, bestseller=$11,
-         offer=$12, stock=$13, alert_threshold=$14, barcode=$15, brand=$16
-       WHERE id=$17`,
-      [
-        data.slug, data.categoryId, data.name, data.description, data.price,
-        data.oldPrice, data.cost, data.unit, data.emoji, data.available ? 1 : 0, data.bestseller ? 1 : 0,
-        data.offer ? 1 : 0, data.stock, data.alertThreshold, data.barcode, data.brand,
-        req.params.id
-      ]
-    )
-    if (stockDiff !== 0) {
-      await client.query(
-        `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at)
-         VALUES ($1, 'adjustment', $2, 'تعديل من صفحة المنتج', $3)`,
-        [req.params.id, stockDiff, new Date().toISOString()]
-      )
-    }
-    // تعديل تكلفة يدوي من صفحة المنتج بيتسجّل في نفس تاريخ التكلفة اللي بيتسجّل منه
-    // الاستلام (source_type مختلف بس) — عشان تحليل الهامش يشوف كل تغيير تكلفة حقيقي،
-    // مش بس اللي جاي من استلام بضاعة.
-    if (data.cost !== existing.cost) {
-      await client.query(
-        `INSERT INTO product_cost_history (id, product_id, unit_cost, source_type, source_id)
-         VALUES ($1, $2, $3, 'manual_adjustment', $4)`,
-        [crypto.randomUUID(), req.params.id, data.cost, req.user!.id]
-      )
-    }
-  })
-
-  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [req.params.id])
-  const before = serialize(existing)
-  const after = serialize(rows[0])
+  const { before, after, stockDiff } = update
 
   logEvent('admin_product_updated', { productId: req.params.id })
   if (stockDiff !== 0) logEvent('admin_stock_adjusted', { productId: req.params.id, quantityChange: stockDiff })
