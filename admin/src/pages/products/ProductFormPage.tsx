@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { api, ApiError, type AdminCategory, type AdminProductInput } from '../../utils/api'
 import { ProductImagesManager } from '../../components/ProductImagesManager'
+import { PendingProductImages, type StagedProductImage } from '../../components/PendingProductImages'
 import { ProductAlternativesManager } from '../../components/ProductAlternativesManager'
 import type { LayoutContext } from '../../components/AdminLayout'
 
@@ -46,6 +47,9 @@ export function ProductFormPage() {
   const [skuInput, setSkuInput] = useState('')
   const [skuSaving, setSkuSaving] = useState(false)
   const [skuSuccess, setSkuSuccess] = useState('')
+  const [stagedImages, setStagedImages] = useState<StagedProductImage[]>([])
+  const stagedImagesRef = useRef(stagedImages)
+  stagedImagesRef.current = stagedImages
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -66,6 +70,12 @@ export function ProductFormPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // معاينات الصور المختارة قبل الحفظ عبارة عن blob URLs محلية — لازم تتحرر (revoke) لما
+  // الصفحة تتسكّر، وإلا هتفضل محتجزة في الذاكرة (الملاحة داخل SPA مش بتعمل reload كامل).
+  useEffect(() => {
+    return () => { stagedImagesRef.current.forEach(img => URL.revokeObjectURL(img.previewUrl)) }
+  }, [])
+
   function set<K extends keyof AdminProductInput>(key: K, value: AdminProductInput[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
@@ -82,6 +92,19 @@ export function ProductFormPage() {
         setSuccess('تم حفظ التعديلات')
       } else {
         const { product } = await api.createProduct(payload)
+        let failedUploads = 0
+        for (const staged of stagedImages) {
+          try {
+            await api.uploadProductImage(product.id, staged.file)
+          } catch {
+            failedUploads++
+          }
+          URL.revokeObjectURL(staged.previewUrl)
+        }
+        setStagedImages([])
+        if (failedUploads > 0) {
+          window.alert('تم حفظ المنتج، لكن تعذر رفع صورة واحدة أو أكثر — أضفها من صفحة التعديل')
+        }
         setSuccess('تم حفظ المنتج')
         navigate(`/products/edit/${product.id}`, { replace: true })
       }
@@ -148,6 +171,7 @@ export function ProductFormPage() {
   return (
     <div className="admin-form-grid">
       {isEdit && id && <ProductImagesManager productId={id} />}
+      {!isEdit && <PendingProductImages staged={stagedImages} onChange={setStagedImages} />}
       {isEdit && id && <ProductAlternativesManager productId={id} />}
 
       <div className="admin-form-card">

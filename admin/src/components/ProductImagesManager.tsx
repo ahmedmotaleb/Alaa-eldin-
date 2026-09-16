@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, type AdminProductImage } from '../utils/api'
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_SIZE_BYTES = 5 * 1024 * 1024
+// مُصدّرة عشان PendingProductImages (اختيار صور صفحة "إضافة منتج" قبل ما المنتج يتحفظ
+// أصلاً) تستخدم نفس قواعد النوع/الحجم بالظبط، من غير تكرار الأرقام في مكانين.
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+const ALLOWED_TYPES = ALLOWED_IMAGE_TYPES
+const MAX_SIZE_BYTES = MAX_IMAGE_SIZE_BYTES
 
 export function ProductImagesManager({ productId }: { productId: string }) {
   const [images, setImages] = useState<AdminProductImage[]>([])
