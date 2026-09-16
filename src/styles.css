@@ -379,6 +379,12 @@ h1, h2, h3, p { margin: 0; }
 .payment-label { display: block; font-weight: 800; font-size: 13.5px; }
 .payment-note { display: block; font-weight: 500; font-size: 11.5px; color: var(--muted); }
 .payment-dot { width: 20px; height: 20px; border-radius: 50%; border: 6px solid var(--green); background: #fff; margin-inline-start: auto; }
+.substitution-preference-list { display: flex; flex-direction: column; gap: 8px; }
+.substitution-preference-option { border: 1.5px solid var(--border); background: #fafbfa; border-radius: 14px; padding: 12px 13px; display: flex; align-items: center; gap: 11px; cursor: pointer; }
+.substitution-preference-option.active { border-color: var(--green); background: #f4fbf6; }
+.substitution-preference-option input { flex-shrink: 0; }
+.substitution-preference-label { display: block; font-weight: 800; font-size: 13.5px; }
+.substitution-preference-note { display: block; font-weight: 500; font-size: 11.5px; color: var(--muted); }
 .form-error-banner { background: #fff0ef; border: 1px solid #f6c9c4; color: var(--danger); border-radius: 14px; padding: 11px 13px; font-weight: 700; font-size: 12.5px; }
 .field-error { color: var(--danger); font-weight: 700; font-size: 11.5px; margin-top: -6px; }
 .device-list { display: flex; flex-direction: column; gap: 8px; }
@@ -416,6 +422,10 @@ h1, h2, h3, p { margin: 0; }
 .invoice-card h2 { font-weight: 900; font-size: 15.5px; margin-bottom: 2px; }
 .invoice-card hr { border: 0; border-top: 1px solid #edf1ee; margin: 4px 0; width: 100%; }
 .invoice-line { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; font-size: 13px; }
+.substitution-approval-row { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; border-top: 1px solid #f0e2c8; font-weight: 700; font-size: 13px; }
+.substitution-approval-row:first-of-type { border-top: none; }
+.substitution-approval-actions { display: flex; gap: 8px; }
+.substitution-approval-actions .secondary-button { flex: 1; padding: 9px; font-size: 12.5px; }
 .invoice-total { font-weight: 900 !important; font-size: 16.5px !important; }
 .invoice-total span:last-child { color: var(--green-dark); }
 .whatsapp-note { width: 100%; background: var(--green-soft); border-radius: 16px; padding: 13px; display: flex; align-items: center; gap: 10px; text-align: start; }

@@ -131,6 +131,7 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 }
 
 export type PickedStatus = 'pending' | 'picked' | 'substituted' | 'unavailable'
+export type SubstitutionStatus = 'none' | 'proposed' | 'approved' | 'rejected'
 
 export interface AdminOrderItem {
   id: number
@@ -142,6 +143,9 @@ export interface AdminOrderItem {
   lineTotal: number
   pickedStatus: PickedStatus
   pickedNote: string
+  substitutionStatus: SubstitutionStatus
+  replacementName: string | null
+  replacementQuantity: number | null
 }
 
 export type AdminOrderStatus = 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
@@ -174,6 +178,7 @@ export interface AdminOrder {
   riderName: string | null
   settlementId: number | null
   deliveryInstructions?: string
+  substitutionPreference: 'replace_similar' | 'contact_me' | 'remove_item'
 }
 
 export interface RiderOrder {
@@ -912,6 +917,13 @@ export const api = {
     request<void>(`/admin/orders/${encodeURIComponent(id)}/rider`, { method: 'PATCH', body: JSON.stringify({ riderId }) }),
   setOrderItemPickedStatus: (orderId: string, itemId: number, status: PickedStatus, note?: string) =>
     request<void>(`/admin/orders/${encodeURIComponent(orderId)}/items/${itemId}/pick`, { method: 'PATCH', body: JSON.stringify({ status, note }) }),
+  // اقتراح بديل فعلي لصنف مش متوفر — النتيجة (proposed أو approved) بتختلف حسب تفضيل
+  // العميل وقت الدفع (substitutionPreference)، مش قرار الأدمن نفسه.
+  proposeSubstitution: (orderId: string, itemId: number, replacementProductId: string, replacementQuantity: number) =>
+    request<{ status: 'proposed' | 'approved' }>(`/admin/orders/${encodeURIComponent(orderId)}/items/${itemId}/propose-substitution`, {
+      method: 'POST',
+      body: JSON.stringify({ replacementProductId, replacementQuantity })
+    }),
   listOrderNotes: (orderId: string) => request<{ notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`),
   addOrderNote: (orderId: string, note: string) =>
     request<{ note: AdminOrderNote }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),

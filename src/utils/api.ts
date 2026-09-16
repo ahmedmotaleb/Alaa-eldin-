@@ -55,6 +55,7 @@ export interface NotificationPreferences {
 }
 
 export interface ApiOrderItem {
+  id: number
   productId: string
   name: string
   unit: string
@@ -63,6 +64,12 @@ export interface ApiOrderItem {
   lineTotal: number
   pickedStatus: 'pending' | 'picked' | 'substituted' | 'unavailable'
   pickedNote: string
+  substitutionStatus: 'none' | 'proposed' | 'approved' | 'rejected'
+  replacementName: string | null
+  replacementUnit: string | null
+  replacementQuantity: number | null
+  replacementUnitPrice: number | null
+  replacementLineTotal: number | null
 }
 
 export interface ApiOrder {
@@ -85,6 +92,7 @@ export interface ApiOrder {
   // TrackingPage.tsx. صف واحد لكل انتقال حالة فعلي، بترتيب زمني تصاعدي.
   statusHistory?: { fromStatus: string | null, toStatus: string, source: string, createdAt: string }[]
   deliveryInstructions?: string
+  substitutionPreference: 'replace_similar' | 'contact_me' | 'remove_item'
 }
 
 export interface ApiAddress {
@@ -374,11 +382,25 @@ export const api = {
     items: { productId: string, quantity: number }[]
     discountCode?: string
     deliveryInstructions?: string
+    substitutionPreference?: 'replace_similar' | 'contact_me' | 'remove_item'
   }, idempotencyKey: string) =>
     request<{ order: ApiOrder }>('/orders', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(body)
+    }),
+  // موافقة/رفض العميل المسجّل دخول على بديل مقترح لصنف — الطلب نفسه بيتاكد ملكيته بالجلسة
+  // العادية، مفيش أي توكن إضافي محتاج (عكس مسار الزائر تحت).
+  respondToSubstitution: (orderNumber: string, itemId: number, decision: 'approved' | 'rejected') =>
+    request<void>(`/orders/${encodeURIComponent(orderNumber)}/items/${itemId}/substitution-response`, {
+      method: 'POST',
+      body: JSON.stringify({ decision })
+    }),
+  // نفس العملية لكن لطلب زائر — بنفس توكن التتبع الآمن اللي بيفتح صفحة التتبع نفسها.
+  respondToGuestSubstitution: (orderNumber: string, token: string, itemId: number, decision: 'approved' | 'rejected') =>
+    request<void>(`/track/${encodeURIComponent(orderNumber)}/items/${itemId}/substitution-response${buildQuery({ t: token })}`, {
+      method: 'POST',
+      body: JSON.stringify({ decision })
     }),
   validateDiscount: (code: string, subtotal: number) =>
     request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal }) })

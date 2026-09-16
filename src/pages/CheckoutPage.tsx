@@ -55,6 +55,7 @@ export function CheckoutPage() {
   const settings = getSettings()
   const [customer, setCustomer] = useState(initialCustomer)
   const [deliveryInstructions, setDeliveryInstructions] = useState('')
+  const [substitutionPreference, setSubstitutionPreference] = useState<'replace_similar' | 'contact_me' | 'remove_item'>('contact_me')
   const [availability, setAvailability] = useState<ApiDeliveryDayAvailability[] | null>(null)
   const [availabilityError, setAvailabilityError] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
@@ -195,7 +196,8 @@ export function CheckoutPage() {
         customer,
         items,
         discountCode: discount?.code,
-        deliveryInstructions: deliveryInstructions.trim() || undefined
+        deliveryInstructions: deliveryInstructions.trim() || undefined,
+        substitutionPreference
       }, idempotencyKey)
 
       const order = created as unknown as Order
@@ -297,6 +299,33 @@ export function CheckoutPage() {
             rows={2}
           />
         </label>
+      </div>
+
+      <div className="form-card">
+        <h2>{ar.checkout.substitutionTitle}</h2>
+        <div className="substitution-preference-list">
+          {(
+            [
+              ['replace_similar', ar.checkout.substitutionReplaceSimilar, ar.checkout.substitutionReplaceSimilarNote],
+              ['contact_me', ar.checkout.substitutionContactMe, ar.checkout.substitutionContactMeNote],
+              ['remove_item', ar.checkout.substitutionRemoveItem, ar.checkout.substitutionRemoveItemNote]
+            ] as const
+          ).map(([value, label, note]) => (
+            <label key={value} className={`substitution-preference-option ${substitutionPreference === value ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="substitutionPreference"
+                value={value}
+                checked={substitutionPreference === value}
+                onChange={() => setSubstitutionPreference(value)}
+              />
+              <span>
+                <span className="substitution-preference-label">{label}</span>
+                <span className="substitution-preference-note">{note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
 
       <div className="form-card">

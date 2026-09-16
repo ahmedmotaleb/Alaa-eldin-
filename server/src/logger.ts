@@ -50,6 +50,7 @@ type BusinessEvent =
   | 'session_revoked' | 'sessions_logout_others'
   | 'integration_test_connection'
   | 'startup_config_summary' | 'startup_config_partial_warning'
+  | 'substitution_proposed' | 'substitution_approved' | 'substitution_rejected'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

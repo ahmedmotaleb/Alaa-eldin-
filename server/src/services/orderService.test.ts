@@ -70,6 +70,7 @@ function baseInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
     paymentMethod: 'COD',
     customer: { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
     items: [{ productId: PRODUCT_ID, quantity: 5 }],
+    substitutionPreference: 'contact_me',
     ...overrides
   }
 }

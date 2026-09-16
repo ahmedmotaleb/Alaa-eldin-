@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { pool, withTransaction } from '../db.js'
-import type { CheckoutInput } from '../checkoutValidation.js'
+import type { CheckoutInput, SubstitutionPreference } from '../checkoutValidation.js'
 import { computeSubtotal, computeLineTotal, calculateDeliveryFee, computeTotal } from './pricingService.js'
 import { findDiscountForUpdate, validateDiscountAgainstSubtotal, incrementDiscountUsageAtomic } from '../discounts.js'
 import {
@@ -48,6 +48,7 @@ interface OrderRow {
   requestFingerprint: string | null
   guestTrackingToken: string | null
   deliveryInstructions: string
+  substitutionPreference: string
 }
 
 export interface SerializedOrder {
@@ -72,13 +73,15 @@ export interface SerializedOrder {
   // مش في كل استدعاء لـ serializeOrderRow، عشان قائمة الطلبات العادية ما تحتاجش التاريخ الكامل.
   statusHistory?: OrderStatusHistoryEntry[]
   deliveryInstructions?: string
+  substitutionPreference: SubstitutionPreference
 }
 
 const SELECT_ORDER_FIELDS = `
   id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", delivery_date as "deliveryDate", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
-  request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions"
+  request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions",
+  substitution_preference as "substitutionPreference"
 `
 
 async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
@@ -104,7 +107,8 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
     guestTrackingToken: row.guestTrackingToken ?? undefined,
-    deliveryInstructions: row.deliveryInstructions || undefined
+    deliveryInstructions: row.deliveryInstructions || undefined,
+    substitutionPreference: row.substitutionPreference as SubstitutionPreference
   }
 }
 
@@ -252,13 +256,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
              id, order_number, user_id, created_at, delivery_slot, delivery_date, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
              subtotal, delivery_fee, total, status, discount_code, discount_amount,
-             idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20)`,
+             idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions, substitution_preference
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20,$21)`,
           [
             id, orderNumber, userId, createdAt, input.deliverySlot, input.deliveryDate, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
             subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
-            idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? ''
+            idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? '', input.substitutionPreference
           ]
         )
       } catch (err) {
@@ -378,7 +382,8 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
-    deliveryInstructions: row.deliveryInstructions || undefined
+    deliveryInstructions: row.deliveryInstructions || undefined,
+    substitutionPreference: row.substitutionPreference as SubstitutionPreference
   }))
 
   return { orders, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } }

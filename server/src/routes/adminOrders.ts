@@ -9,6 +9,7 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { notifyOrderStatusChange } from '../services/pushService.js'
 import { setItemPickedStatus, isValidPickedStatus } from '../services/orderPickingService.js'
+import { proposeSubstitution } from '../services/substitutionService.js'
 import { listOrderNotes, addOrderNote } from '../services/orderNotesService.js'
 
 export const adminOrdersRouter = Router()
@@ -36,6 +37,7 @@ interface OrderRow {
   riderName: string | null
   settlementId: number | null
   deliveryInstructions: string
+  substitutionPreference: string
 }
 
 function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
@@ -63,7 +65,8 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
     riderId: row.riderId,
     riderName: row.riderName,
     settlementId: row.settlementId,
-    deliveryInstructions: row.deliveryInstructions || undefined
+    deliveryInstructions: row.deliveryInstructions || undefined,
+    substitutionPreference: row.substitutionPreference
   }
 }
 
@@ -73,7 +76,7 @@ const SELECT_ORDER = `
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
          o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
-         o.delivery_instructions as "deliveryInstructions", u.email as "accountEmail"
+         o.delivery_instructions as "deliveryInstructions", o.substitution_preference as "substitutionPreference", u.email as "accountEmail"
   FROM orders o LEFT JOIN users u ON u.id = o.user_id
        LEFT JOIN riders r ON r.id = o.rider_id
 `
@@ -247,6 +250,43 @@ adminOrdersRouter.patch('/:id/items/:itemId/pick', async (req, res) => {
     return
   }
   res.status(204).end()
+})
+
+// اقتراح استبدال صنف مش متوفر بمنتج بديل فعلي — النتيجة بتختلف حسب تفضيل العميل وقت الدفع:
+// اعتماد فوري (replace_similar)، أو مجرد اقتراح لسه محتاج موافقة العميل (contact_me). تفضيل
+// remove_item بيرفض المسار ده تماماً — الصنف في الحالة دي لازم يتعلّم "غير متوفر" مباشرة
+// عبر الـ endpoint العادي فوق، مش عبر اقتراح بديل.
+adminOrdersRouter.post('/:id/items/:itemId/propose-substitution', async (req, res) => {
+  const { replacementProductId, replacementQuantity } = req.body ?? {}
+  const itemId = Number(req.params.itemId)
+  if (!Number.isInteger(itemId)) {
+    res.status(400).json({ error: 'invalid_item_id' })
+    return
+  }
+  if (typeof replacementProductId !== 'string' || !replacementProductId) {
+    res.status(400).json({ error: 'invalid_replacement_product' })
+    return
+  }
+  if (typeof replacementQuantity !== 'number') {
+    res.status(400).json({ error: 'invalid_quantity' })
+    return
+  }
+
+  const result = await proposeSubstitution(String(req.params.id), itemId, replacementProductId, replacementQuantity, req.user!.id)
+  if (!result.ok) {
+    const notFoundErrors = ['order_not_found', 'item_not_found', 'replacement_product_not_found']
+    res.status(notFoundErrors.includes(result.error) ? 404 : 409).json({ error: result.error })
+    return
+  }
+
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'substitution_proposed',
+    entityType: 'order_item',
+    entityId: String(itemId),
+    newValues: { replacementProductId, replacementQuantity, resultStatus: result.status }
+  })
+  res.json({ status: result.status })
 })
 
 // ملاحظات داخلية على الطلب — مش مرئية للعميل أبداً (عكس delivery_instructions اللي هو

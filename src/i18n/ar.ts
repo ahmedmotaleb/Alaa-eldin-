@@ -165,6 +165,13 @@ export const ar = {
     deliveryInstructionsLabel: 'تعليمات التوصيل (اختياري)',
     deliveryInstructionsPlaceholder: 'مثال: اتصل قبل الوصول، الشقة الثالثة، اترك الطلب مع البواب...',
     deliveryInstructionsError: 'تعليمات التوصيل طويلة أوي، اختصرها شوية',
+    substitutionTitle: 'لو صنف مش متوفر وقت التجهيز',
+    substitutionReplaceSimilar: 'استبدله بمنتج مشابه',
+    substitutionReplaceSimilarNote: 'هنختار البديل الأنسب تلقائياً',
+    substitutionContactMe: 'اتصل بي الأول',
+    substitutionContactMeNote: 'مش هيتحدد أي بديل غير بموافقتك',
+    substitutionRemoveItem: 'احذف الصنف من الطلب',
+    substitutionRemoveItemNote: 'كمّل الطلب من غيره',
     submit: 'تأكيد الطلب وإرسال واتساب'
   },
 
@@ -200,7 +207,13 @@ export const ar = {
     orderCancelled: 'تم إلغاء الطلب',
     itemSubstituted: 'تم استبدال هذا الصنف',
     itemUnavailable: 'هذا الصنف لم يتوفر ولم يتم تجهيزه',
-    itemNote: (note: string) => `ملاحظة: ${note}`
+    itemNote: (note: string) => `ملاحظة: ${note}`,
+    substitutionPendingTitle: 'في صنف بيستنى موافقتك',
+    substitutionProposed: (originalName: string, replacementName: string) => `${originalName} ← ${replacementName}`,
+    substitutionApprove: 'موافق، استبدله',
+    substitutionReject: 'لا، احذفه من الطلب',
+    substitutionSubmitting: 'جارِ الإرسال...',
+    substitutionError: 'تعذر إرسال قرارك، حاول مرة أخرى'
   },
 
   receipt: {

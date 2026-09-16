@@ -241,4 +241,21 @@ describe('validateCheckoutInput', () => {
     const result = validateCheckoutInput({ ...withCustomer({}), deliveryInstructions: 'a'.repeat(301) })
     expect(result).toEqual({ ok: false, error: 'delivery_instructions_too_long' })
   })
+
+  it('defaults substitution preference to contact_me when not specified', () => {
+    const result = validateCheckoutInput(withCustomer({}))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.substitutionPreference).toBe('contact_me')
+  })
+
+  it('accepts an explicit valid substitution preference', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), substitutionPreference: 'replace_similar' })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.substitutionPreference).toBe('replace_similar')
+  })
+
+  it('rejects an unknown substitution preference', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), substitutionPreference: 'ask_nicely' })
+    expect(result).toEqual({ ok: false, error: 'invalid_substitution_preference' })
+  })
 })

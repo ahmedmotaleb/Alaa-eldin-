@@ -1,6 +1,7 @@
 import { pool } from './db.js'
 
 export type PickedStatus = 'pending' | 'picked' | 'substituted' | 'unavailable'
+export type SubstitutionStatus = 'none' | 'proposed' | 'approved' | 'rejected'
 
 export interface OrderItemDTO {
   id: number
@@ -12,6 +13,13 @@ export interface OrderItemDTO {
   lineTotal: number
   pickedStatus: PickedStatus
   pickedNote: string
+  substitutionStatus: SubstitutionStatus
+  replacementProductId: string | null
+  replacementName: string | null
+  replacementUnit: string | null
+  replacementQuantity: number | null
+  replacementUnitPrice: number | null
+  replacementLineTotal: number | null
 }
 
 // استعلام واحد لكل عناصر أي عدد من الطلبات، بدل استعلام منفصل لكل طلب (N+1). بيُستخدم
@@ -24,7 +32,10 @@ export async function fetchItemsForOrders(orderIds: string[]): Promise<Map<strin
 
   const { rows } = await pool.query<OrderItemDTO & { orderId: string }>(
     `SELECT id, order_id as "orderId", product_id as "productId", name, unit, unit_price as "unitPrice", quantity, line_total as "lineTotal",
-            picked_status as "pickedStatus", picked_note as "pickedNote"
+            picked_status as "pickedStatus", picked_note as "pickedNote", substitution_status as "substitutionStatus",
+            replacement_product_id as "replacementProductId", NULLIF(replacement_name, '') as "replacementName",
+            NULLIF(replacement_unit, '') as "replacementUnit", replacement_quantity as "replacementQuantity",
+            replacement_unit_price as "replacementUnitPrice", replacement_line_total as "replacementLineTotal"
      FROM order_items WHERE order_id = ANY($1::text[])`,
     [orderIds]
   )

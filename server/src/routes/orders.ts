@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../auth.js'
 import { validateCheckoutInput } from '../checkoutValidation.js'
 import { createOrder, getOrderByNumberForUser, listOrdersForUser, OrderError } from '../services/orderService.js'
+import { respondToSubstitutionForOwnedOrder } from '../services/substitutionService.js'
 import { logWarn, maskPhone } from '../logger.js'
 
 export const ordersRouter = Router()
@@ -25,6 +26,22 @@ ordersRouter.get('/:orderNumber', requireAuth, async (req, res) => {
     return
   }
   res.json({ order })
+})
+
+// موافقة/رفض العميل المسجّل دخول على بديل مقترح لصنف في طلبه — نفس ownership check بتاع
+// GET فوق (order_number + user_id)، بدون أي توكن إضافي (الجلسة نفسها كافية لعميل مسجّل).
+ordersRouter.post('/:orderNumber/items/:itemId/substitution-response', requireAuth, async (req, res) => {
+  const order = await getOrderByNumberForUser(String(req.params.orderNumber), req.user!.id)
+  if (!order) {
+    res.status(404).json({ error: 'order_not_found' })
+    return
+  }
+  const result = await respondToSubstitutionForOwnedOrder(order, req.params.itemId, (req.body ?? {}).decision)
+  if (result.ok) {
+    res.status(204).end()
+    return
+  }
+  res.status(result.status).json(result.body)
 })
 
 // الطلب بدون تسجيل دخول مسموح (زائر) — لو فيه جلسة صالحة، الطلب يترتبط بالحساب تلقائياً؛

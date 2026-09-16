@@ -16,6 +16,10 @@ export interface CheckoutCustomerInput {
   address: string
 }
 
+export type SubstitutionPreference = 'replace_similar' | 'contact_me' | 'remove_item'
+export const SUBSTITUTION_PREFERENCES: SubstitutionPreference[] = ['replace_similar', 'contact_me', 'remove_item']
+export const DEFAULT_SUBSTITUTION_PREFERENCE: SubstitutionPreference = 'contact_me'
+
 export interface CheckoutInput {
   deliverySlot: string
   deliveryDate: string
@@ -24,6 +28,7 @@ export interface CheckoutInput {
   items: CheckoutItemInput[]
   discountCode?: string
   deliveryInstructions?: string
+  substitutionPreference: SubstitutionPreference
 }
 
 export type CheckoutValidationError =
@@ -39,6 +44,7 @@ export type CheckoutValidationError =
   | 'invalid_items'
   | 'invalid_discount_code'
   | 'delivery_instructions_too_long'
+  | 'invalid_substitution_preference'
 
 export type CheckoutValidationResult =
   | { ok: true, data: CheckoutInput }
@@ -120,6 +126,15 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'delivery_instructions_too_long' }
   }
 
+  // اختياري — لو مش مُحدد بيتفرض الافتراضي الأكثر أماناً (اتصل بي أولاً)، لسه لازم تتحقق
+  // إن أي قيمة مبعوتة صراحة تبقى واحدة من الثلاثة المعروفة، مش أي نص حر.
+  const substitutionPreference = b.substitutionPreference === undefined
+    ? DEFAULT_SUBSTITUTION_PREFERENCE
+    : b.substitutionPreference
+  if (!SUBSTITUTION_PREFERENCES.includes(substitutionPreference as SubstitutionPreference)) {
+    return { ok: false, error: 'invalid_substitution_preference' }
+  }
+
   // يدمج أي عناصر بنفس productId مكرّرة (بدل ما يرفض الطلب أو يقفل نفس المنتج مرتين).
   const mergedItems = new Map<string, number>()
   for (const item of b.items as CheckoutItemInput[]) {
@@ -140,7 +155,8 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
       },
       items: Array.from(mergedItems, ([productId, quantity]) => ({ productId, quantity })),
       discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined,
-      deliveryInstructions: rawDeliveryInstructions || undefined
+      deliveryInstructions: rawDeliveryInstructions || undefined,
+      substitutionPreference: substitutionPreference as SubstitutionPreference
     }
   }
 }

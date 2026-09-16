@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import { getOrderByNumberForGuestToken } from '../services/orderService.js'
+import { respondToSubstitutionForOwnedOrder } from '../services/substitutionService.js'
 
 export const trackRouter = Router()
 
@@ -20,4 +21,21 @@ trackRouter.get('/:orderNumber', trackRateLimit, async (req, res) => {
     return
   }
   res.json({ order })
+})
+
+// موافقة/رفض زائر (بدون تسجيل دخول) على بديل مقترح — نفس توكن التتبع الآمن بالظبط، مفيش
+// أي مسار تاني بيسمح بتغيير حالة طلب زائر غير التوكن ده.
+trackRouter.post('/:orderNumber/items/:itemId/substitution-response', trackRateLimit, async (req, res) => {
+  const token = typeof req.query.t === 'string' ? req.query.t : ''
+  const order = await getOrderByNumberForGuestToken(String(req.params.orderNumber), token)
+  if (!order) {
+    res.status(404).json({ error: 'order_not_found' })
+    return
+  }
+  const result = await respondToSubstitutionForOwnedOrder(order, req.params.itemId, (req.body ?? {}).decision)
+  if (result.ok) {
+    res.status(204).end()
+    return
+  }
+  res.status(result.status).json(result.body)
 })

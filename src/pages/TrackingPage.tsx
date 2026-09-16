@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { api, ApiError, type ApiOrder } from '../utils/api'
@@ -18,10 +18,20 @@ export function TrackingPage() {
   const [searchParams] = useSearchParams()
   const [order, setOrder] = useState<ApiOrder | null>(null)
   const [error, setError] = useState('')
+  const [respondingItemId, setRespondingItemId] = useState<number | null>(null)
+  const [substitutionError, setSubstitutionError] = useState('')
 
   // الزائر (من غير تسجيل دخول) بيقدر يتابع طلبه بتوكن عالي العشوائية جاي إما من رابط
   // ?t= مباشرة أو من نسخة محفوظة محلياً من زيارة سابقة لصفحة التأكيد.
   const guestToken = searchParams.get('t') || (orderNumber ? getGuestTrackingToken(orderNumber) : null)
+
+  const load = useCallback(() => {
+    if (!orderNumber) return
+    const request = user ? api.getOrder(orderNumber) : api.trackGuestOrder(orderNumber, guestToken!)
+    return request
+      .then(({ order }) => setOrder(order))
+      .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
+  }, [user, orderNumber, guestToken])
 
   useEffect(() => {
     if (authLoading || !orderNumber) return
@@ -29,16 +39,28 @@ export function TrackingPage() {
       navigate('/login', { replace: true, state: { from: `/track/${orderNumber}` } })
       return
     }
-    function load() {
-      const request = user ? api.getOrder(orderNumber!) : api.trackGuestOrder(orderNumber!, guestToken!)
-      request
-        .then(({ order }) => setOrder(order))
-        .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
-    }
     load()
     const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
-  }, [user, authLoading, orderNumber, guestToken, navigate])
+  }, [user, authLoading, orderNumber, guestToken, navigate, load])
+
+  async function respondToSubstitution(itemId: number, decision: 'approved' | 'rejected') {
+    if (!orderNumber) return
+    setRespondingItemId(itemId)
+    setSubstitutionError('')
+    try {
+      if (user) {
+        await api.respondToSubstitution(orderNumber, itemId, decision)
+      } else {
+        await api.respondToGuestSubstitution(orderNumber, guestToken!, itemId, decision)
+      }
+      await load()
+    } catch {
+      setSubstitutionError(ar.tracking.substitutionError)
+    } finally {
+      setRespondingItemId(null)
+    }
+  }
 
   if (authLoading || (!order && !error)) return null
   if (error) return <div className="empty-card">{error}</div>
@@ -62,9 +84,38 @@ export function TrackingPage() {
   const lastDoneIndex = isCancelled ? cancelledAtIndex : statusIndex
 
   const hasPickingIssues = order.items.some(item => item.pickedStatus === 'substituted' || item.pickedStatus === 'unavailable')
+  const pendingSubstitutions = order.items.filter(item => item.substitutionStatus === 'proposed')
 
   return (
     <div className="tracking-page">
+      {pendingSubstitutions.length > 0 && (
+        <div className="invoice-card" style={{ background: '#FFF3E3' }}>
+          <h2>{ar.tracking.substitutionPendingTitle}</h2>
+          {substitutionError && <div className="field-error">{substitutionError}</div>}
+          {pendingSubstitutions.map(item => (
+            <div key={item.id} className="substitution-approval-row">
+              <div>{ar.tracking.substitutionProposed(item.name, item.replacementName ?? '')}</div>
+              <div className="substitution-approval-actions">
+                <button
+                  className="secondary-button"
+                  disabled={respondingItemId === item.id}
+                  onClick={() => respondToSubstitution(item.id, 'approved')}
+                >
+                  {respondingItemId === item.id ? ar.tracking.substitutionSubmitting : ar.tracking.substitutionApprove}
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={respondingItemId === item.id}
+                  onClick={() => respondToSubstitution(item.id, 'rejected')}
+                >
+                  {ar.tracking.substitutionReject}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {order.deliveryInstructions && (
         <div className="courier-card" style={{ background: '#EAF2FF' }}>
           <div className="courier-info">
@@ -78,7 +129,7 @@ export function TrackingPage() {
         <div className="invoice-card">
           <h2>{ar.confirmation.invoiceTitle}</h2>
           {order.items.map(item => (
-            <div className="invoice-line" key={item.productId} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+            <div className="invoice-line" key={item.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>{item.name} × {item.quantity}</span>
                 <span>{formatMoney(item.lineTotal)}</span>

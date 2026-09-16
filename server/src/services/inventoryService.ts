@@ -94,6 +94,39 @@ export async function deductStockForOrder(client: PoolClient, productId: string,
   return row.stock
 }
 
+// استرجاع فعلي لرصيد منتج واحد (زيادة products.stock + حركة مخزون + استرجاع نفس الدفعات
+// اللي اتاخد منها وقت البيع الأصلي) — منطق مشترك بين إلغاء الطلب كله واعتماد استبدال صنف
+// واحد فيه، عشان مفيش نسخة تانية من نفس الحسابات في مكانين.
+async function restoreProductStock(
+  client: PoolClient,
+  productId: string,
+  quantity: number,
+  orderId: string,
+  movementType: 'cancel_restore' | 'substitution_restore',
+  note: string
+): Promise<void> {
+  const { rows } = await client.query<{ stock: number }>(
+    'UPDATE products SET stock = stock + $1 WHERE id = $2 RETURNING stock',
+    [quantity, productId]
+  )
+  const row = rows[0]
+  if (!row) return // المنتج اتحذف نهائياً — مفيش رصيد نرجّعله
+
+  await client.query(
+    `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, order_id, quantity_before, quantity_after)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [productId, movementType, quantity, note, new Date().toISOString(), orderId, row.stock - quantity, row.stock]
+  )
+
+  // نرجّع الكمية بالظبط لنفس الدفعات اللي اتاخدت منها وقت البيع (مش دفعة عشوائية) —
+  // بيمنع أي انحراف بين إجمالي الدفعات وproducts.stock بعد الاسترجاع.
+  const { rows: saleMovementRows } = await client.query<{ id: number }>(
+    `SELECT id FROM stock_movements WHERE order_id = $1 AND product_id = $2 AND type = 'sale' ORDER BY id LIMIT 1`,
+    [orderId, productId]
+  )
+  if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
+}
+
 // استرجاع مخزون طلب مُلغى — idempotent: لو فيه حركة cancel_restore مسجّلة لنفس الطلب
 // بالفعل، مبيرجّعش المخزون تاني (يمنع تكرار الاسترجاع لو الإلغاء اتنفذ أكتر من مرة).
 export async function restoreStockForCancelledOrder(client: PoolClient, orderId: string): Promise<'restored' | 'already_restored'> {
@@ -103,32 +136,37 @@ export async function restoreStockForCancelledOrder(client: PoolClient, orderId:
   )
   if (existing[0]) return 'already_restored'
 
-  const { rows: items } = await client.query<{ productId: string, quantity: number }>(
-    'SELECT product_id as "productId", quantity FROM order_items WHERE order_id = $1',
+  // صنف اتاعتمد استبداله فعلاً (substitution_status='approved') رصيده الأصلي اتسترجع
+  // بالفعل وقت اعتماد الاستبدال — استرجاعه تاني هنا هيبقى تكرار خاطئ. اللي فعلاً لسه
+  // "مُلتزم بيه" في هذه الحالة هو المنتج البديل (اللي اتخصم فعلاً)، مش الأصلي.
+  const { rows: items } = await client.query<{ productId: string, quantity: number, substitutionStatus: string, replacementProductId: string | null, replacementQuantity: number | null }>(
+    `SELECT product_id as "productId", quantity, substitution_status as "substitutionStatus",
+            replacement_product_id as "replacementProductId", replacement_quantity as "replacementQuantity"
+     FROM order_items WHERE order_id = $1`,
     [orderId]
   )
 
   for (const item of items) {
-    const { rows } = await client.query<{ stock: number }>(
-      'UPDATE products SET stock = stock + $1 WHERE id = $2 RETURNING stock',
-      [item.quantity, item.productId]
-    )
-    const row = rows[0]
-    if (!row) continue // المنتج اتحذف نهائياً — مفيش رصيد نرجّعله
-
-    await client.query(
-      `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, order_id, quantity_before, quantity_after)
-       VALUES ($1, 'cancel_restore', $2, $3, $4, $5, $6, $7)`,
-      [item.productId, item.quantity, `إلغاء طلب ${orderId}`, new Date().toISOString(), orderId, row.stock - item.quantity, row.stock]
-    )
-
-    // نرجّع الكمية بالظبط لنفس الدفعات اللي اتاخدت منها وقت البيع (مش دفعة عشوائية) —
-    // بيمنع أي انحراف بين إجمالي الدفعات وproducts.stock بعد إلغاء طلب.
-    const { rows: saleMovementRows } = await client.query<{ id: number }>(
-      `SELECT id FROM stock_movements WHERE order_id = $1 AND product_id = $2 AND type = 'sale' LIMIT 1`,
-      [orderId, item.productId]
-    )
-    if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
+    if (item.substitutionStatus === 'approved' && item.replacementProductId && item.replacementQuantity) {
+      await restoreProductStock(client, item.replacementProductId, item.replacementQuantity, orderId, 'cancel_restore', `إلغاء طلب ${orderId}`)
+    } else {
+      await restoreProductStock(client, item.productId, item.quantity, orderId, 'cancel_restore', `إلغاء طلب ${orderId}`)
+    }
   }
   return 'restored'
+}
+
+// اعتماد استبدال صنف بمنتج بديل فعلي: بيخصم رصيد البديل (زي أي عملية بيع عادية، عبر
+// deductStockForOrder نفسها) وبيرجّع رصيد الصنف الأصلي (لأنه مش هيتسلّم فعلياً). الاتنين
+// في نفس المعاملة اللي بيستدعيها الكولر — مفيش commit جزئي ممكن يسيب المخزون في حالة نص متسقة.
+export async function applySubstitutionStockMove(
+  client: PoolClient,
+  orderId: string,
+  originalProductId: string,
+  originalQuantity: number,
+  replacementProductId: string,
+  replacementQuantity: number
+): Promise<void> {
+  await deductStockForOrder(client, replacementProductId, replacementQuantity, orderId)
+  await restoreProductStock(client, originalProductId, originalQuantity, orderId, 'substitution_restore', `استبدال صنف — طلب ${orderId}`)
 }
