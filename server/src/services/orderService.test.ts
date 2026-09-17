@@ -14,8 +14,12 @@ const PRODUCT_ID = 'test-prod-1'
 const PRODUCT_PRICE = 38
 const DEFAULT_STOCK = 100
 const USER_ID = 'test-user-order-1'
+const SECOND_CATEGORY_ID = 'test-cat-2'
+const SECOND_PRODUCT_ID = 'test-prod-2'
+const SECOND_PRODUCT_PRICE = 25
 
 async function resetFixtures() {
+  await pool.query('DELETE FROM discount_usages')
   await pool.query('DELETE FROM stock_movements')
   await pool.query('DELETE FROM order_items')
   await pool.query('DELETE FROM orders')
@@ -37,6 +41,17 @@ async function resetFixtures() {
     `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
      VALUES ($1, 'test-product', $2, 'منتج اختبار', 'وصف', $3, 20, 'وحدة', '🧪', 1, $4, now())`,
     [PRODUCT_ID, CATEGORY_ID, PRODUCT_PRICE, DEFAULT_STOCK]
+  )
+  // فئة ومنتج تانيين — مستخدمين بس في اختبارات نطاق الخصم (فئة/منتج محدد) عشان يبقى فيه
+  // صنف "غير مؤهّل" فعلي جوه نفس السلة، مش كل الأصناف مؤهّلة زي باقي اختبارات الملف.
+  await pool.query(
+    `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'فئة اختبار 2', '🧪', '#fff', 2)`,
+    [SECOND_CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+     VALUES ($1, 'test-product-2', $2, 'منتج اختبار 2', 'وصف', $3, 15, 'وحدة', '🧪', 1, $4, now())`,
+    [SECOND_PRODUCT_ID, SECOND_CATEGORY_ID, SECOND_PRODUCT_PRICE, DEFAULT_STOCK]
   )
   await pool.query(
     `INSERT INTO store_settings (id, name, whatsapp_number, currency, minimum_order, free_shipping_threshold, delivery_fee)
@@ -267,12 +282,22 @@ describe('createOrder — stock validation and atomic deduction', () => {
 })
 
 describe('createOrder — discount handling', () => {
-  async function makeDiscount(overrides: Partial<{ type: string, value: number, maxUses: number | null, active: number, minOrder: number }> = {}) {
-    const { type = 'fixed', value = 20, maxUses = null, active = 1, minOrder = 0 } = overrides
+  async function makeDiscount(overrides: Partial<{
+    type: string, value: number, maxUses: number | null, active: number, minOrder: number,
+    scope: string, scopeId: string | null, minQuantity: number | null, firstOrderOnly: number,
+    freeDelivery: number, maxUsesPerCustomer: number | null, startsAt: string | null
+  }> = {}) {
+    const {
+      type = 'fixed', value = 20, maxUses = null, active = 1, minOrder = 0,
+      scope = 'order', scopeId = null, minQuantity = null, firstOrderOnly = 0,
+      freeDelivery = 0, maxUsesPerCustomer = null, startsAt = null
+    } = overrides
     await pool.query(
-      `INSERT INTO discounts (code, type, value, min_order, max_uses, used_count, active, created_at)
-       VALUES ('TESTCODE', $1, $2, $3, $4, 0, $5, now())`,
-      [type, value, minOrder, maxUses, active]
+      `INSERT INTO discounts (
+         code, type, value, min_order, max_uses, used_count, active, created_at,
+         scope, scope_id, min_quantity, first_order_only, free_delivery, max_uses_per_customer, starts_at
+       ) VALUES ('TESTCODE', $1, $2, $3, $4, 0, $5, now(), $6, $7, $8, $9, $10, $11, $12)`,
+      [type, value, minOrder, maxUses, active, scope, scopeId, minQuantity, firstOrderOnly, freeDelivery, maxUsesPerCustomer, startsAt]
     )
   }
 
@@ -301,6 +326,72 @@ describe('createOrder — discount handling', () => {
 
     const { rows } = await pool.query<{ usedCount: number }>('SELECT used_count as "usedCount" FROM discounts WHERE code = $1', ['TESTCODE'])
     expect(rows[0].usedCount).toBe(1)
+  })
+
+  it('applies a category-scoped discount only to the eligible portion of the cart', async () => {
+    await makeDiscount({ type: 'percentage', value: 10, scope: 'category', scopeId: CATEGORY_ID })
+    // 5×38 (مؤهّل، الفئة الأولى) + 2×25 (غير مؤهّل، الفئة التانية) = 190 + 50 = 240 إجمالي،
+    // بس الخصم لازم يتحسب من الـ 190 المؤهّلة بس (19)، مش الـ 240 كلهم.
+    const { order } = await createOrder(
+      baseInput({ discountCode: 'TESTCODE', items: [{ productId: PRODUCT_ID, quantity: 5 }, { productId: SECOND_PRODUCT_ID, quantity: 2 }] }),
+      null, nextKey()
+    )
+    expect(order.subtotal).toBe(240)
+    expect(order.discountAmount).toBe(19)
+  })
+
+  it('applies a product-scoped discount only to that specific product', async () => {
+    await makeDiscount({ type: 'fixed', value: 999, scope: 'product', scopeId: SECOND_PRODUCT_ID })
+    const { order } = await createOrder(
+      baseInput({ discountCode: 'TESTCODE', items: [{ productId: PRODUCT_ID, quantity: 5 }, { productId: SECOND_PRODUCT_ID, quantity: 2 }] }),
+      null, nextKey()
+    )
+    // الخصم الثابت (999) أعلى بكتير من الإجمالي المؤهّل (2×25=50) — لازم يتقص عليه، مش 999.
+    expect(order.discountAmount).toBe(50)
+  })
+
+  it('rejects when the eligible quantity is below the required minimum', async () => {
+    await makeDiscount({ minQuantity: 10 })
+    await expect(createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey()))
+      .rejects.toMatchObject({ code: 'discount_min_quantity' })
+  })
+
+  it('accepts when the eligible quantity meets the required minimum', async () => {
+    await makeDiscount({ minQuantity: 5 })
+    const { order } = await createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey())
+    expect(order.discountAmount).toBeGreaterThan(0)
+  })
+
+  it('rejects a discount that has not started yet', async () => {
+    await makeDiscount({ startsAt: addCalendarDays(todayInCairo(), 5) })
+    await expect(createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey()))
+      .rejects.toMatchObject({ code: 'discount_not_started' })
+  })
+
+  it('rejects a first-order-only discount for a mobile number that already has an order', async () => {
+    await createOrder(baseInput(), null, nextKey())
+    await makeDiscount({ firstOrderOnly: 1 })
+    await expect(createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey()))
+      .rejects.toMatchObject({ code: 'discount_first_order_only' })
+  })
+
+  it('accepts a first-order-only discount for a genuinely new customer', async () => {
+    await makeDiscount({ firstOrderOnly: 1 })
+    const { order } = await createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey())
+    expect(order.discountAmount).toBeGreaterThan(0)
+  })
+
+  it('enforces a per-customer usage cap independently of the overall max_uses', async () => {
+    await makeDiscount({ maxUsesPerCustomer: 1 })
+    await createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey())
+    await expect(createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey()))
+      .rejects.toMatchObject({ code: 'discount_max_uses_per_customer' })
+  })
+
+  it('zeroes the delivery fee for a free-delivery promotion', async () => {
+    await makeDiscount({ type: 'fixed', value: 0, freeDelivery: 1 })
+    const { order } = await createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey())
+    expect(order.deliveryFee).toBe(0)
   })
 })
 

@@ -3,7 +3,11 @@ import type { PoolClient } from 'pg'
 import { pool, withTransaction } from '../db.js'
 import type { CheckoutInput, SubstitutionPreference } from '../checkoutValidation.js'
 import { computeSubtotal, computeLineTotal, calculateDeliveryFee, computeTotal } from './pricingService.js'
-import { findDiscountForUpdate, validateDiscountAgainstSubtotal, incrementDiscountUsageAtomic } from '../discounts.js'
+import {
+  findDiscountForUpdate, validateDiscountAgainstSubtotal, incrementDiscountUsageAtomic,
+  computeEligibleSubtotal, computeEligibleQuantity, checkFirstOrderEligibility,
+  countDiscountUsagesForCustomer, recordDiscountUsage, type DiscountCartItem
+} from '../discounts.js'
 import {
   lockProductsForOrder, validateItemAgainstProduct, deductStockForOrder,
   restoreStockForCancelledOrder
@@ -213,6 +217,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         const product = products.get(item.productId)!
         return {
           productId: item.productId,
+          categoryId: product.categoryId,
           name: product.name,
           unit: product.unit,
           unitPrice: product.price,
@@ -229,18 +234,45 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
 
       let discountAmount = 0
       let appliedDiscountCode: string | null = null
+      let discountGrantsFreeDelivery = false
       if (input.discountCode) {
-        const evaluation = validateDiscountAgainstSubtotal(discount, subtotal)
+        const cartItems: DiscountCartItem[] = lineItems.map(li => ({
+          productId: li.productId, categoryId: li.categoryId, quantity: li.quantity, unitPrice: li.unitPrice
+        }))
+        const eligibleSubtotal = discount ? computeEligibleSubtotal(discount, cartItems) : subtotal
+        const eligibleQuantity = discount ? computeEligibleQuantity(discount, cartItems) : Infinity
+        const evaluation = validateDiscountAgainstSubtotal(discount, subtotal, eligibleSubtotal, eligibleQuantity)
         if (!evaluation.ok) {
           logWarn('discount_rejected', { discountCode: input.discountCode, errorCode: evaluation.error })
-          throw new OrderError(400, evaluation.error, evaluation.minOrder !== undefined ? { minOrder: evaluation.minOrder } : undefined)
+          throw new OrderError(400, evaluation.error, {
+            ...(evaluation.minOrder !== undefined ? { minOrder: evaluation.minOrder } : {}),
+            ...(evaluation.minQuantity !== undefined ? { minQuantity: evaluation.minQuantity } : {})
+          })
         }
+
+        // "أول طلب" وحد "لكل عميل" محتاجين هوية العميل الفعلية (موبايل/حساب) اللي مش
+        // متاحة وقت المعاينة العامة قبل الدفع — بيتحققوا هنا بس، وقت إنشاء الطلب الفعلي.
+        if (evaluation.discount.firstOrderOnly && !(await checkFirstOrderEligibility(client, userId, input.customer.mobile))) {
+          logWarn('discount_rejected', { discountCode: input.discountCode, errorCode: 'discount_first_order_only' })
+          throw new OrderError(400, 'discount_first_order_only')
+        }
+        if (evaluation.discount.maxUsesPerCustomer !== null) {
+          const usedByCustomer = await countDiscountUsagesForCustomer(client, evaluation.discount.code, userId, input.customer.mobile)
+          if (usedByCustomer >= evaluation.discount.maxUsesPerCustomer) {
+            logWarn('discount_rejected', { discountCode: input.discountCode, errorCode: 'discount_max_uses_per_customer' })
+            throw new OrderError(400, 'discount_max_uses_per_customer')
+          }
+        }
+
         discountAmount = evaluation.amount
         appliedDiscountCode = evaluation.discount.code
-        logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount })
+        discountGrantsFreeDelivery = !!evaluation.discount.freeDelivery
+        logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount, freeDelivery: discountGrantsFreeDelivery })
       }
 
-      const deliveryFee = calculateDeliveryFee(subtotal, { freeShippingThreshold: settings.freeShippingThreshold, deliveryFee: zoneDeliveryFee })
+      const deliveryFee = discountGrantsFreeDelivery
+        ? 0
+        : calculateDeliveryFee(subtotal, { freeShippingThreshold: settings.freeShippingThreshold, deliveryFee: zoneDeliveryFee })
       const total = computeTotal(subtotal, discountAmount, deliveryFee)
 
       const id = crypto.randomUUID()
@@ -287,6 +319,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       if (appliedDiscountCode) {
         const incremented = await incrementDiscountUsageAtomic(client, appliedDiscountCode)
         if (!incremented) throw new OrderError(409, 'discount_max_uses')
+        await recordDiscountUsage(client, appliedDiscountCode, id, userId, input.customer.mobile)
       }
 
       return id

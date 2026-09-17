@@ -368,6 +368,13 @@ export interface AdminDiscount {
   active: boolean
   expiresAt: string | null
   createdAt: string
+  startsAt: string | null
+  scope: 'order' | 'category' | 'product'
+  scopeId: string | null
+  minQuantity: number | null
+  firstOrderOnly: boolean
+  freeDelivery: boolean
+  maxUsesPerCustomer: number | null
 }
 
 export type AdminDiscountInput = Omit<AdminDiscount, 'usedCount' | 'createdAt'>

@@ -8,6 +8,7 @@ export interface LockedProduct {
   price: number
   available: boolean
   stock: number
+  categoryId: string
 }
 
 export type InventoryErrorCode = 'product_not_found' | 'product_unavailable' | 'invalid_quantity' | 'insufficient_stock'
@@ -37,15 +38,15 @@ export async function lockProductsForOrder(client: PoolClient, productIds: strin
   if (uniqueSortedIds.length === 0) return new Map()
 
   const { rows } = await client.query<{
-    id: string, name: string, unit: string, price: number, available: number, stock: number
+    id: string, name: string, unit: string, price: number, available: number, stock: number, categoryId: string
   }>(
-    `SELECT id, name, unit, price, available, stock FROM products WHERE id = ANY($1::text[]) ORDER BY id FOR UPDATE`,
+    `SELECT id, name, unit, price, available, stock, category_id as "categoryId" FROM products WHERE id = ANY($1::text[]) ORDER BY id FOR UPDATE`,
     [uniqueSortedIds]
   )
 
   const map = new Map<string, LockedProduct>()
   for (const row of rows) {
-    map.set(row.id, { id: row.id, name: row.name, unit: row.unit, price: row.price, available: !!row.available, stock: row.stock })
+    map.set(row.id, { id: row.id, name: row.name, unit: row.unit, price: row.price, available: !!row.available, stock: row.stock, categoryId: row.categoryId })
   }
 
   // منتجات ليها دفعات (اتستلمت عن طريق نظام المشتريات) — الرصيد المستخدم في التحقق من

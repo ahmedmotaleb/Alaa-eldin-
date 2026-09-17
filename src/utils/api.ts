@@ -140,6 +140,7 @@ export interface ApiDiscount {
   type: 'percentage' | 'fixed'
   value: number
   amount: number
+  freeDelivery: boolean
 }
 
 export type ApiStockState = 'in_stock' | 'low_stock' | 'out_of_stock'
@@ -402,6 +403,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ decision })
     }),
-  validateDiscount: (code: string, subtotal: number) =>
-    request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal }) })
+  validateDiscount: (code: string, subtotal: number, items: { productId: string, categoryId: string, quantity: number, unitPrice: number }[] = []) =>
+    request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal, items }) })
 }

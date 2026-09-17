@@ -8,12 +8,14 @@ adminDiscountsRouter.use(requireAdmin)
 
 const SELECT_DISCOUNT = `
   SELECT code, type, value, min_order as "minOrder", max_uses as "maxUses", used_count as "usedCount",
-         active, expires_at as "expiresAt", created_at as "createdAt"
+         active, expires_at as "expiresAt", created_at as "createdAt", starts_at as "startsAt",
+         scope, scope_id as "scopeId", min_quantity as "minQuantity", first_order_only as "firstOrderOnly",
+         free_delivery as "freeDelivery", max_uses_per_customer as "maxUsesPerCustomer"
   FROM discounts
 `
 
 function serialize(row: DiscountRow) {
-  return { ...row, active: !!row.active }
+  return { ...row, active: !!row.active, firstOrderOnly: !!row.firstOrderOnly, freeDelivery: !!row.freeDelivery }
 }
 
 const MAX_LIMIT = 100
@@ -66,9 +68,16 @@ function validateBody(body: unknown) {
     typeof b?.active !== 'boolean'
   ) return null
 
+  const scope = b.scope === 'category' || b.scope === 'product' ? b.scope : 'order'
+  const scopeId = scope !== 'order' && typeof b.scopeId === 'string' && b.scopeId.trim() ? b.scopeId.trim() : null
+  if (scope !== 'order' && !scopeId) return null
+
   const minOrder = typeof b.minOrder === 'number' && b.minOrder >= 0 ? b.minOrder : 0
   const maxUses = typeof b.maxUses === 'number' && b.maxUses > 0 ? Math.round(b.maxUses) : null
+  const maxUsesPerCustomer = typeof b.maxUsesPerCustomer === 'number' && b.maxUsesPerCustomer > 0 ? Math.round(b.maxUsesPerCustomer) : null
+  const minQuantity = typeof b.minQuantity === 'number' && b.minQuantity > 0 ? Math.round(b.minQuantity) : null
   const expiresAt = typeof b.expiresAt === 'string' && b.expiresAt.trim() ? b.expiresAt : null
+  const startsAt = typeof b.startsAt === 'string' && b.startsAt.trim() ? b.startsAt : null
 
   return {
     code: b.code.trim().toUpperCase(),
@@ -77,8 +86,22 @@ function validateBody(body: unknown) {
     minOrder,
     maxUses,
     active: b.active as boolean,
-    expiresAt
+    expiresAt,
+    startsAt,
+    scope: scope as 'order' | 'category' | 'product',
+    scopeId,
+    minQuantity,
+    firstOrderOnly: b.firstOrderOnly === true,
+    freeDelivery: b.freeDelivery === true,
+    maxUsesPerCustomer
   }
+}
+
+async function scopeTargetExists(scope: 'order' | 'category' | 'product', scopeId: string | null): Promise<boolean> {
+  if (scope === 'order') return true
+  const table = scope === 'category' ? 'categories' : 'products'
+  const { rows } = await pool.query(`SELECT 1 FROM ${table} WHERE id = $1`, [scopeId])
+  return rows.length > 0
 }
 
 adminDiscountsRouter.post('/', async (req, res) => {
@@ -92,11 +115,21 @@ adminDiscountsRouter.post('/', async (req, res) => {
     res.status(409).json({ error: 'code_taken' })
     return
   }
+  if (!(await scopeTargetExists(data.scope, data.scopeId))) {
+    res.status(400).json({ error: 'scope_target_not_found' })
+    return
+  }
 
   await pool.query(
-    `INSERT INTO discounts (code, type, value, min_order, max_uses, used_count, active, expires_at, created_at)
-     VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)`,
-    [data.code, data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, new Date().toISOString()]
+    `INSERT INTO discounts (
+       code, type, value, min_order, max_uses, used_count, active, expires_at, starts_at,
+       scope, scope_id, min_quantity, first_order_only, free_delivery, max_uses_per_customer, created_at
+     ) VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      data.code, data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, data.startsAt,
+      data.scope, data.scopeId, data.minQuantity, data.firstOrderOnly ? 1 : 0, data.freeDelivery ? 1 : 0,
+      data.maxUsesPerCustomer, new Date().toISOString()
+    ]
   )
 
   const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} WHERE code = $1`, [data.code])
@@ -115,12 +148,22 @@ adminDiscountsRouter.patch('/:code', async (req, res) => {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
+  if (!(await scopeTargetExists(data.scope, data.scopeId))) {
+    res.status(400).json({ error: 'scope_target_not_found' })
+    return
+  }
 
   // كود الخصم مفتاح أساسي ولا يمكن تغييره بعد الإنشاء — لتفادي كسر ربطه بالطلبات السابقة.
   await pool.query(
-    `UPDATE discounts SET type=$1, value=$2, min_order=$3, max_uses=$4, active=$5, expires_at=$6
-     WHERE code=$7`,
-    [data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, existing.code]
+    `UPDATE discounts SET
+       type=$1, value=$2, min_order=$3, max_uses=$4, active=$5, expires_at=$6, starts_at=$7,
+       scope=$8, scope_id=$9, min_quantity=$10, first_order_only=$11, free_delivery=$12, max_uses_per_customer=$13
+     WHERE code=$14`,
+    [
+      data.type, data.value, data.minOrder, data.maxUses, data.active ? 1 : 0, data.expiresAt, data.startsAt,
+      data.scope, data.scopeId, data.minQuantity, data.firstOrderOnly ? 1 : 0, data.freeDelivery ? 1 : 0,
+      data.maxUsesPerCustomer, existing.code
+    ]
   )
 
   const { rows } = await pool.query<DiscountRow>(`${SELECT_DISCOUNT} WHERE code = $1`, [existing.code])

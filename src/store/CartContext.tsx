@@ -88,7 +88,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // بنود فيها مشكلة (غير متوفر، أو الكمية أكتر من المتاح) ما بتتحسبش في الإجمالي —
   // ما ينفعش نعرض إجمالي بيتضمن حاجة مش هتتشحن فعلياً.
   const subtotal = detailedItems.reduce((sum, item) => sum + (item.blockingIssue ? 0 : item.product.price * item.quantity), 0)
-  const deliveryFee = subtotal >= getSettings().freeShippingThreshold || subtotal === 0 ? 0 : getSettings().deliveryFee
+  // بتتبعت لمعاينة الخصم عشان خصم مقيّد بفئة/منتج معيّن يتحسب بدقة (مش افتراض إن السلة
+  // كلها مؤهّلة) — نفس شكل البيانات اللي orderService.createOrder هيتحقق منه فعلياً وقت الدفع.
+  const discountCartItems = useMemo(
+    () => detailedItems.filter(item => !item.blockingIssue).map(item => ({
+      productId: item.product.id, categoryId: item.product.categoryId, quantity: item.quantity, unitPrice: item.product.price
+    })),
+    [detailedItems]
+  )
+  const deliveryFee = discount?.freeDelivery
+    ? 0
+    : (subtotal >= getSettings().freeShippingThreshold || subtotal === 0 ? 0 : getSettings().deliveryFee)
   const total = Math.max(0, subtotal - (discount?.amount ?? 0)) + deliveryFee
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -97,14 +107,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!discount) return
     let cancelled = false
-    api.validateDiscount(discount.code, subtotal)
+    api.validateDiscount(discount.code, subtotal, discountCartItems)
       .then(({ discount: fresh }) => { if (!cancelled) setDiscount(fresh) })
       .catch(() => { if (!cancelled) setDiscount(null) })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtotal])
 
   async function applyDiscount(code: string) {
-    const { discount: fresh } = await api.validateDiscount(code, subtotal)
+    const { discount: fresh } = await api.validateDiscount(code, subtotal, discountCartItems)
     setDiscount(fresh)
   }
 
