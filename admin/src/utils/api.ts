@@ -52,6 +52,32 @@ async function downloadFile(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
+// زي downloadFile بس بيبعت جسم JSON في طلب POST — مستخدم لتقرير نتيجة التحديث الجماعي
+// اللي محتاج يبعت صفوف النتيجة عشان السيرفر يحوّلها لملف CSV قابل للتنزيل.
+async function downloadFilePost(path: string, filename: string, body: unknown): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(BASE + path, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    })
+  } catch {
+    throw new ApiError('network_error', 0)
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new ApiError(data?.error ?? 'server_error', res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 async function uploadFile<T>(path: string, file: File): Promise<T> {
   const form = new FormData()
   form.append('file', file)
@@ -121,7 +147,7 @@ export interface PageInfo {
   totalPages: number
 }
 
-function buildQuery(params: Record<string, string | number | undefined>): string {
+function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
   const qs = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') qs.set(key, String(value))
@@ -294,6 +320,159 @@ export interface ImportConfirmRow {
   action: 'create' | 'update'
   productId?: string
   data: ImportRowData
+}
+
+export type PricingRowKind = 'product' | 'variant'
+export type PricingRowStatus = 'ready' | 'no_change' | 'warning' | 'error'
+export type OldPriceAction = 'keep' | 'clear' | 'set'
+
+export interface PricingPreviewRow {
+  rowNumber: number
+  kind: PricingRowKind
+  productId: string
+  variantId: string | null
+  sku: string | null
+  barcode: string
+  productName: string
+  variantName: string | null
+  currentPrice: number
+  newPrice: number
+  priceChanged: boolean
+  currentOldPriceAction: 'unchanged'
+  currentOldPrice: number | null
+  newOldPriceAction: OldPriceAction
+  newOldPrice: number | null
+  currentCost: number
+  newCost: number
+  costChanged: boolean
+  difference: number
+  percentChange: number | null
+  status: PricingRowStatus
+  errors: string[]
+  warnings: string[]
+}
+
+export interface PricingPreviewSummary {
+  totalRows: number
+  ready: number
+  noChange: number
+  warnings: number
+  errors: number
+  priceIncreases: number
+  priceDecreases: number
+  costChanges: number
+  averagePricePercentChange: number | null
+}
+
+export interface PricingTemplateFilters {
+  categoryId?: string
+  brand?: string
+  availableOnly?: boolean
+  outOfStockOnly?: boolean
+  hasVariants?: boolean
+  noVariants?: boolean
+  search?: string
+}
+
+export interface ConfirmRowInput {
+  rowNumber: number
+  record: Record<string, string | undefined>
+}
+
+export interface ApplyResultRow {
+  rowNumber: number
+  productId: string
+  variantId: string | null
+  sku: string | null
+  productName: string
+  result: 'updated' | 'skipped' | 'failed'
+  reason?: string
+}
+
+export interface ApplyResult {
+  batchId: string
+  totalRows: number
+  updated: number
+  skipped: number
+  failed: number
+  rows: ApplyResultRow[]
+}
+
+export type AdjustmentOperation = 'increase_percent' | 'decrease_percent' | 'increase_fixed' | 'decrease_fixed'
+export type AdjustmentRounding = 'none' | 'nearest_0_5' | 'nearest_1' | 'nearest_5'
+
+export interface AdjustmentScope {
+  productIds?: string[]
+  categoryId?: string
+  brand?: string
+  allCatalog?: boolean
+}
+
+export interface AdjustmentInput {
+  scope: AdjustmentScope
+  operation: AdjustmentOperation
+  value: number
+  rounding: AdjustmentRounding
+}
+
+export type BulkOperationType = 'bulk_price_csv' | 'bulk_price_adjustment'
+export type BulkBatchStatus = 'completed' | 'rolled_back' | 'partially_rolled_back'
+
+export interface BulkBatch {
+  id: string
+  operationType: BulkOperationType
+  createdBy: string | null
+  status: BulkBatchStatus
+  totalRows: number
+  successfulRows: number
+  failedRows: number
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface PriceChangeDetail {
+  productId: string
+  variantId: string | null
+  oldPrice: number
+  newPrice: number
+  oldOldPrice: number | null
+  newOldPrice: number | null
+  source: string
+  createdAt: string
+}
+
+export interface CostChangeDetail {
+  productId: string
+  variantId: string | null
+  oldCost: number | null
+  newCost: number
+  createdAt: string
+}
+
+export interface BulkBatchDetail {
+  batch: BulkBatch
+  priceChanges: PriceChangeDetail[]
+  costChanges: CostChangeDetail[]
+}
+
+export interface RollbackResult {
+  rolledBackPrice: number
+  rolledBackCost: number
+  conflicts: number
+}
+
+export interface ProductPriceHistoryEntry {
+  id: number
+  variantId: string | null
+  variantName: string | null
+  oldPrice: number
+  newPrice: number
+  oldOldPrice: number | null
+  newOldPrice: number | null
+  source: string
+  adminName: string | null
+  bulkBatchId: string | null
+  createdAt: string
 }
 
 export interface AdminProductImage {
@@ -1247,5 +1426,25 @@ export const api = {
     request<{ expense: AdminExpense }>('/admin/expenses', { method: 'POST', body: JSON.stringify(body) }),
   updateExpense: (id: number, body: Partial<AdminExpenseInput>) =>
     request<{ expense: AdminExpense }>(`/admin/expenses/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteExpense: (id: number) => request<void>(`/admin/expenses/${id}`, { method: 'DELETE' })
+  deleteExpense: (id: number) => request<void>(`/admin/expenses/${id}`, { method: 'DELETE' }),
+  downloadBulkPricingTemplate: (filters: PricingTemplateFilters = {}) =>
+    downloadFile(`/admin/products/bulk-pricing/template${buildQuery({ ...filters })}`, `alaa-eldin-pricing-template-${new Date().toISOString().slice(0, 10)}.csv`),
+  previewBulkPricingCsv: (file: File) =>
+    uploadFile<{ rows: PricingPreviewRow[], summary: PricingPreviewSummary }>('/admin/products/bulk-pricing/preview', file),
+  confirmBulkPricing: (rows: ConfirmRowInput[]) =>
+    request<ApplyResult>('/admin/products/bulk-pricing/confirm', { method: 'POST', body: JSON.stringify({ rows }) }),
+  downloadBulkPricingResultReport: (rows: ApplyResultRow[]) =>
+    downloadFilePost('/admin/products/bulk-pricing/confirm/report', `bulk-pricing-result-${new Date().toISOString().slice(0, 10)}.csv`, { rows }),
+  previewBulkPricingAdjustment: (input: AdjustmentInput) =>
+    request<{ rows: PricingPreviewRow[], summary: PricingPreviewSummary }>('/admin/products/bulk-pricing/adjustment-preview', { method: 'POST', body: JSON.stringify(input) }),
+  confirmBulkPricingAdjustment: (input: AdjustmentInput, selectedProductIds: string[]) =>
+    request<ApplyResult>('/admin/products/bulk-pricing/adjustment-confirm', { method: 'POST', body: JSON.stringify({ ...input, selectedProductIds }) }),
+  listBulkPricingBatches: (operationType?: BulkOperationType) =>
+    request<{ batches: BulkBatch[] }>(`/admin/products/bulk-pricing/batches${buildQuery({ operationType })}`),
+  getBulkPricingBatch: (id: string) =>
+    request<BulkBatchDetail>(`/admin/products/bulk-pricing/batches/${encodeURIComponent(id)}`),
+  rollbackBulkPricingBatch: (id: string) =>
+    request<RollbackResult>(`/admin/products/bulk-pricing/batches/${encodeURIComponent(id)}/rollback`, { method: 'POST' }),
+  getProductPriceHistory: (id: string) =>
+    request<{ history: ProductPriceHistoryEntry[] }>(`/admin/products/${encodeURIComponent(id)}/price-history`)
 }

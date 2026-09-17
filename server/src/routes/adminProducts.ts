@@ -9,6 +9,7 @@ import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, type ImportConfirmRow } from '../services/productImportService.js'
 import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
 import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
+import { getPriceHistoryForProduct } from '../services/bulkOperationBatchService.js'
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
@@ -299,6 +300,7 @@ function validateVariantBody(body: unknown): VariantInput | null {
     sku: typeof b.sku === 'string' && b.sku.trim() ? b.sku.trim().toUpperCase() : null,
     barcode: typeof b.barcode === 'string' ? b.barcode.trim() : '',
     price: b.price as number,
+    oldPrice: typeof b.oldPrice === 'number' && b.oldPrice > 0 ? b.oldPrice : null,
     cost: typeof b.cost === 'number' && b.cost >= 0 ? b.cost : 0,
     stock: typeof b.stock === 'number' && b.stock >= 0 ? Math.round(b.stock) : 0,
     available: b.available as boolean,
@@ -308,6 +310,10 @@ function validateVariantBody(body: unknown): VariantInput | null {
 
 adminProductsRouter.get('/:id/variants', requirePermission('products.view'), async (req, res) => {
   res.json({ variants: await listVariantsForProduct(String(req.params.id)) })
+})
+
+adminProductsRouter.get('/:id/price-history', requirePermission('products.view'), async (req, res) => {
+  res.json({ history: await getPriceHistoryForProduct(String(req.params.id)) })
 })
 
 adminProductsRouter.post('/:id/variants', requirePermission('products.edit'), async (req, res) => {
@@ -335,7 +341,7 @@ adminProductsRouter.patch('/:id/variants/:variantId', requirePermission('product
   if (!data) { res.status(400).json({ error: 'missing_fields' }); return }
 
   try {
-    const variant = await updateVariant(String(req.params.variantId), data)
+    const variant = await updateVariant(String(req.params.variantId), data, req.user!.id)
     if (!variant) { res.status(404).json({ error: 'variant_not_found' }); return }
     await recordAuditLog({
       adminUserId: req.user!.id, action: 'product_variant_updated', entityType: 'product_variant',

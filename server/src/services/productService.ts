@@ -149,6 +149,7 @@ export interface ProductUpdateResult {
   after: SerializedProduct
   stockDiff: number
   costChanged: boolean
+  priceChanged: boolean
 }
 
 // تعديل منتج موجود — الرابط (slug) أبداً ما بيتغيّرش هنا حتى لو الاسم اتغيّر، عشان روابط
@@ -161,6 +162,7 @@ export async function updateProduct(id: string, input: ProductWriteInput, update
 
   const stockDiff = input.stock - existing.stock
   const costChanged = input.cost !== existing.cost
+  const priceChanged = input.price !== existing.price || input.oldPrice !== existing.oldPrice
 
   await withTransaction(async client => {
     await client.query(
@@ -184,9 +186,16 @@ export async function updateProduct(id: string, input: ProductWriteInput, update
     }
     if (costChanged) {
       await client.query(
-        `INSERT INTO product_cost_history (id, product_id, unit_cost, source_type, source_id)
-         VALUES ($1, $2, $3, 'manual_adjustment', $4)`,
-        [crypto.randomUUID(), id, input.cost, updatedByUserId]
+        `INSERT INTO product_cost_history (id, product_id, unit_cost, old_cost, source_type, source_id)
+         VALUES ($1, $2, $3, $4, 'manual_adjustment', $5)`,
+        [crypto.randomUUID(), id, input.cost, existing.cost, updatedByUserId]
+      )
+    }
+    if (priceChanged) {
+      await client.query(
+        `INSERT INTO product_price_history (product_id, old_price, new_price, old_old_price, new_old_price, source, admin_user_id)
+         VALUES ($1, $2, $3, $4, $5, 'manual_edit', $6)`,
+        [id, existing.price, input.price, existing.oldPrice ?? null, input.oldPrice, updatedByUserId]
       )
     }
   })
@@ -196,6 +205,7 @@ export async function updateProduct(id: string, input: ProductWriteInput, update
     before: serializeProduct(existing),
     after: serializeProduct(rows[0]),
     stockDiff,
-    costChanged
+    costChanged,
+    priceChanged
   }
 }

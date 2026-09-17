@@ -9,6 +9,7 @@ export interface ProductVariant {
   sku: string | null
   barcode: string
   price: number
+  oldPrice: number | null
   cost: number
   stock: number
   available: boolean
@@ -23,6 +24,7 @@ interface VariantRow {
   sku: string | null
   barcode: string
   price: number
+  oldPrice: number | null
   cost: number
   stock: number
   available: number
@@ -31,7 +33,7 @@ interface VariantRow {
 }
 
 const SELECT_VARIANT = `
-  SELECT id, product_id as "productId", name, sku, barcode, price, cost, stock, available, sort_order as "sortOrder", created_at as "createdAt"
+  SELECT id, product_id as "productId", name, sku, barcode, price, old_price as "oldPrice", cost, stock, available, sort_order as "sortOrder", created_at as "createdAt"
   FROM product_variants
 `
 
@@ -63,6 +65,7 @@ export interface VariantInput {
   sku: string | null
   barcode: string
   price: number
+  oldPrice: number | null
   cost: number
   stock: number
   available: boolean
@@ -72,20 +75,44 @@ export interface VariantInput {
 export async function createVariant(productId: string, input: VariantInput): Promise<ProductVariant> {
   const id = `var-${crypto.randomUUID()}`
   await pool.query(
-    `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, cost, stock, available, sort_order, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())`,
-    [id, productId, input.name, input.sku, input.barcode, input.price, input.cost, input.stock, input.available ? 1 : 0, input.sortOrder]
+    `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, old_price, cost, stock, available, sort_order, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())`,
+    [id, productId, input.name, input.sku, input.barcode, input.price, input.oldPrice, input.cost, input.stock, input.available ? 1 : 0, input.sortOrder]
   )
   return (await getVariant(id))!
 }
 
-export async function updateVariant(id: string, input: VariantInput): Promise<ProductVariant | null> {
+// updatedByUserId اختياري عمداً (undefined لو الاستدعاء من مسار قديم/اختبار قبل ما نضيف
+// تتبّع السعر/التكلفة) — لو موجود ومفيش تغيير فعلي في السعر أو التكلفة، مفيش أي صف تاريخ
+// إضافي بيتكتب، بنفس مبدأ productService.updateProduct بالظبط.
+export async function updateVariant(id: string, input: VariantInput, updatedByUserId?: string): Promise<ProductVariant | null> {
+  const existing = await getVariant(id)
+  if (!existing) return null
+
   const { rowCount } = await pool.query(
-    `UPDATE product_variants SET name=$2, sku=$3, barcode=$4, price=$5, cost=$6, stock=$7, available=$8, sort_order=$9
+    `UPDATE product_variants SET name=$2, sku=$3, barcode=$4, price=$5, old_price=$6, cost=$7, stock=$8, available=$9, sort_order=$10
      WHERE id=$1`,
-    [id, input.name, input.sku, input.barcode, input.price, input.cost, input.stock, input.available ? 1 : 0, input.sortOrder]
+    [id, input.name, input.sku, input.barcode, input.price, input.oldPrice, input.cost, input.stock, input.available ? 1 : 0, input.sortOrder]
   )
   if (!rowCount) return null
+
+  if (updatedByUserId) {
+    if (input.cost !== existing.cost) {
+      await pool.query(
+        `INSERT INTO product_cost_history (id, product_id, variant_id, unit_cost, old_cost, source_type, source_id)
+         VALUES ($1, $2, $3, $4, $5, 'manual_adjustment', $6)`,
+        [crypto.randomUUID(), existing.productId, id, input.cost, existing.cost, updatedByUserId]
+      )
+    }
+    if (input.price !== existing.price || input.oldPrice !== existing.oldPrice) {
+      await pool.query(
+        `INSERT INTO product_price_history (product_id, variant_id, old_price, new_price, old_old_price, new_old_price, source, admin_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'manual_edit', $7)`,
+        [existing.productId, id, existing.price, input.price, existing.oldPrice ?? null, input.oldPrice, updatedByUserId]
+      )
+    }
+  }
+
   return getVariant(id)
 }
 

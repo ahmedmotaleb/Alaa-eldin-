@@ -5,6 +5,7 @@ import { ProductImagesManager } from '../../components/ProductImagesManager'
 import { PendingProductImages, type StagedProductImage } from '../../components/PendingProductImages'
 import { ProductAlternativesManager } from '../../components/ProductAlternativesManager'
 import { ProductVariantsManager } from '../../components/ProductVariantsManager'
+import { ProductPriceHistory } from '../../components/ProductPriceHistory'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
@@ -175,6 +176,7 @@ export function ProductFormPage() {
       {!isEdit && <PendingProductImages staged={stagedImages} onChange={setStagedImages} />}
       {isEdit && id && <ProductAlternativesManager productId={id} />}
       {isEdit && id && <ProductVariantsManager productId={id} />}
+      {isEdit && id && <ProductPriceHistory productId={id} />}
 
       <div className="admin-form-card">
         <div>

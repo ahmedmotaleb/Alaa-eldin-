@@ -10,7 +10,7 @@ const PRODUCT_ID = 'test-prod-variants'
 const ORDER_ID = 'test-order-variants'
 
 function baseInput(overrides: Partial<VariantInput> = {}): VariantInput {
-  return { name: 'أحمر - كبير', sku: null, barcode: '', price: 50, cost: 25, stock: 10, available: true, sortOrder: 0, ...overrides }
+  return { name: 'أحمر - كبير', sku: null, barcode: '', price: 50, oldPrice: null, cost: 25, stock: 10, available: true, sortOrder: 0, ...overrides }
 }
 
 async function resetFixtures() {
