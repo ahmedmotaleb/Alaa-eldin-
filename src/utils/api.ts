@@ -307,11 +307,34 @@ export interface ApiSettings {
   showTodaysOffers: boolean
   showBestSellers: boolean
   codEnabled: boolean
+  loyaltyPointsPerEgp: number
+}
+
+export interface ApiLoyaltyLedgerEntry {
+  id: number
+  pointsChange: number
+  sourceType: 'order_delivered' | 'referral_bonus' | 'manual_adjustment'
+  sourceOrderId: string | null
+  note: string
+  createdAt: string
+}
+
+export interface ApiLoyaltySummary {
+  balance: number
+  ledger: ApiLoyaltyLedgerEntry[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+  referralCode: string
+  referralStats: { pending: number, rewarded: number }
 }
 
 export const api = {
-  register: (body: { email: string, password: string, fullName: string }) =>
+  register: (body: { email: string, password: string, fullName: string, referralCode?: string }) =>
     request<{ user: ApiUser }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+  getLoyalty: (page = 1, limit = 20) =>
+    request<ApiLoyaltySummary>(`/loyalty?page=${page}&limit=${limit}`),
   login: (body: { email: string, password: string }) =>
     request<{ user: ApiUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),

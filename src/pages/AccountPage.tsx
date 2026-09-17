@@ -10,6 +10,7 @@ import { ar } from '../i18n/ar'
 
 const ACCOUNT_ROWS = [
   { icon: '👤', label: ar.account.editProfile, path: '/account/profile' },
+  { icon: '🎁', label: ar.account.rewards, path: '/account/rewards' },
   { icon: '📍', label: ar.account.savedAddresses, path: '/account/addresses' },
   { icon: '❤️', label: ar.account.favorites, path: '/account/favorites' },
   { icon: '📝', label: ar.account.shoppingLists, path: '/account/shopping-lists' },

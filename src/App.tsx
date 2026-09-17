@@ -18,6 +18,7 @@ const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(m => ({ de
 const ShoppingListsPage = lazy(() => import('./pages/ShoppingListsPage').then(m => ({ default: m.ShoppingListsPage })))
 const ShoppingListDetailPage = lazy(() => import('./pages/ShoppingListDetailPage').then(m => ({ default: m.ShoppingListDetailPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })))
+const RewardsPage = lazy(() => import('./pages/RewardsPage').then(m => ({ default: m.RewardsPage })))
 const SecurityPage = lazy(() => import('./pages/SecurityPage').then(m => ({ default: m.SecurityPage })))
 const BestSellersPage = lazy(() => import('./pages/BestSellersPage').then(m => ({ default: m.BestSellersPage })))
 const CartPage = lazy(() => import('./pages/CartPage').then(m => ({ default: m.CartPage })))
@@ -104,6 +105,7 @@ export default function App() {
                         <Route path="/account/shopping-lists" element={<ShoppingListsPage />} />
                         <Route path="/account/shopping-lists/:id" element={<ShoppingListDetailPage />} />
                         <Route path="/account/profile" element={<ProfilePage />} />
+                        <Route path="/account/rewards" element={<RewardsPage />} />
                         <Route path="/account/security" element={<SecurityPage />} />
                         <Route path="/login" element={<LoginPage />} />
                         <Route path="/register" element={<RegisterPage />} />

@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg'
 import { pool } from '../db.js'
 import type { OrderStatus } from '../orderStatus.js'
+import { grantPointsForDeliveredOrder } from './loyaltyService.js'
 
 export type StatusChangeSource = 'admin' | 'system' | 'customer' | 'rider'
 
@@ -21,6 +22,10 @@ export async function recordOrderStatusChange(client: PoolClient, input: RecordS
      VALUES ($1, $2, $3, $4, $5, now())`,
     [input.orderId, input.fromStatus, input.toStatus, input.changedByUserId ?? null, input.source]
   )
+  // منح نقاط الولاء (وأي مكافأة إحالة مترتبة) بيحصل هنا لأن كل انتقال حالة طلب في المشروع
+  // كله (أدمن/مندوب/إنشاء/إلغاء) بيمر من هنا بالظبط — نقطة واحدة موثوقة بدل تكرار الاستدعاء
+  // في كل route بيغيّر حالة الطلب.
+  if (input.toStatus === 'delivered') await grantPointsForDeliveredOrder(client, input.orderId)
 }
 
 export interface OrderStatusHistoryEntry {

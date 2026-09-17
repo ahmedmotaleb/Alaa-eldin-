@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { getLoyaltyBalance, listLoyaltyLedger, adjustLoyaltyPointsManually } from '../services/loyaltyService.js'
+import { getReferralStats } from '../services/referralService.js'
 
 export const adminCustomersRouter = Router()
 adminCustomersRouter.use(requireAdmin)
@@ -86,5 +88,28 @@ adminCustomersRouter.get('/:id', async (req, res) => {
     [req.params.id]
   )
 
-  res.json({ customer, orders })
+  const [loyaltyBalance, loyaltyLedger, referralStats] = await Promise.all([
+    getLoyaltyBalance(String(req.params.id)),
+    listLoyaltyLedger(String(req.params.id), 1, 20),
+    getReferralStats(String(req.params.id))
+  ])
+
+  res.json({ customer, orders, loyaltyBalance, loyaltyLedger: loyaltyLedger.entries, referralStats })
+})
+
+// تعديل يدوي لرصيد الولاء (زيادة أو خصم) — بيتسجّل كصف جديد في السجل (loyalty_ledger)
+// زي أي حركة تانية، مش تحرير مباشر لأي رقم إجمالي.
+adminCustomersRouter.post('/:id/loyalty-adjustments', async (req, res) => {
+  const { points, note } = req.body ?? {}
+  if (typeof points !== 'number' || !Number.isInteger(points) || points === 0 || typeof note !== 'string' || !note.trim()) {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+  const { rows } = await pool.query('SELECT 1 FROM users WHERE id = $1', [req.params.id])
+  if (!rows[0]) {
+    res.status(404).json({ error: 'customer_not_found' })
+    return
+  }
+  await adjustLoyaltyPointsManually(String(req.params.id), points, note.trim(), req.user!.id)
+  res.status(201).json({ balance: await getLoyaltyBalance(String(req.params.id)) })
 })

@@ -577,3 +577,24 @@ h1, h2, h3, p { margin: 0; }
   .page-content { padding: 0 !important; max-width: none !important; }
   .receipt-card { border: none; padding: 0; }
 }
+
+.rewards-page { display: flex; flex-direction: column; gap: 14px; }
+.rewards-balance-card { background: linear-gradient(135deg,#12813C,#22B95A); border-radius: 22px; padding: 22px 18px; color: #fff; text-align: center; }
+.rewards-balance-number { font-weight: 900; font-size: 40px; line-height: 1; }
+.rewards-balance-label { font-weight: 700; font-size: 13.5px; opacity: .92; margin-top: 6px; }
+.rewards-earn-note { font-weight: 500; font-size: 12px; opacity: .85; margin-top: 10px; }
+.rewards-referral-card, .rewards-ledger-card { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
+.rewards-referral-card h2, .rewards-ledger-card h2 { font-weight: 900; font-size: 15.5px; margin-bottom: 6px; }
+.rewards-referral-card p { font-weight: 500; font-size: 12.5px; color: var(--muted); line-height: 1.8; margin-bottom: 10px; }
+.rewards-referral-code { font-weight: 900; font-size: 22px; letter-spacing: 2px; text-align: center; background: var(--green-soft); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
+.rewards-referral-actions { display: flex; gap: 10px; margin-bottom: 12px; }
+.rewards-referral-actions button { flex: 1; }
+.rewards-referral-stats { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); }
+.rewards-ledger-empty { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.rewards-ledger-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.rewards-ledger-row:last-child { border-bottom: none; }
+.rewards-ledger-source { font-weight: 700; font-size: 13px; }
+.rewards-ledger-date { font-weight: 500; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.rewards-ledger-points { font-weight: 900; font-size: 15px; }
+.rewards-ledger-points.positive { color: var(--green-dark); }
+.rewards-ledger-points.negative { color: var(--danger); }

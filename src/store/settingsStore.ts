@@ -11,7 +11,8 @@ const DEFAULT_SETTINGS: ApiSettings = {
   deliveryFee: 30,
   showTodaysOffers: true,
   showBestSellers: true,
-  codEnabled: true
+  codEnabled: true,
+  loyaltyPointsPerEgp: 0.1
 }
 
 let current: ApiSettings = DEFAULT_SETTINGS

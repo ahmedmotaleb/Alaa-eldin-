@@ -724,6 +724,8 @@ export interface AdminSettings {
   showBestSellers: boolean
   codEnabled: boolean
   showExactLowStock: boolean
+  loyaltyPointsPerEgp: number
+  referralBonusPoints: number
 }
 
 export interface IntegrationsStatus {

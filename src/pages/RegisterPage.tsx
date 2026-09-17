@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { ApiError } from '../utils/api'
 import { ar } from '../i18n/ar'
@@ -8,10 +8,12 @@ export function RegisterPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [referralCode, setReferralCode] = useState(() => searchParams.get('ref') ?? '')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -23,7 +25,7 @@ export function RegisterPage() {
     }
     setSubmitting(true)
     try {
-      await register(email, password, fullName)
+      await register(email, password, fullName, referralCode.trim() || undefined)
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {
@@ -48,6 +50,9 @@ export function RegisterPage() {
         </label>
         <label>{ar.auth.confirmPasswordLabel}
           <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+        </label>
+        <label>{ar.auth.referralCodeLabel}
+          <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder={ar.auth.referralCodePlaceholder} />
         </label>
         {error && <div className="form-error-banner">{error}</div>}
         <button className="primary-button" disabled={submitting} onClick={submit}>{ar.auth.registerSubmit}</button>

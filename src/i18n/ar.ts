@@ -273,7 +273,27 @@ export const ar = {
     reorderSomeSkipped: (count: number) => `تم إضافة المنتجات المتاحة للسلة — ${count} منتج غير متوفر حالياً وتم تخطيه`,
     reorderNoneAvailable: 'كل منتجات هذا الطلب غير متاحة حالياً، تعذّرت إعادة الطلب',
     editProfile: 'تعديل البيانات الشخصية',
-    frequentlyPurchasedTitle: 'مشترياتي المعتادة'
+    frequentlyPurchasedTitle: 'مشترياتي المعتادة',
+    rewards: 'المكافآت'
+  },
+
+  rewards: {
+    title: 'المكافآت',
+    pointsBalance: (points: string) => `رصيدك ${points} نقطة`,
+    earnRateNote: (perPoint: string) => `اكسب نقطة عن كل ${perPoint} تقريباً من قيمة مشترياتك، تُضاف بعد تسليم الطلب فعلياً`,
+    referralTitle: 'ادعُ صديق',
+    referralNote: 'شارك الكود ده مع صديق — لما يسجّل حساب ويكمّل أول طلب، تاخد نقاط مكافأة',
+    copyCode: 'نسخ الكود',
+    shareLink: 'مشاركة رابط الدعوة',
+    linkCopied: 'تم نسخ الرابط',
+    referralPending: (count: string) => `${count} صديق لسه ما أكملش أول طلب`,
+    referralRewarded: (count: string) => `${count} صديق كافأتك مكافأته بالفعل`,
+    ledgerTitle: 'سجل النقاط',
+    noLedgerEntries: 'لسه مفيش أي حركة نقاط',
+    sourceOrderDelivered: 'نقاط طلب',
+    sourceReferralBonus: 'مكافأة إحالة',
+    sourceManualAdjustment: 'تعديل من الإدارة',
+    loginRequired: 'سجّل الدخول لعرض نقاط المكافآت الخاصة بك'
   },
 
   profile: {
@@ -382,6 +402,8 @@ export const ar = {
     emailPlaceholder: 'example@email.com',
     passwordLabel: 'كلمة المرور',
     confirmPasswordLabel: 'تأكيد كلمة المرور',
+    referralCodeLabel: 'كود الإحالة (اختياري)',
+    referralCodePlaceholder: 'لو حد رشّحلك المتجر، اكتب الكود هنا',
     fullNameLabel: 'الاسم بالكامل',
     fullNamePlaceholder: 'مثال: أحمد محمود',
     loginSubmit: 'تسجيل الدخول',

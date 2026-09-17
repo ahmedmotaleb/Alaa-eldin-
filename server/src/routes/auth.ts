@@ -21,6 +21,7 @@ import {
   disableTwoFactor,
   countRemainingBackupCodes
 } from '../services/twoFactorService.js'
+import { getReferralCodeOwner, recordReferralSignup } from '../services/referralService.js'
 
 export const authRouter = Router()
 
@@ -52,7 +53,7 @@ function setSessionCookie(res: import('express').Response, token: string, expire
 }
 
 authRouter.post('/register', async (req, res) => {
-  const { email, password, fullName } = req.body ?? {}
+  const { email, password, fullName, referralCode } = req.body ?? {}
 
   if (typeof email !== 'string' || typeof password !== 'string' || typeof fullName !== 'string' || !fullName.trim()) {
     res.status(400).json({ error: 'missing_fields' })
@@ -79,6 +80,17 @@ authRouter.post('/register', async (req, res) => {
     'INSERT INTO users (id, email, password_hash, full_name, created_at) VALUES ($1, $2, $3, $4, $5)',
     [id, email.toLowerCase(), hashPassword(password), fullName.trim(), createdAt]
   )
+
+  // كود إحالة اختياري تماماً — كود غير موجود أو محاولة إحالة الشخص نفسه بيتجاهلوا بصمت
+  // من غير ما يمنعوا إنشاء الحساب، بنفس مبدأ التسامح المتّبع مع فشل إشعارات Push هنا.
+  if (typeof referralCode === 'string' && referralCode.trim()) {
+    try {
+      const referrerUserId = await getReferralCodeOwner(referralCode)
+      if (referrerUserId) await recordReferralSignup(referrerUserId, id, referralCode)
+    } catch {
+      // تجاهل — تسجيل الإحالة تحسين إضافي، مش شرط لنجاح التسجيل نفسه.
+    }
+  }
 
   const { token, expires } = await createSession(id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)

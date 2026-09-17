@@ -4,7 +4,7 @@ import { api, type ApiUser } from '../utils/api'
 interface AuthContextValue {
   user: ApiUser | null
   loading: boolean
-  register: (email: string, password: string, fullName: string) => Promise<void>
+  register: (email: string, password: string, fullName: string, referralCode?: string) => Promise<void>
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   updateProfile: (body: { fullName: string, mobile: string }) => Promise<void>
@@ -23,8 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
-  async function register(email: string, password: string, fullName: string) {
-    const { user } = await api.register({ email, password, fullName })
+  async function register(email: string, password: string, fullName: string, referralCode?: string) {
+    const { user } = await api.register({ email, password, fullName, referralCode })
     setUser(user)
   }
 

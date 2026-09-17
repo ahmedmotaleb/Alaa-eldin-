@@ -89,6 +89,20 @@ export function StoreSettingsPage() {
             <button type="button" className={`admin-form-chip ${!form.showExactLowStock ? 'active' : ''}`} onClick={() => set('showExactLowStock', false)}>لا — "مخزون منخفض" فقط</button>
           </span>
         </label>
+      </div>
+
+      <div className="admin-form-card">
+        <div>
+          <div className="admin-form-card-title">الولاء والإحالة</div>
+          <div className="admin-form-card-sub">معدّل اكتساب النقاط بعد تسليم الطلب فعلياً، ومكافأة إحالة صديق</div>
+        </div>
+        <label>نقاط لكل جنيه من قيمة الطلب (بعد خصم رسوم التوصيل)
+          <input type="number" step="0.01" min={0} value={form.loyaltyPointsPerEgp} onChange={e => set('loyaltyPointsPerEgp', Number(e.target.value))} />
+          <span className="admin-form-help">مثال: 0.1 تعني نقطة واحدة عن كل 10 ج.م</span>
+        </label>
+        <label>مكافأة إحالة صديق (نقاط تُمنح للمُحيل عند أول طلب فعلي للمُحال)
+          <input type="number" min={0} step={1} value={form.referralBonusPoints} onChange={e => set('referralBonusPoints', Math.round(Number(e.target.value)))} />
+        </label>
 
         {error && <div className="admin-form-error">{error}</div>}
         {success && <div className="admin-form-success">{success}</div>}

@@ -11,7 +11,8 @@ const SELECT_SETTINGS = `
   SELECT name, whatsapp_number as "whatsappNumber", currency, minimum_order as "minimumOrder",
          free_shipping_threshold as "freeShippingThreshold", delivery_fee as "deliveryFee",
          show_todays_offers as "showTodaysOffers", show_best_sellers as "showBestSellers",
-         cod_enabled as "codEnabled", show_exact_low_stock as "showExactLowStock"
+         cod_enabled as "codEnabled", show_exact_low_stock as "showExactLowStock",
+         loyalty_points_per_egp as "loyaltyPointsPerEgp", referral_bonus_points as "referralBonusPoints"
   FROM store_settings WHERE id = 1
 `
 
@@ -21,7 +22,9 @@ function serialize(row: Record<string, unknown>) {
     showTodaysOffers: !!row.showTodaysOffers,
     showBestSellers: !!row.showBestSellers,
     codEnabled: !!row.codEnabled,
-    showExactLowStock: !!row.showExactLowStock
+    showExactLowStock: !!row.showExactLowStock,
+    loyaltyPointsPerEgp: Number(row.loyaltyPointsPerEgp),
+    referralBonusPoints: Number(row.referralBonusPoints)
   }
 }
 
@@ -43,7 +46,9 @@ adminSettingsRouter.patch('/', async (req, res) => {
     typeof b.freeShippingThreshold !== 'number' || b.freeShippingThreshold < 0 ||
     typeof b.deliveryFee !== 'number' || b.deliveryFee < 0 ||
     typeof b.showTodaysOffers !== 'boolean' || typeof b.showBestSellers !== 'boolean' ||
-    typeof b.codEnabled !== 'boolean' || typeof b.showExactLowStock !== 'boolean'
+    typeof b.codEnabled !== 'boolean' || typeof b.showExactLowStock !== 'boolean' ||
+    typeof b.loyaltyPointsPerEgp !== 'number' || b.loyaltyPointsPerEgp < 0 ||
+    typeof b.referralBonusPoints !== 'number' || !Number.isInteger(b.referralBonusPoints) || b.referralBonusPoints < 0
   ) {
     res.status(400).json({ error: 'missing_fields' })
     return
@@ -52,11 +57,13 @@ adminSettingsRouter.patch('/', async (req, res) => {
   await pool.query(
     `UPDATE store_settings SET name=$1, whatsapp_number=$2, currency=$3,
        minimum_order=$4, free_shipping_threshold=$5, delivery_fee=$6,
-       show_todays_offers=$7, show_best_sellers=$8, cod_enabled=$9, show_exact_low_stock=$10
+       show_todays_offers=$7, show_best_sellers=$8, cod_enabled=$9, show_exact_low_stock=$10,
+       loyalty_points_per_egp=$11, referral_bonus_points=$12
      WHERE id = 1`,
     [
       b.name, b.whatsappNumber, b.currency, b.minimumOrder, b.freeShippingThreshold, b.deliveryFee,
-      b.showTodaysOffers ? 1 : 0, b.showBestSellers ? 1 : 0, b.codEnabled ? 1 : 0, b.showExactLowStock ? 1 : 0
+      b.showTodaysOffers ? 1 : 0, b.showBestSellers ? 1 : 0, b.codEnabled ? 1 : 0, b.showExactLowStock ? 1 : 0,
+      b.loyaltyPointsPerEgp, b.referralBonusPoints
     ]
   )
 
