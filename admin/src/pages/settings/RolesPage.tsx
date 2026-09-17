@@ -31,7 +31,8 @@ const PERMISSION_LABEL: Record<string, string> = {
   'users.manage': 'إدارة المستخدمين',
   'audit.view': 'عرض سجل النشاط',
   'returns.manage': 'إدارة المرتجعات',
-  'products.pricing.bulk_update': 'تحديث الأسعار بالجملة'
+  'products.pricing.bulk_update': 'تحديث الأسعار بالجملة',
+  'products.cost.bulk_update': 'تحديث التكلفة بالجملة'
 }
 
 export function RolesPage() {

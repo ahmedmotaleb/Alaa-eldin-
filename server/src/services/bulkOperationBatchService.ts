@@ -2,7 +2,10 @@ import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
 import { recordAuditLog } from './auditLogService.js'
 
-export type BulkOperationType = 'bulk_price_csv' | 'bulk_price_adjustment'
+export type BulkOperationType =
+  | 'bulk_price_csv' | 'bulk_price_adjustment'
+  | 'bulk_stock_csv' | 'bulk_stock_adjustment'
+  | 'bulk_cost_csv'
 export type BulkBatchStatus = 'completed' | 'rolled_back' | 'partially_rolled_back'
 
 export interface BulkBatch {
@@ -75,7 +78,17 @@ export interface CostChangeDetail {
   createdAt: string
 }
 
-export async function getBatchDetail(id: string): Promise<{ batch: BulkBatch, priceChanges: PriceChangeDetail[], costChanges: CostChangeDetail[] } | null> {
+export interface StockChangeDetail {
+  productId: string
+  variantId: string | null
+  type: string
+  quantityChange: number
+  quantityBefore: number | null
+  quantityAfter: number | null
+  createdAt: string
+}
+
+export async function getBatchDetail(id: string): Promise<{ batch: BulkBatch, priceChanges: PriceChangeDetail[], costChanges: CostChangeDetail[], stockChanges: StockChangeDetail[] } | null> {
   const batch = await getBatch(id)
   if (!batch) return null
 
@@ -90,7 +103,13 @@ export async function getBatchDetail(id: string): Promise<{ batch: BulkBatch, pr
      FROM product_cost_history WHERE bulk_batch_id = $1 ORDER BY id`,
     [id]
   )
-  return { batch, priceChanges, costChanges }
+  const { rows: stockChanges } = await pool.query<StockChangeDetail>(
+    `SELECT product_id as "productId", variant_id as "variantId", type, quantity_change as "quantityChange",
+            quantity_before as "quantityBefore", quantity_after as "quantityAfter", created_at as "createdAt"
+     FROM stock_movements WHERE bulk_batch_id = $1 ORDER BY id`,
+    [id]
+  )
+  return { batch, priceChanges, costChanges, stockChanges }
 }
 
 export interface ProductPriceHistoryEntry {
@@ -127,6 +146,7 @@ export async function getPriceHistoryForProduct(productId: string): Promise<Prod
 export interface RollbackResult {
   rolledBackPrice: number
   rolledBackCost: number
+  rolledBackStock: number
   conflicts: number
 }
 
@@ -203,7 +223,42 @@ export async function rollbackBatch(batchId: string, adminUserId: string): Promi
       rolledBackCost++
     }
 
-    const totalRolledBack = rolledBackPrice + rolledBackCost
+    // المخزون رصيد جاري (running total) مش قيمة نقطية زي السعر/التكلفة — ممكن تتغيّر بعمليات
+    // بيع/استلام حقيقية بين الدفعة والتراجع. نفس مبدأ التعارض: التراجع بيرفض يلمس أي صف
+    // رصيده الحالي مش بالظبط "quantity_after" اللي الدفعة سجّلته آخر مرة.
+    const { rows: stockRows } = await client.query<{
+      productId: string, variantId: string | null, quantityChange: number, quantityBefore: number | null, quantityAfter: number | null
+    }>(
+      `SELECT DISTINCT ON (product_id, variant_id) product_id as "productId", variant_id as "variantId",
+              quantity_change as "quantityChange", quantity_before as "quantityBefore", quantity_after as "quantityAfter"
+       FROM stock_movements WHERE bulk_batch_id = $1
+       ORDER BY product_id, variant_id, id DESC`,
+      [batchId]
+    )
+
+    let rolledBackStock = 0
+    for (const row of stockRows) {
+      if (row.quantityBefore === null || row.quantityAfter === null) { conflicts++; continue }
+      if (row.variantId) {
+        const { rows: current } = await client.query<{ stock: number }>('SELECT stock FROM product_variants WHERE id = $1 FOR UPDATE', [row.variantId])
+        const cur = current[0]
+        if (!cur || cur.stock !== row.quantityAfter) { conflicts++; continue }
+        await client.query('UPDATE product_variants SET stock = $1 WHERE id = $2', [row.quantityBefore, row.variantId])
+      } else {
+        const { rows: current } = await client.query<{ stock: number }>('SELECT stock FROM products WHERE id = $1 FOR UPDATE', [row.productId])
+        const cur = current[0]
+        if (!cur || cur.stock !== row.quantityAfter) { conflicts++; continue }
+        await client.query('UPDATE products SET stock = $1 WHERE id = $2', [row.quantityBefore, row.productId])
+      }
+      await client.query(
+        `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, quantity_before, quantity_after, note, created_by_user_id, bulk_batch_id, created_at)
+         VALUES ($1, $2, 'adjustment', $3, $4, $5, 'تراجع عن عملية جماعية', $6, $7, now())`,
+        [row.productId, row.variantId, -row.quantityChange, row.quantityAfter, row.quantityBefore, adminUserId, batchId]
+      )
+      rolledBackStock++
+    }
+
+    const totalRolledBack = rolledBackPrice + rolledBackCost + rolledBackStock
     if (totalRolledBack > 0 || conflicts > 0) {
       const newStatus: BulkBatchStatus = conflicts === 0 ? 'rolled_back' : 'partially_rolled_back'
       await client.query('UPDATE bulk_operation_batches SET status = $1 WHERE id = $2', [newStatus, batchId])
@@ -211,9 +266,9 @@ export async function rollbackBatch(batchId: string, adminUserId: string): Promi
 
     await recordAuditLog({
       adminUserId, action: 'bulk_price_batch_rolled_back', entityType: 'bulk_operation_batch', entityId: batchId,
-      newValues: { rolledBackPrice, rolledBackCost, conflicts }
+      newValues: { rolledBackPrice, rolledBackCost, rolledBackStock, conflicts }
     })
 
-    return { rolledBackPrice, rolledBackCost, conflicts }
+    return { rolledBackPrice, rolledBackCost, rolledBackStock, conflicts }
   })
 }

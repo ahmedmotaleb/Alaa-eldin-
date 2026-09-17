@@ -415,7 +415,10 @@ export interface AdjustmentInput {
   rounding: AdjustmentRounding
 }
 
-export type BulkOperationType = 'bulk_price_csv' | 'bulk_price_adjustment'
+export type BulkOperationType =
+  | 'bulk_price_csv' | 'bulk_price_adjustment'
+  | 'bulk_stock_csv' | 'bulk_stock_adjustment'
+  | 'bulk_cost_csv'
 export type BulkBatchStatus = 'completed' | 'rolled_back' | 'partially_rolled_back'
 
 export interface BulkBatch {
@@ -449,15 +452,27 @@ export interface CostChangeDetail {
   createdAt: string
 }
 
+export interface StockChangeDetail {
+  productId: string
+  variantId: string | null
+  type: string
+  quantityChange: number
+  quantityBefore: number | null
+  quantityAfter: number | null
+  createdAt: string
+}
+
 export interface BulkBatchDetail {
   batch: BulkBatch
   priceChanges: PriceChangeDetail[]
   costChanges: CostChangeDetail[]
+  stockChanges: StockChangeDetail[]
 }
 
 export interface RollbackResult {
   rolledBackPrice: number
   rolledBackCost: number
+  rolledBackStock: number
   conflicts: number
 }
 
@@ -473,6 +488,115 @@ export interface ProductPriceHistoryEntry {
   adminName: string | null
   bulkBatchId: string | null
   createdAt: string
+}
+
+export type StockRowKind = 'product' | 'variant'
+export type StockRowStatus = 'ready' | 'no_change' | 'warning' | 'error'
+export type ManualStockReason = 'restock' | 'return' | 'damage' | 'loss' | 'adjustment'
+
+export interface StockPreviewRow {
+  rowNumber: number
+  kind: StockRowKind
+  productId: string
+  variantId: string | null
+  sku: string | null
+  barcode: string
+  productName: string
+  variantName: string | null
+  currentStock: number
+  newStock: number
+  quantityChange: number
+  reason: string | null
+  status: StockRowStatus
+  errors: string[]
+  warnings: string[]
+}
+
+export interface StockPreviewSummary {
+  totalRows: number
+  ready: number
+  noChange: number
+  warnings: number
+  errors: number
+  increases: number
+  decreases: number
+}
+
+export interface StockTemplateFilters {
+  categoryId?: string
+  brand?: string
+  availableOnly?: boolean
+  outOfStockOnly?: boolean
+  hasVariants?: boolean
+  noVariants?: boolean
+  search?: string
+}
+
+export interface StockConfirmRowInput {
+  rowNumber: number
+  record: Record<string, string | undefined>
+}
+
+export type StockAdjustmentOperation = 'set_to' | 'increase_by' | 'decrease_by'
+
+export interface StockAdjustmentScope {
+  productIds?: string[]
+  categoryId?: string
+  brand?: string
+  allCatalog?: boolean
+}
+
+export interface StockAdjustmentInput {
+  scope: StockAdjustmentScope
+  operation: StockAdjustmentOperation
+  value: number
+  reason: ManualStockReason
+}
+
+export type CostRowKind = 'product' | 'variant'
+export type CostRowStatus = 'ready' | 'no_change' | 'warning' | 'error'
+
+export interface CostPreviewRow {
+  rowNumber: number
+  kind: CostRowKind
+  productId: string
+  variantId: string | null
+  sku: string | null
+  barcode: string
+  productName: string
+  variantName: string | null
+  currentPrice: number
+  currentCost: number
+  newCost: number
+  costChanged: boolean
+  status: CostRowStatus
+  errors: string[]
+  warnings: string[]
+}
+
+export interface CostPreviewSummary {
+  totalRows: number
+  ready: number
+  noChange: number
+  warnings: number
+  errors: number
+  increases: number
+  decreases: number
+}
+
+export interface CostTemplateFilters {
+  categoryId?: string
+  brand?: string
+  availableOnly?: boolean
+  outOfStockOnly?: boolean
+  hasVariants?: boolean
+  noVariants?: boolean
+  search?: string
+}
+
+export interface CostConfirmRowInput {
+  rowNumber: number
+  record: Record<string, string | undefined>
 }
 
 export interface AdminProductImage {
@@ -905,6 +1029,7 @@ export interface AdminSettings {
   showExactLowStock: boolean
   loyaltyPointsPerEgp: number
   referralBonusPoints: number
+  minMarginPercent: number
 }
 
 export interface IntegrationsStatus {
@@ -1446,5 +1571,25 @@ export const api = {
   rollbackBulkPricingBatch: (id: string) =>
     request<RollbackResult>(`/admin/products/bulk-pricing/batches/${encodeURIComponent(id)}/rollback`, { method: 'POST' }),
   getProductPriceHistory: (id: string) =>
-    request<{ history: ProductPriceHistoryEntry[] }>(`/admin/products/${encodeURIComponent(id)}/price-history`)
+    request<{ history: ProductPriceHistoryEntry[] }>(`/admin/products/${encodeURIComponent(id)}/price-history`),
+  downloadBulkStockTemplate: (filters: StockTemplateFilters = {}) =>
+    downloadFile(`/admin/products/bulk-stock/template${buildQuery({ ...filters })}`, `alaa-eldin-stock-template-${new Date().toISOString().slice(0, 10)}.csv`),
+  previewBulkStockCsv: (file: File) =>
+    uploadFile<{ rows: StockPreviewRow[], summary: StockPreviewSummary }>('/admin/products/bulk-stock/preview', file),
+  confirmBulkStock: (rows: StockConfirmRowInput[]) =>
+    request<ApplyResult>('/admin/products/bulk-stock/confirm', { method: 'POST', body: JSON.stringify({ rows }) }),
+  downloadBulkStockResultReport: (rows: ApplyResultRow[]) =>
+    downloadFilePost('/admin/products/bulk-stock/confirm/report', `bulk-stock-result-${new Date().toISOString().slice(0, 10)}.csv`, { rows }),
+  previewBulkStockAdjustment: (input: StockAdjustmentInput) =>
+    request<{ rows: StockPreviewRow[], summary: StockPreviewSummary }>('/admin/products/bulk-stock/adjustment-preview', { method: 'POST', body: JSON.stringify(input) }),
+  confirmBulkStockAdjustment: (input: StockAdjustmentInput, selectedProductIds: string[]) =>
+    request<ApplyResult>('/admin/products/bulk-stock/adjustment-confirm', { method: 'POST', body: JSON.stringify({ ...input, selectedProductIds }) }),
+  downloadBulkCostTemplate: (filters: CostTemplateFilters = {}) =>
+    downloadFile(`/admin/products/bulk-cost/template${buildQuery({ ...filters })}`, `alaa-eldin-cost-template-${new Date().toISOString().slice(0, 10)}.csv`),
+  previewBulkCostCsv: (file: File) =>
+    uploadFile<{ rows: CostPreviewRow[], summary: CostPreviewSummary }>('/admin/products/bulk-cost/preview', file),
+  confirmBulkCost: (rows: CostConfirmRowInput[]) =>
+    request<ApplyResult>('/admin/products/bulk-cost/confirm', { method: 'POST', body: JSON.stringify({ rows }) }),
+  downloadBulkCostResultReport: (rows: ApplyResultRow[]) =>
+    downloadFilePost('/admin/products/bulk-cost/confirm/report', `bulk-cost-result-${new Date().toISOString().slice(0, 10)}.csv`, { rows })
 }

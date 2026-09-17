@@ -12,7 +12,8 @@ const SELECT_SETTINGS = `
          free_shipping_threshold as "freeShippingThreshold", delivery_fee as "deliveryFee",
          show_todays_offers as "showTodaysOffers", show_best_sellers as "showBestSellers",
          cod_enabled as "codEnabled", show_exact_low_stock as "showExactLowStock",
-         loyalty_points_per_egp as "loyaltyPointsPerEgp", referral_bonus_points as "referralBonusPoints"
+         loyalty_points_per_egp as "loyaltyPointsPerEgp", referral_bonus_points as "referralBonusPoints",
+         min_margin_percent as "minMarginPercent"
   FROM store_settings WHERE id = 1
 `
 
@@ -24,7 +25,8 @@ function serialize(row: Record<string, unknown>) {
     codEnabled: !!row.codEnabled,
     showExactLowStock: !!row.showExactLowStock,
     loyaltyPointsPerEgp: Number(row.loyaltyPointsPerEgp),
-    referralBonusPoints: Number(row.referralBonusPoints)
+    referralBonusPoints: Number(row.referralBonusPoints),
+    minMarginPercent: Number(row.minMarginPercent)
   }
 }
 
@@ -48,7 +50,8 @@ adminSettingsRouter.patch('/', async (req, res) => {
     typeof b.showTodaysOffers !== 'boolean' || typeof b.showBestSellers !== 'boolean' ||
     typeof b.codEnabled !== 'boolean' || typeof b.showExactLowStock !== 'boolean' ||
     typeof b.loyaltyPointsPerEgp !== 'number' || b.loyaltyPointsPerEgp < 0 ||
-    typeof b.referralBonusPoints !== 'number' || !Number.isInteger(b.referralBonusPoints) || b.referralBonusPoints < 0
+    typeof b.referralBonusPoints !== 'number' || !Number.isInteger(b.referralBonusPoints) || b.referralBonusPoints < 0 ||
+    typeof b.minMarginPercent !== 'number' || b.minMarginPercent < 0 || b.minMarginPercent > 100
   ) {
     res.status(400).json({ error: 'missing_fields' })
     return
@@ -58,12 +61,12 @@ adminSettingsRouter.patch('/', async (req, res) => {
     `UPDATE store_settings SET name=$1, whatsapp_number=$2, currency=$3,
        minimum_order=$4, free_shipping_threshold=$5, delivery_fee=$6,
        show_todays_offers=$7, show_best_sellers=$8, cod_enabled=$9, show_exact_low_stock=$10,
-       loyalty_points_per_egp=$11, referral_bonus_points=$12
+       loyalty_points_per_egp=$11, referral_bonus_points=$12, min_margin_percent=$13
      WHERE id = 1`,
     [
       b.name, b.whatsappNumber, b.currency, b.minimumOrder, b.freeShippingThreshold, b.deliveryFee,
       b.showTodaysOffers ? 1 : 0, b.showBestSellers ? 1 : 0, b.codEnabled ? 1 : 0, b.showExactLowStock ? 1 : 0,
-      b.loyaltyPointsPerEgp, b.referralBonusPoints
+      b.loyaltyPointsPerEgp, b.referralBonusPoints, b.minMarginPercent
     ]
   )
 

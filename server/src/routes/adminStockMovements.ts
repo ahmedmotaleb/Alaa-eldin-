@@ -2,11 +2,12 @@ import { Router } from 'express'
 import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { notifyBackInStockIfNeeded } from '../services/backInStockService.js'
+import { MANUAL_STOCK_REASONS } from '../services/bulkStockService.js'
 
 export const adminStockMovementsRouter = Router()
 adminStockMovementsRouter.use(requireAdmin)
 
-const TYPES = ['restock', 'return', 'damage', 'loss', 'adjustment']
+const TYPES: readonly string[] = MANUAL_STOCK_REASONS
 
 interface MovementRow {
   id: number

@@ -4,7 +4,7 @@ import { parseCsv, csvRecords } from '../csv.js'
 import {
   PRICING_TEMPLATE_VERSION, generatePricingTemplateCsv, previewPricingCsv, confirmPricingRows,
   parseStrictPrice, parseOldPriceCell, sanitizeCsvCell, previewAdjustment, confirmAdjustment,
-  type ConfirmRowInput
+  getMinMarginPercent, type ConfirmRowInput
 } from './bulkPricingService.js'
 import { getBatchDetail } from './bulkOperationBatchService.js'
 
@@ -29,9 +29,13 @@ async function insertProduct(id: string, name: string, price: number, oldPrice: 
   )
 }
 
-async function resetFixtures() {
-  // مسح مقيّد بمعرفات هذا الملف بس (مش DELETE عام على الجدول) — عشان لا يتعارض مع صفوف
-  // stock_movements حقيقية من ملفات اختبار تانية بتشتغل بالتوازي على نفس قاعدة البيانات.
+// مسح مقيّد بمعرفات هذا الملف بس (مش DELETE عام على الجدول) — عشان لا يتعارض مع صفوف
+// حقيقية من ملفات اختبار تانية بتشتغل في نفس تشغيلة الـ suite الكاملة. الجداول اللي
+// أصلاً مقيّدة (product_price_history/product_cost_history/bulk_operation_batches/
+// audit_logs) بتتمسح كاملة هنا لأن مفيش عمود يربطها بمعرف الملف مباشرة، لكن afterAll
+// بتستدعي نفس الدالة تانية من غير إعادة إدراج، عشان محدش يسيب صفوف معلّقة تكسر
+// DELETE FROM products العام في ملفات تانية بعد ما الملف ده يخلص.
+async function cleanupFixtures() {
   await pool.query(`DELETE FROM stock_movements WHERE product_id IN ($1, $2) OR product_id LIKE 'test-prod-bp-chunk-%'`, [PRODUCT_A, PRODUCT_B])
   await pool.query('DELETE FROM product_price_history')
   await pool.query('DELETE FROM product_cost_history')
@@ -41,6 +45,11 @@ async function resetFixtures() {
   await pool.query(`DELETE FROM products WHERE id IN ($1, $2) OR id LIKE 'test-prod-bp-chunk-%'`, [PRODUCT_A, PRODUCT_B])
   await pool.query(`DELETE FROM categories WHERE id = $1 OR id = 'test-cat-other-bp'`, [CATEGORY_ID])
   await pool.query('DELETE FROM users WHERE id = $1', [ADMIN_ID])
+}
+
+async function resetFixtures() {
+  await cleanupFixtures()
+  await pool.query('UPDATE store_settings SET min_margin_percent = 15 WHERE id = 1')
   await insertUser(ADMIN_ID)
   await pool.query(`INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'قسم اختبار', '🧪', '#fff', 1)`, [CATEGORY_ID])
   await insertProduct(PRODUCT_A, 'منتج أ', 100, 120, 50)
@@ -57,6 +66,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await cleanupFixtures()
   await pool.end()
 })
 
@@ -172,6 +182,14 @@ describe('generatePricingTemplateCsv', () => {
   })
 })
 
+describe('getMinMarginPercent', () => {
+  it('reads the configured value from store_settings', async () => {
+    expect(await getMinMarginPercent()).toBe(15)
+    await pool.query('UPDATE store_settings SET min_margin_percent = 20 WHERE id = 1')
+    expect(await getMinMarginPercent()).toBe(20)
+  })
+})
+
 describe('previewPricingCsv — validation', () => {
   async function preview(records: Record<string, string>[]) {
     const header = Object.keys(records[0] ?? baseRecord())
@@ -255,6 +273,18 @@ describe('previewPricingCsv — validation', () => {
   it('warns when the new cost exceeds the new selling price', async () => {
     const { rows } = await preview([baseRecord({ new_price: '105', new_cost: '110' })])
     expect(rows[0].warnings).toContain('تحذير: سعر البيع أقل من التكلفة')
+  })
+
+  it('warns when the resulting margin falls below the configured minimum', async () => {
+    const { rows } = await preview([baseRecord({ new_price: '90', new_cost: '80' })])
+    expect(rows[0].status).toBe('warning')
+    expect(rows[0].warnings).toContain('تحذير: الهامش أقل من الحد الأدنى المسموح')
+  })
+
+  it('does not warn on margin once the configured minimum is lowered below it', async () => {
+    await pool.query('UPDATE store_settings SET min_margin_percent = 5 WHERE id = 1')
+    const { rows } = await preview([baseRecord({ new_price: '90', new_cost: '80' })])
+    expect(rows[0].warnings).not.toContain('تحذير: الهامش أقل من الحد الأدنى المسموح')
   })
 
   it('warns when the old price no longer exceeds the new selling price', async () => {

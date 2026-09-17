@@ -103,6 +103,16 @@ export function StoreSettingsPage() {
         <label>مكافأة إحالة صديق (نقاط تُمنح للمُحيل عند أول طلب فعلي للمُحال)
           <input type="number" min={0} step={1} value={form.referralBonusPoints} onChange={e => set('referralBonusPoints', Math.round(Number(e.target.value)))} />
         </label>
+      </div>
+
+      <div className="admin-form-card">
+        <div>
+          <div className="admin-form-card-title">حماية الهامش</div>
+          <div className="admin-form-card-sub">أقل نسبة هامش مقبولة — أي تحديث سعر أو تكلفة (فردي أو بالجملة) بيحذّر لو الهامش الناتج أقل منها</div>
+        </div>
+        <label>الحد الأدنى للهامش (%)
+          <input type="number" min={0} max={100} step={0.5} value={form.minMarginPercent} onChange={e => set('minMarginPercent', Number(e.target.value))} />
+        </label>
 
         {error && <div className="admin-form-error">{error}</div>}
         {success && <div className="admin-form-success">{success}</div>}

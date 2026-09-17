@@ -227,14 +227,28 @@ const WARNING_MAJOR_DECREASE = 'تحذير: انخفاض كبير في السع�
 const WARNING_MAJOR_INCREASE = 'تحذير: ارتفاع كبير في السعر'
 const WARNING_BELOW_COST = 'تحذير: سعر البيع أقل من التكلفة'
 const WARNING_OLD_PRICE_NOT_HIGHER = 'تحذير: السعر القديم لا يزيد عن السعر الحالي'
+const WARNING_MARGIN_BELOW_THRESHOLD = 'تحذير: الهامش أقل من الحد الأدنى المسموح'
 
-function computeWarnings(currentPrice: number, newPrice: number, newCost: number, resolvedOldPrice: number | null): string[] {
+// نسبة الهامش الأدنى قابلة للتعديل من الإعدادات (store_settings.min_margin_percent) —
+// بتتقرأ مرة واحدة لكل عملية معاينة/تأكيد (مش لكل صف)، عشان أي تحديث سعر أو تكلفة بالجملة
+// (وتحديث التكلفة بالجملة في bulkCostService) يقدر يحذّر لو الهامش الناتج تحت الحد المسموح.
+export async function getMinMarginPercent(): Promise<number> {
+  const { rows } = await pool.query<{ minMarginPercent: number }>('SELECT min_margin_percent as "minMarginPercent" FROM store_settings WHERE id = 1')
+  return rows[0]?.minMarginPercent ?? 15
+}
+
+function computeWarnings(currentPrice: number, newPrice: number, newCost: number, resolvedOldPrice: number | null, minMarginPercent: number): string[] {
   const warnings: string[] = []
   if (currentPrice > 0) {
     if (newPrice <= currentPrice * 0.5) warnings.push(WARNING_MAJOR_DECREASE)
     if (newPrice >= currentPrice * 2) warnings.push(WARNING_MAJOR_INCREASE)
   }
-  if (newCost > newPrice) warnings.push(WARNING_BELOW_COST)
+  if (newCost > newPrice) {
+    warnings.push(WARNING_BELOW_COST)
+  } else if (newPrice > 0) {
+    const marginPercent = ((newPrice - newCost) / newPrice) * 100
+    if (marginPercent < minMarginPercent) warnings.push(WARNING_MARGIN_BELOW_THRESHOLD)
+  }
   if (resolvedOldPrice !== null && resolvedOldPrice <= newPrice) warnings.push(WARNING_OLD_PRICE_NOT_HIGHER)
   return warnings
 }
@@ -259,7 +273,8 @@ export function validatePricingRecord(
   record: Record<string, string | undefined>,
   currentProducts: Map<string, CurrentProductRow>,
   currentVariants: Map<string, CurrentVariantRow>,
-  seenKeys: Set<string>
+  seenKeys: Set<string>,
+  minMarginPercent: number
 ): PricingPreviewRow {
   const errors: string[] = []
   const warnings: string[] = []
@@ -333,7 +348,7 @@ export function validatePricingRecord(
   const oldPriceChanged = current !== null && oldPriceParsed.action !== 'keep' && resolvedOldPrice !== (current.oldPrice ?? null)
 
   if (errors.length === 0 && current) {
-    warnings.push(...computeWarnings(current.price, newPrice, newCost, resolvedOldPrice))
+    warnings.push(...computeWarnings(current.price, newPrice, newCost, resolvedOldPrice, minMarginPercent))
   }
 
   const anyChange = priceChanged || costChanged || oldPriceChanged
@@ -372,8 +387,9 @@ export async function previewPricingCsv(csvText: string): Promise<{ rows: Pricin
   const currentProducts = await loadCurrentProducts()
   const currentVariants = await loadCurrentVariants()
   const seenKeys = new Set<string>()
+  const minMarginPercent = await getMinMarginPercent()
 
-  const rows = records.map((r, i) => validatePricingRecord(i + 2, r, currentProducts, currentVariants, seenKeys))
+  const rows = records.map((r, i) => validatePricingRecord(i + 2, r, currentProducts, currentVariants, seenKeys, minMarginPercent))
   return { rows, summary: summarizePricingRows(rows) }
 }
 
@@ -444,9 +460,10 @@ export async function confirmPricingRows(
   const currentProducts = await loadCurrentProducts()
   const currentVariants = await loadCurrentVariants()
   const seenKeys = new Set<string>()
+  const minMarginPercent = await getMinMarginPercent()
 
   const revalidated = selectedRows.map(({ rowNumber, record }) =>
-    validatePricingRecord(rowNumber, record, currentProducts, currentVariants, seenKeys)
+    validatePricingRecord(rowNumber, record, currentProducts, currentVariants, seenKeys, minMarginPercent)
   )
 
   const batchId = await createBatch(operationType, adminUserId)
@@ -526,7 +543,9 @@ async function applyOneRow(client: PoolClient, row: PricingPreviewRow, adminUser
   }
 }
 
-async function insertCostHistory(client: PoolClient, productId: string, variantId: string | null, newCost: number, oldCost: number, adminUserId: string, batchId: string): Promise<void> {
+// مُصدَّرة عشان bulkCostService.ts (أداة تحديث التكلفة بالجملة المستقلة) تعيد استخدامها
+// بدل تكرار نفس منطق كتابة سجل التكلفة.
+export async function insertCostHistory(client: PoolClient, productId: string, variantId: string | null, newCost: number, oldCost: number, adminUserId: string, batchId: string): Promise<void> {
   await client.query(
     `INSERT INTO product_cost_history (id, product_id, variant_id, unit_cost, old_cost, source_type, source_id, bulk_batch_id)
      VALUES ($1, $2, $3, $4, $5, 'bulk_price_update', $6, $7)`,
@@ -595,6 +614,7 @@ async function loadScopedProducts(scope: AdjustmentScope): Promise<CurrentProduc
 // قاعدة البيانات — الفرونت إند أبداً مش بيبعت أي سعر محسوب مسبقاً يتم الوثوق بيه وقت التأكيد.
 export async function previewAdjustment(input: AdjustmentInput): Promise<{ rows: PricingPreviewRow[], summary: PricingPreviewSummary }> {
   const products = await loadScopedProducts(input.scope)
+  const minMarginPercent = await getMinMarginPercent()
   const rows: PricingPreviewRow[] = products.map((p, i) => {
     const raw = computeAdjustedPrice(p.price, input.operation, input.value)
     const rounded = applyRounding(raw, input.rounding)
@@ -602,7 +622,7 @@ export async function previewAdjustment(input: AdjustmentInput): Promise<{ rows:
     const errors: string[] = []
     if (!Number.isFinite(newPrice) || newPrice <= 0) errors.push('السعر الناتج غير صالح (أقل من أو يساوي صفر)')
     const priceChanged = errors.length === 0 && newPrice !== p.price
-    const warnings = errors.length === 0 ? computeWarnings(p.price, newPrice, p.cost, p.oldPrice) : []
+    const warnings = errors.length === 0 ? computeWarnings(p.price, newPrice, p.cost, p.oldPrice, minMarginPercent) : []
     const status: PricingRowStatus = errors.length ? 'error' : !priceChanged ? 'no_change' : warnings.length ? 'warning' : 'ready'
 
     return {

@@ -26,15 +26,25 @@ async function insertProduct(id: string, price: number, oldPrice: number | null,
   )
 }
 
-async function resetFixtures() {
+// حذف مقيّد بمعرفات هذا الملف بس (مش DELETE عام على الجدول) — عشان لا يتعارض مع صفوف
+// منتجات/حركات مخزون حقيقية من ملفات اختبار تانية بتشتغل في نفس تشغيلة الـ suite الكاملة.
+// لازم نمسح stock_movements قبل المنتجات/المتغيرات — مفيش ON DELETE CASCADE عليها.
+// afterAll بتستدعي نفس الدالة (من غير إعادة إدراج) عشان محدش يسيب صفوف معلّقة تكسر
+// DELETE FROM products العام في ملفات تانية بعد ما الملف ده يخلص.
+async function cleanupFixtures() {
+  await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2)', [PRODUCT_A, PRODUCT_B])
   await pool.query('DELETE FROM product_price_history')
   await pool.query('DELETE FROM product_cost_history')
   await pool.query('DELETE FROM audit_logs')
   await pool.query('DELETE FROM bulk_operation_batches')
-  await pool.query('DELETE FROM product_variants')
-  await pool.query('DELETE FROM products')
-  await pool.query('DELETE FROM categories')
+  await pool.query('DELETE FROM product_variants WHERE product_id IN ($1, $2)', [PRODUCT_A, PRODUCT_B])
+  await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [PRODUCT_A, PRODUCT_B])
+  await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
   await pool.query('DELETE FROM users WHERE id = $1', [ADMIN_ID])
+}
+
+async function resetFixtures() {
+  await cleanupFixtures()
   await insertUser(ADMIN_ID)
   await pool.query(`INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'فئة اختبار', '🧪', '#fff', 1)`, [CATEGORY_ID])
   await insertProduct(PRODUCT_A, 100, 120, 50)
@@ -51,6 +61,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await cleanupFixtures()
   await pool.end()
 })
 
@@ -67,6 +78,14 @@ async function writeCostChange(batchId: string, productId: string, variantId: st
     `INSERT INTO product_cost_history (id, product_id, variant_id, unit_cost, old_cost, source_type, source_id, bulk_batch_id)
      VALUES ($1, $2, $3, $4, $5, 'bulk_price_update', $6, $7)`,
     [crypto.randomUUID(), productId, variantId, newCost, oldCost, ADMIN_ID, batchId]
+  )
+}
+
+async function writeStockChange(batchId: string, productId: string, variantId: string | null, quantityBefore: number, quantityAfter: number) {
+  await pool.query(
+    `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, quantity_before, quantity_after, note, created_by_user_id, bulk_batch_id, created_at)
+     VALUES ($1, $2, 'adjustment', $3, $4, $5, 'bulk stock test', $6, $7, now())`,
+    [productId, variantId, quantityAfter - quantityBefore, quantityBefore, quantityAfter, ADMIN_ID, batchId]
   )
 }
 
@@ -105,6 +124,15 @@ describe('getBatchDetail', () => {
     expect(detail!.costChanges[0]).toMatchObject({ productId: PRODUCT_A, oldCost: 50, newCost: 60 })
   })
 
+  it('returns stock changes recorded for the batch', async () => {
+    const batchId = await createBatch('bulk_stock_csv', ADMIN_ID)
+    await writeStockChange(batchId, PRODUCT_A, null, 20, 35)
+
+    const detail = await getBatchDetail(batchId)
+    expect(detail!.stockChanges).toHaveLength(1)
+    expect(detail!.stockChanges[0]).toMatchObject({ productId: PRODUCT_A, quantityChange: 15, quantityBefore: 20, quantityAfter: 35 })
+  })
+
   it('returns null for an unknown batch', async () => {
     expect(await getBatchDetail('does-not-exist')).toBeNull()
   })
@@ -118,7 +146,7 @@ describe('rollbackBatch', () => {
     await pool.query('UPDATE products SET price = 130, old_price = 150, cost = 60 WHERE id = $1', [PRODUCT_A])
 
     const result = await rollbackBatch(batchId, ADMIN_ID)
-    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 1, conflicts: 0 })
+    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 1, rolledBackStock: 0, conflicts: 0 })
 
     const { rows } = await pool.query('SELECT price, old_price as "oldPrice", cost FROM products WHERE id = $1', [PRODUCT_A])
     expect(rows[0]).toEqual({ price: 100, oldPrice: 120, cost: 50 })
@@ -133,7 +161,7 @@ describe('rollbackBatch', () => {
     await pool.query('UPDATE product_variants SET price = 90, old_price = 100 WHERE id = $1', [VARIANT_A])
 
     const result = await rollbackBatch(batchId, ADMIN_ID)
-    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 0, conflicts: 0 })
+    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 0, rolledBackStock: 0, conflicts: 0 })
 
     const { rows } = await pool.query('SELECT price, old_price as "oldPrice" FROM product_variants WHERE id = $1', [VARIANT_A])
     expect(rows[0]).toEqual({ price: 60, oldPrice: 70 })
@@ -147,7 +175,7 @@ describe('rollbackBatch', () => {
     await pool.query('UPDATE products SET price = 200 WHERE id = $1', [PRODUCT_A])
 
     const result = await rollbackBatch(batchId, ADMIN_ID)
-    expect(result).toEqual({ rolledBackPrice: 0, rolledBackCost: 0, conflicts: 1 })
+    expect(result).toEqual({ rolledBackPrice: 0, rolledBackCost: 0, rolledBackStock: 0, conflicts: 1 })
 
     const { rows } = await pool.query('SELECT price FROM products WHERE id = $1', [PRODUCT_A])
     expect(rows[0].price).toBe(200)
@@ -164,7 +192,7 @@ describe('rollbackBatch', () => {
     await pool.query('UPDATE products SET price = 999 WHERE id = $1', [PRODUCT_B]) // تعديل يدوي بعد الدفعة
 
     const result = await rollbackBatch(batchId, ADMIN_ID)
-    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 0, conflicts: 1 })
+    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 0, rolledBackStock: 0, conflicts: 1 })
 
     const { rows: a } = await pool.query('SELECT price FROM products WHERE id = $1', [PRODUCT_A])
     expect(a[0].price).toBe(100)
@@ -200,6 +228,64 @@ describe('rollbackBatch', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ source: 'bulk_csv', oldPrice: 100, newPrice: 130 })
     expect(rows[1]).toMatchObject({ source: 'rollback', oldPrice: 130, newPrice: 100 })
+  })
+
+  it('rolls back a clean stock change (no sales/adjustments since)', async () => {
+    const batchId = await createBatch('bulk_stock_csv', ADMIN_ID)
+    await writeStockChange(batchId, PRODUCT_A, null, 20, 50)
+    await pool.query('UPDATE products SET stock = 50 WHERE id = $1', [PRODUCT_A])
+
+    const result = await rollbackBatch(batchId, ADMIN_ID)
+    expect(result).toEqual({ rolledBackPrice: 0, rolledBackCost: 0, rolledBackStock: 1, conflicts: 0 })
+
+    const { rows } = await pool.query('SELECT stock FROM products WHERE id = $1', [PRODUCT_A])
+    expect(rows[0].stock).toBe(20)
+
+    const batch = await getBatch(batchId)
+    expect(batch!.status).toBe('rolled_back')
+  })
+
+  it('marks a stock conflict (does not overwrite) when stock changed since the batch — e.g. a real sale', async () => {
+    const batchId = await createBatch('bulk_stock_csv', ADMIN_ID)
+    await writeStockChange(batchId, PRODUCT_A, null, 20, 50)
+    // مبيعة حقيقية استهلكت من المخزون بعد الدفعة — الرصيد الحالي بقى 45، مش الـ 50 اللي
+    // الدفعة سجّلتها آخر مرة، فالتراجع لازم يرفض يلمسه.
+    await pool.query('UPDATE products SET stock = 45 WHERE id = $1', [PRODUCT_A])
+
+    const result = await rollbackBatch(batchId, ADMIN_ID)
+    expect(result).toEqual({ rolledBackPrice: 0, rolledBackCost: 0, rolledBackStock: 0, conflicts: 1 })
+
+    const { rows } = await pool.query('SELECT stock FROM products WHERE id = $1', [PRODUCT_A])
+    expect(rows[0].stock).toBe(45)
+  })
+
+  it('rolls back a variant stock change cleanly', async () => {
+    const batchId = await createBatch('bulk_stock_csv', ADMIN_ID)
+    await writeStockChange(batchId, PRODUCT_A, VARIANT_A, 5, 15)
+    await pool.query('UPDATE product_variants SET stock = 15 WHERE id = $1', [VARIANT_A])
+
+    const result = await rollbackBatch(batchId, ADMIN_ID)
+    expect(result).toEqual({ rolledBackPrice: 0, rolledBackCost: 0, rolledBackStock: 1, conflicts: 0 })
+
+    const { rows } = await pool.query('SELECT stock FROM product_variants WHERE id = $1', [VARIANT_A])
+    expect(rows[0].stock).toBe(5)
+  })
+
+  it('inserts a new reversing stock movement rather than mutating the original', async () => {
+    const batchId = await createBatch('bulk_stock_csv', ADMIN_ID)
+    await writeStockChange(batchId, PRODUCT_A, null, 20, 50)
+    await pool.query('UPDATE products SET stock = 50 WHERE id = $1', [PRODUCT_A])
+
+    await rollbackBatch(batchId, ADMIN_ID)
+
+    const { rows } = await pool.query(
+      `SELECT quantity_change as "quantityChange", quantity_before as "quantityBefore", quantity_after as "quantityAfter"
+       FROM stock_movements WHERE product_id = $1 ORDER BY id`,
+      [PRODUCT_A]
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ quantityChange: 30, quantityBefore: 20, quantityAfter: 50 })
+    expect(rows[1]).toMatchObject({ quantityChange: -30, quantityBefore: 50, quantityAfter: 20 })
   })
 })
 

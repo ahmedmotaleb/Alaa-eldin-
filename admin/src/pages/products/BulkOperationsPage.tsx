@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { api, type BulkBatch, type BulkBatchDetail } from '../../utils/api'
-import { formatCurrency, formatDateTime } from '../../utils/format'
+import { formatCurrency, formatDateTime, formatQuantity } from '../../utils/format'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const OPERATION_LABEL: Record<BulkBatch['operationType'], string> = {
-  bulk_price_csv: 'تحديث بالجملة (CSV)', bulk_price_adjustment: 'تعديل سريع بالجملة'
+  bulk_price_csv: 'تحديث أسعار بالجملة (CSV)', bulk_price_adjustment: 'تعديل أسعار سريع',
+  bulk_stock_csv: 'تحديث مخزون بالجملة (CSV)', bulk_stock_adjustment: 'تعديل مخزون سريع',
+  bulk_cost_csv: 'تحديث تكلفة بالجملة (CSV)'
 }
 const STATUS_LABEL: Record<BulkBatch['status'], string> = {
   completed: 'مكتملة', rolled_back: 'تم التراجع بالكامل', partially_rolled_back: 'تراجع جزئي'
@@ -130,7 +132,18 @@ export function BulkOperationsPage() {
                           ))}
                         </>
                       )}
-                      {detail.priceChanges.length === 0 && detail.costChanges.length === 0 && (
+                      {detail.stockChanges.length > 0 && (
+                        <>
+                          <div style={{ fontWeight: 700, margin: '10px 0 6px' }}>تغييرات المخزون ({detail.stockChanges.length})</div>
+                          {detail.stockChanges.map((c, i) => (
+                            <div key={i} style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid #EEF1EE' }}>
+                              {c.productId}{c.variantId ? ` (${c.variantId})` : ''} — {c.quantityBefore !== null ? formatQuantity(c.quantityBefore) : '؟'} ← {c.quantityAfter !== null ? formatQuantity(c.quantityAfter) : '؟'}
+                              <span style={{ color: '#8A948C' }}> · {c.type} · {formatDateTime(c.createdAt)}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {detail.priceChanges.length === 0 && detail.costChanges.length === 0 && detail.stockChanges.length === 0 && (
                         <div style={{ color: '#8A948C' }}>لا توجد تفاصيل مسجّلة لهذه العملية</div>
                       )}
                     </>
