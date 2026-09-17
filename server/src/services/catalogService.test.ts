@@ -191,6 +191,20 @@ describe('getProductBySlug', () => {
     expect(await getProductBySlug('does-not-exist')).toBeNull()
   })
 
+  it('includes only available variants of the product, excluding a disabled one', async () => {
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, created_at) VALUES
+         ('test-variant-visible', 'cat-p1', 'كبير', 30, 15, 5, 1, now()),
+         ('test-variant-hidden', 'cat-p1', 'مسحوب', 30, 15, 5, 0, now())`
+    )
+    try {
+      const product = await getProductBySlug('cat-p1')
+      expect(product?.variants).toEqual([{ id: 'test-variant-visible', name: 'كبير', price: 30, stock: 5 }])
+    } finally {
+      await pool.query(`DELETE FROM product_variants WHERE id IN ('test-variant-visible', 'test-variant-hidden')`)
+    }
+  })
+
   it('exposes the exact low-stock count on the detail endpoint only when the setting is enabled', async () => {
     const before = await getProductBySlug('cat-p2')
     expect(before?.lowStockRemaining).toBeUndefined()

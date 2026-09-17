@@ -281,6 +281,67 @@ describe('createOrder — stock validation and atomic deduction', () => {
   })
 })
 
+describe('createOrder — variant handling', () => {
+  const VARIANT_ID = 'test-variant-1'
+  const VARIANT_PRICE = 55
+  const VARIANT_STOCK = 10
+
+  async function makeVariant(overrides: Partial<{ price: number, stock: number, available: number }> = {}) {
+    const { price = VARIANT_PRICE, stock = VARIANT_STOCK, available = 1 } = overrides
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, created_at)
+       VALUES ($1, $2, 'أحمر - كبير', $3, 30, $4, $5, now())`,
+      [VARIANT_ID, PRODUCT_ID, price, stock, available]
+    )
+  }
+
+  it('prices and deducts from the variant, not the parent product', async () => {
+    await makeVariant()
+    const parentStockBefore = await getStock()
+
+    const { order } = await createOrder(baseInput({ items: [{ productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 2 }] }), null, nextKey())
+
+    expect(order.items[0].unitPrice).toBe(VARIANT_PRICE)
+    expect(order.subtotal).toBe(VARIANT_PRICE * 2)
+    expect(await getStock()).toBe(parentStockBefore) // المنتج الأب ما اتلمسش
+
+    const { rows } = await pool.query<{ stock: number }>('SELECT stock FROM product_variants WHERE id = $1', [VARIANT_ID])
+    expect(rows[0].stock).toBe(VARIANT_STOCK - 2)
+  })
+
+  it('snapshots the variant name onto the order item', async () => {
+    await makeVariant()
+    const { order } = await createOrder(baseInput({ items: [{ productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 2 }] }), null, nextKey())
+    expect(order.items[0].name).toBe('منتج اختبار - أحمر - كبير')
+  })
+
+  it('rejects insufficient variant stock even when the parent product has plenty', async () => {
+    await makeVariant({ stock: 1 })
+    await expect(createOrder(baseInput({ items: [{ productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 5 }] }), null, nextKey()))
+      .rejects.toMatchObject({ status: 409, code: 'insufficient_stock' })
+  })
+
+  it('rejects an unavailable variant even when the parent product is available', async () => {
+    await makeVariant({ available: 0 })
+    await expect(createOrder(baseInput({ items: [{ productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 1 }] }), null, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'product_unavailable' })
+  })
+
+  it('rejects a variant id that belongs to a different product', async () => {
+    await makeVariant()
+    await expect(createOrder(baseInput({ items: [{ productId: SECOND_PRODUCT_ID, variantId: VARIANT_ID, quantity: 1 }] }), null, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'invalid_items' })
+  })
+
+  it('restores the variant stock (not the parent) when the order is cancelled', async () => {
+    await makeVariant()
+    const { order } = await createOrder(baseInput({ items: [{ productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 3 }] }), null, nextKey())
+    await cancelOrder(order.id)
+    const { rows } = await pool.query<{ stock: number }>('SELECT stock FROM product_variants WHERE id = $1', [VARIANT_ID])
+    expect(rows[0].stock).toBe(VARIANT_STOCK)
+  })
+})
+
 describe('createOrder — discount handling', () => {
   async function makeDiscount(overrides: Partial<{
     type: string, value: number, maxUses: number | null, active: number, minOrder: number,

@@ -68,26 +68,29 @@ export function CartPage() {
 
       <div className="cart-list">
         {detailedItems.map(item => (
-          <article className={`cart-item ${item.blockingIssue ? 'has-issue' : ''}`} key={item.productId}>
+          <article className={`cart-item ${item.blockingIssue ? 'has-issue' : ''}`} key={`${item.productId}::${item.variantId ?? ''}`}>
             <ProductArt product={item.product} height={64} width={64} fontSize={30} radius={16} showBadge={false} showUnavailable={false} />
             <div className="cart-item-content">
-              <strong>{item.product.name}</strong>
-              <span>{item.product.unit} · {formatMoney(item.product.price)}</span>
+              <strong>{item.displayName}</strong>
+              <span>{item.product.unit} · {formatMoney(item.unitPrice)}</span>
               <div className="cart-item-footer">
                 <div className="bordered-stepper">
-                  <button onClick={() => setQuantity(item.productId, item.quantity - 1)} aria-label={ar.common.decreaseQty}>−</button>
+                  <button onClick={() => setQuantity(item.productId, item.quantity - 1, item.variantId)} aria-label={ar.common.decreaseQty}>−</button>
                   <span>{item.quantity}</span>
-                  <button onClick={() => setQuantity(item.productId, item.quantity + 1)} aria-label={ar.common.increaseQty}>+</button>
+                  <button onClick={() => setQuantity(item.productId, item.quantity + 1, item.variantId)} aria-label={ar.common.increaseQty}>+</button>
                 </div>
-                <span className="cart-item-line-total">{formatMoney(item.product.price * item.quantity)}</span>
+                <span className="cart-item-line-total">{formatMoney(item.unitPrice * item.quantity)}</span>
               </div>
               {item.blockingIssue === 'unavailable' && <span className="cart-item-issue">{ar.cart.itemUnavailable}</span>}
-              {item.blockingIssue === 'insufficient_stock' && typeof item.product.lowStockRemaining === 'number' && (
+              {item.blockingIssue === 'insufficient_stock' && !item.variant && typeof item.product.lowStockRemaining === 'number' && (
                 <span className="cart-item-issue">{ar.cart.itemInsufficientStock(item.product.lowStockRemaining)}</span>
+              )}
+              {item.blockingIssue === 'insufficient_stock' && item.variant && (
+                <span className="cart-item-issue">{ar.product.variantOutOfStock}</span>
               )}
               {item.blockingIssue === 'unavailable' && <CartItemAlternatives productId={item.productId} />}
             </div>
-            <button className="delete-button" onClick={() => removeItem(item.productId)} aria-label={ar.common.remove(item.product.name)}>
+            <button className="delete-button" onClick={() => removeItem(item.productId, item.variantId)} aria-label={ar.common.remove(item.displayName)}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13" stroke="#B42318" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           </article>

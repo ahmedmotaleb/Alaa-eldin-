@@ -1,5 +1,6 @@
 import { pool } from '../db.js'
 import { listPublicAlternatives } from './productAlternativeService.js'
+import { listVariantsForProduct } from './productVariantService.js'
 
 export const MAX_LIMIT = 100
 export const DEFAULT_LIMIT = 20
@@ -309,7 +310,7 @@ export async function getProductBySlug(slug: string) {
   const product = rows[0]
   if (!product) return null
 
-  const [{ rows: images }, alternatives, similarRes, frequentlyBoughtTogether] = await Promise.all([
+  const [{ rows: images }, alternatives, similarRes, frequentlyBoughtTogether, allVariants] = await Promise.all([
     pool.query<GalleryImageRow>(
       `SELECT id, image_url as "url", alt_text as "altText", is_primary as "isPrimary", sort_order as "sortOrder"
        FROM product_images WHERE product_id = $1 ORDER BY is_primary DESC, sort_order ASC`,
@@ -317,8 +318,14 @@ export async function getProductBySlug(slug: string) {
     ),
     listPublicAlternatives(product.id),
     listProducts({ category: product.categoryId, limit: SIMILAR_LIMIT + 1 }),
-    getFrequentlyBoughtTogether(product.id)
+    getFrequentlyBoughtTogether(product.id),
+    listVariantsForProduct(product.id)
   ])
+  // متغيرات غير متاحة للأدمن (available=false) ما بتتعرضش للعميل خالص — نفس مبدأ إخفاء
+  // المنتج الأساسي نفسه لو مش متاح، مش عرضه بس مع شارة "غير متوفر".
+  const variants = allVariants.filter(v => v.available).map(v => ({
+    id: v.id, name: v.name, price: v.price, stock: v.stock
+  }))
 
   const similarProducts = similarRes.products.filter(p => p.id !== product.id).slice(0, SIMILAR_LIMIT)
   const stockState = stockStateOf(product.stock, product.alertThreshold)
@@ -347,6 +354,7 @@ export async function getProductBySlug(slug: string) {
     })),
     alternatives,
     similarProducts,
-    frequentlyBoughtTogether
+    frequentlyBoughtTogether,
+    variants
   }
 }

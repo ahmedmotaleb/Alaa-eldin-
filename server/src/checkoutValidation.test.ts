@@ -67,6 +67,35 @@ describe('validateCheckoutInput', () => {
     if (result.ok) expect(result.data.items).toEqual([{ productId: 'p1', quantity: 5 }])
   })
 
+  it('treats two different variants of the same product as separate lines, not merged', () => {
+    const result = validateCheckoutInput({
+      deliverySlot: 'now',
+      deliveryDate: validDate,
+      paymentMethod: 'COD',
+      customer: validCustomer,
+      items: [{ productId: 'p1', variantId: 'v1', quantity: 2 }, { productId: 'p1', variantId: 'v2', quantity: 3 }]
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data.items).toEqual([
+        { productId: 'p1', variantId: 'v1', quantity: 2 },
+        { productId: 'p1', variantId: 'v2', quantity: 3 }
+      ])
+    }
+  })
+
+  it('merges duplicate lines for the exact same product and variant', () => {
+    const result = validateCheckoutInput({
+      deliverySlot: 'now',
+      deliveryDate: validDate,
+      paymentMethod: 'COD',
+      customer: validCustomer,
+      items: [{ productId: 'p1', variantId: 'v1', quantity: 2 }, { productId: 'p1', variantId: 'v1', quantity: 1 }]
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.items).toEqual([{ productId: 'p1', variantId: 'v1', quantity: 3 }])
+  })
+
   // شكل الحقل بس بيتحقق منه هنا (نص مش فاضي) — هل الميعاد موجود فعلاً ومفعّل بيتحقق منه
   // من قاعدة البيانات جوه orderService.createOrder (زي أي تحقق تاني محتاج حالة حالية).
   it('rejects a blank delivery slot', () => {

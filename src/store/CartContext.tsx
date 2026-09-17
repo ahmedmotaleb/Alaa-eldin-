@@ -1,10 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getSettings } from './settingsStore'
-import { api, type ApiDiscount } from '../utils/api'
+import { api, type ApiDiscount, type ApiProductVariant } from '../utils/api'
 import type { CartItem, Product } from '../types/models'
 
 interface DetailedCartItem extends CartItem {
   product: Product
+  // موجودة بس لو العنصر مرتبط بمتغير فعلي لسه متاح — سعرها/مخزونها بيتغلّبوا على المنتج
+  // الأساسي عند الحساب. متغير اتحذف أو بقى غير متاح بيتعامل زي "المنتج نفسه مش متاح".
+  variant?: ApiProductVariant
+  // اسم/سعر العرض الفعليين للصنف — بيراعوا المتغير المختار لو موجود، بدل ما كل مكان
+  // يعرض السلة يعيد نفس منطق "المتغير ولا المنتج الأساسي" بنفسه.
+  displayName: string
+  unitPrice: number
   // العنصر لسه معروض في السلة (يقدر العميل يشوفه/يعدّل كميته/يشيله)، لكنه ما بيتحسبش في
   // الإجمالي ولا ينفع يتم الدفع بيه لحد ما يتحل — إما المنتج بقى غير متوفر خالص، أو
   // الكمية المطلوبة بقت أكتر من المتاح المعروض (لو الإعداد ده مفعّل من الإدارة).
@@ -20,12 +27,18 @@ interface CartContextValue {
   deliveryFee: number
   discount: ApiDiscount | null
   total: number
-  addItem: (productId: string, quantity?: number) => void
-  setQuantity: (productId: string, quantity: number) => void
-  removeItem: (productId: string) => void
+  addItem: (productId: string, quantity?: number, variantId?: string) => void
+  setQuantity: (productId: string, quantity: number, variantId?: string) => void
+  removeItem: (productId: string, variantId?: string) => void
   clearCart: () => void
   applyDiscount: (code: string) => Promise<void>
   removeDiscount: () => void
+}
+
+// نفس الصنف والمنتج بالظبط — بما فيه نفس المتغير تحديداً (أو من غير متغير خالص للاتنين).
+// متغيرين مختلفين لنفس المنتج، أو منتج بمتغير مقابل نفس المنتج من غيره، صفوف منفصلة تماماً.
+function sameLine(item: CartItem, productId: string, variantId?: string): boolean {
+  return item.productId === productId && item.variantId === variantId
 }
 
 const CartContext = createContext<CartContextValue | null>(null)
@@ -43,6 +56,7 @@ function loadInitialCart(): CartItem[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(loadInitialCart)
   const [resolved, setResolved] = useState<Record<string, Product>>({})
+  const [resolvedVariants, setResolvedVariants] = useState<Record<string, ApiProductVariant>>({})
   const [discount, setDiscount] = useState<ApiDiscount | null>(null)
 
   useEffect(() => {
@@ -69,30 +83,57 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true }
   }, [idsKey])
 
+  // نفس المبدأ بالظبط لمتغيرات المنتج المختارة في السلة — سعر/مخزون/توفر المتغير هو
+  // المصدر الحقيقي للصنف ده، مش المنتج الأساسي، لحد ما السيرفر يتحقق منه فعلياً وقت الدفع.
+  const variantIdsKey = [...new Set(items.map(item => item.variantId).filter((id): id is string => !!id))].sort().join(',')
+  useEffect(() => {
+    const ids = variantIdsKey ? variantIdsKey.split(',') : []
+    if (!ids.length) {
+      setResolvedVariants({})
+      return
+    }
+    let cancelled = false
+    api.resolveVariants(ids)
+      .then(({ variants }) => {
+        if (cancelled) return
+        setResolvedVariants(Object.fromEntries(variants.map(v => [v.id, v])))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [variantIdsKey])
+
   const detailedItems = useMemo(() => {
     return items
       .map(item => {
         const product = resolved[item.productId]
         if (!product) return null
+        // العنصر مرتبط بمتغير: لو المتغير مش موجود في نتيجة الحل (اتحذف أو بقى غير متاح)،
+        // الصنف يتعامل زي منتج "غير متوفر" تماماً — مش رجوع صامت لسعر/مخزون المنتج الأساسي.
+        if (item.variantId) {
+          const variant = resolvedVariants[item.variantId]
+          if (!variant) return { ...item, product, displayName: product.name, unitPrice: product.price, blockingIssue: 'unavailable' as const }
+          const blockingIssue: DetailedCartItem['blockingIssue'] = item.quantity > variant.stock ? 'insufficient_stock' : null
+          return { ...item, product, variant, displayName: `${product.name} - ${variant.name}`, unitPrice: variant.price, blockingIssue }
+        }
         const blockingIssue: DetailedCartItem['blockingIssue'] = !product.available
           ? 'unavailable'
           : (typeof product.lowStockRemaining === 'number' && item.quantity > product.lowStockRemaining)
             ? 'insufficient_stock'
             : null
-        return { ...item, product, blockingIssue }
+        return { ...item, product, displayName: product.name, unitPrice: product.price, blockingIssue }
       })
       .filter(Boolean) as DetailedCartItem[]
-  }, [items, resolved])
+  }, [items, resolved, resolvedVariants])
 
   const hasBlockingIssues = detailedItems.some(item => item.blockingIssue !== null)
   // بنود فيها مشكلة (غير متوفر، أو الكمية أكتر من المتاح) ما بتتحسبش في الإجمالي —
   // ما ينفعش نعرض إجمالي بيتضمن حاجة مش هتتشحن فعلياً.
-  const subtotal = detailedItems.reduce((sum, item) => sum + (item.blockingIssue ? 0 : item.product.price * item.quantity), 0)
+  const subtotal = detailedItems.reduce((sum, item) => sum + (item.blockingIssue ? 0 : item.unitPrice * item.quantity), 0)
   // بتتبعت لمعاينة الخصم عشان خصم مقيّد بفئة/منتج معيّن يتحسب بدقة (مش افتراض إن السلة
   // كلها مؤهّلة) — نفس شكل البيانات اللي orderService.createOrder هيتحقق منه فعلياً وقت الدفع.
   const discountCartItems = useMemo(
     () => detailedItems.filter(item => !item.blockingIssue).map(item => ({
-      productId: item.product.id, categoryId: item.product.categoryId, quantity: item.quantity, unitPrice: item.product.price
+      productId: item.product.id, categoryId: item.product.categoryId, quantity: item.quantity, unitPrice: item.unitPrice
     })),
     [detailedItems]
   )
@@ -123,28 +164,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setDiscount(null)
   }
 
-  function addItem(productId: string, quantity = 1) {
+  function addItem(productId: string, quantity = 1, variantId?: string) {
     setItems(current => {
-      const existing = current.find(item => item.productId === productId)
+      const existing = current.find(item => sameLine(item, productId, variantId))
       if (existing) {
         return current.map(item =>
-          item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item
+          sameLine(item, productId, variantId) ? { ...item, quantity: item.quantity + quantity } : item
         )
       }
-      return [...current, { productId, quantity }]
+      return [...current, { productId, variantId, quantity }]
     })
   }
 
-  function setQuantity(productId: string, quantity: number) {
+  function setQuantity(productId: string, quantity: number, variantId?: string) {
     if (quantity <= 0) {
-      removeItem(productId)
+      removeItem(productId, variantId)
       return
     }
-    setItems(current => current.map(item => item.productId === productId ? { ...item, quantity } : item))
+    setItems(current => current.map(item => sameLine(item, productId, variantId) ? { ...item, quantity } : item))
   }
 
-  function removeItem(productId: string) {
-    setItems(current => current.filter(item => item.productId !== productId))
+  function removeItem(productId: string, variantId?: string) {
+    setItems(current => current.filter(item => !sameLine(item, productId, variantId)))
   }
 
   function clearCart() {

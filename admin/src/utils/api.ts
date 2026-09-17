@@ -329,6 +329,31 @@ export interface AdminAlternativeProduct {
   primaryImage?: string
 }
 
+export interface AdminVariant {
+  id: string
+  productId: string
+  name: string
+  sku: string | null
+  barcode: string
+  price: number
+  cost: number
+  stock: number
+  available: boolean
+  sortOrder: number
+  createdAt: string
+}
+
+export interface AdminVariantInput {
+  name: string
+  sku: string | null
+  barcode: string
+  price: number
+  cost: number
+  stock: number
+  available: boolean
+  sortOrder: number
+}
+
 export interface AdminContentPage {
   id: number
   slug: string
@@ -983,6 +1008,14 @@ export const api = {
     }),
   removeProductAlternative: (productId: string, alternativeProductId: string) =>
     request<void>(`/admin/products/${encodeURIComponent(productId)}/alternatives/${encodeURIComponent(alternativeProductId)}`, { method: 'DELETE' }),
+  listProductVariants: (productId: string) =>
+    request<{ variants: AdminVariant[] }>(`/admin/products/${encodeURIComponent(productId)}/variants`),
+  createProductVariant: (productId: string, body: AdminVariantInput) =>
+    request<{ variant: AdminVariant }>(`/admin/products/${encodeURIComponent(productId)}/variants`, { method: 'POST', body: JSON.stringify(body) }),
+  updateProductVariant: (productId: string, variantId: string, body: AdminVariantInput) =>
+    request<{ variant: AdminVariant }>(`/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteProductVariant: (productId: string, variantId: string) =>
+    request<void>(`/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, { method: 'DELETE' }),
   listAuditLogs: (page = 1, limit = 20) =>
     request<{ logs: AdminAuditLog[], page: number, limit: number, total: number, totalPages: number }>(
       `/admin/audit-logs?page=${page}&limit=${limit}`

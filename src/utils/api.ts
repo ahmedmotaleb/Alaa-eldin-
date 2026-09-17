@@ -214,6 +214,14 @@ export interface ApiProductDetail {
   alternatives: ApiAlternativeProduct[]
   similarProducts: ApiProduct[]
   frequentlyBoughtTogether: ApiProduct[]
+  variants: ApiProductVariant[]
+}
+
+export interface ApiProductVariant {
+  id: string
+  name: string
+  price: number
+  stock: number
 }
 
 export type ProductSort = 'popular' | 'price_asc' | 'price_desc' | 'name' | 'newest'
@@ -364,6 +372,8 @@ export const api = {
   // بتُستخدم من السلة (وأي مكان تاني محتاج يتأكد من الحالة الحالية لمنتجات معروفة بالـ id)
   // عشان تاخد السعر/التوفر/الصورة الحاليين من غير ما تحمّل الكتالوج كامل.
   resolveProducts: (ids: string[]) => request<{ products: ApiProduct[] }>('/products/resolve', { method: 'POST', body: JSON.stringify({ ids }) }),
+  resolveVariants: (ids: string[]) =>
+    request<{ variants: (ApiProductVariant & { productId: string })[] }>('/product-variants/resolve', { method: 'POST', body: JSON.stringify({ ids }) }),
   autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),
@@ -380,7 +390,7 @@ export const api = {
     deliveryDate: string
     paymentMethod: string
     customer: { fullName: string, mobile: string, governorate: string, address: string }
-    items: { productId: string, quantity: number }[]
+    items: { productId: string, variantId?: string, quantity: number }[]
     discountCode?: string
     deliveryInstructions?: string
     substitutionPreference?: 'replace_similar' | 'contact_me' | 'remove_item'

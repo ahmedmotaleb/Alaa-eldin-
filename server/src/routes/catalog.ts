@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
 import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, type SortOption } from '../services/catalogService.js'
+import { resolveVariants } from '../services/productVariantService.js'
 import { setShortPublicCache } from '../publicCache.js'
 import { logEvent } from '../logger.js'
 
@@ -78,6 +79,13 @@ catalogRouter.post('/products/resolve', async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown) => typeof id === 'string') : []
   const products = await resolveProducts(ids)
   res.json({ products })
+})
+
+// نفس المبدأ بالظبط بس لمتغيرات المنتج — السلة بتستخدمها لو الصنف مرتبط بمتغير مختار.
+catalogRouter.post('/product-variants/resolve', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown) => typeof id === 'string') : []
+  const variants = await resolveVariants(ids)
+  res.json({ variants: variants.filter(v => v.available).map(v => ({ id: v.id, productId: v.productId, name: v.name, price: v.price, stock: v.stock })) })
 })
 
 // بدائل مشابهة مُدارة يدوياً من الإدارة — لعرض اقتراحات فقط، مفيش أي استبدال تلقائي

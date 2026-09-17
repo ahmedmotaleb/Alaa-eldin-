@@ -83,7 +83,9 @@ export const ar = {
     viewImageLarger: 'اعرض الصورة بحجم أكبر',
     imageNumber: (n: number) => `صورة ${n}`,
     addToCart: 'أضف إلى السلة',
-    updateCart: 'تحديث السلة'
+    updateCart: 'تحديث السلة',
+    chooseOption: 'اختر النوع',
+    variantOutOfStock: 'نفد المخزون'
   },
 
   search: {

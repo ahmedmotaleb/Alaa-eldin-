@@ -185,6 +185,7 @@ export function CheckoutPage() {
     // بيبعت هنا بس المنتج والكمية، ومفيش أي قيمة فلوس بنثق فيها من الطرف ده.
     const items = detailedItems.map(item => ({
       productId: item.product.id,
+      variantId: item.variantId,
       quantity: item.quantity
     }))
 

@@ -12,6 +12,7 @@ import {
   lockProductsForOrder, validateItemAgainstProduct, deductStockForOrder,
   restoreStockForCancelledOrder
 } from './inventoryService.js'
+import { lockVariantForOrder, deductVariantStock, type LockedVariant } from './productVariantService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen } from './deliveryService.js'
@@ -196,10 +197,38 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
 
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined
 
+      // المنتجات الأب دايماً بتتقفل (لازمة للفئة categoryId ولتأكيد إن المنتج نفسه لسه
+      // موجود)، حتى لو الصنف بيشاور لمتغير — سعر/توفر/مخزون الصنف في الحالة دي بييجي من
+      // المتغير نفسه، مش من المنتج الأب.
       const productIds = input.items.map(i => i.productId)
       const products = await lockProductsForOrder(client, productIds)
 
+      const variantIds = input.items.map(i => i.variantId).filter((id): id is string => !!id)
+      const variants = new Map<string, LockedVariant>()
+      for (const variantId of new Set(variantIds)) {
+        const variant = await lockVariantForOrder(client, variantId)
+        if (variant) variants.set(variantId, variant)
+      }
+
       for (const item of input.items) {
+        if (item.variantId) {
+          const variant = variants.get(item.variantId)
+          if (variant && variant.productId !== item.productId) {
+            throw new OrderError(400, 'invalid_items', { productId: item.productId })
+          }
+          const error = validateItemAgainstProduct(item.productId, item.quantity, variant)
+          if (error) {
+            if (error.code === 'insufficient_stock') {
+              logWarn('stock_insufficient', { productId: error.productId, variantId: item.variantId, available: error.available, requested: error.requested })
+            }
+            throw new OrderError(error.code === 'insufficient_stock' ? 409 : 400, error.code, {
+              productId: error.productId,
+              ...(error.available !== undefined ? { available: error.available } : {}),
+              ...(error.requested !== undefined ? { requested: error.requested } : {})
+            })
+          }
+          continue
+        }
         const error = validateItemAgainstProduct(item.productId, item.quantity, products.get(item.productId))
         if (error) {
           if (error.code === 'insufficient_stock') {
@@ -215,14 +244,17 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
 
       const lineItems = input.items.map(item => {
         const product = products.get(item.productId)!
+        const variant = item.variantId ? variants.get(item.variantId) : undefined
         return {
           productId: item.productId,
+          variantId: item.variantId ?? null,
+          variantName: variant?.name ?? null,
           categoryId: product.categoryId,
-          name: product.name,
+          name: variant ? `${product.name} - ${variant.name}` : product.name,
           unit: product.unit,
-          unitPrice: product.price,
+          unitPrice: variant ? variant.price : product.price,
           quantity: item.quantity,
-          lineTotal: computeLineTotal(product.price, item.quantity)
+          lineTotal: computeLineTotal(variant ? variant.price : product.price, item.quantity)
         }
       })
 
@@ -304,14 +336,21 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
 
       for (const item of lineItems) {
         await client.query(
-          'INSERT INTO order_items (order_id, product_id, name, unit, unit_price, quantity, line_total) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [id, item.productId, item.name, item.unit, item.unitPrice, item.quantity, item.lineTotal]
+          `INSERT INTO order_items (order_id, product_id, name, unit, unit_price, quantity, line_total, variant_id, variant_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [id, item.productId, item.name, item.unit, item.unitPrice, item.quantity, item.lineTotal, item.variantId, item.variantName]
         )
       }
 
       await recordOrderStatusChange(client, { orderId: id, fromStatus: null, toStatus: 'placed', source: 'system' })
 
       for (const item of input.items) {
+        if (item.variantId) {
+          const variant = variants.get(item.variantId)!
+          await deductVariantStock(client, variant, item.quantity, id)
+          logEvent('stock_deducted', { orderId: id, productId: item.productId, variantId: item.variantId, quantity: item.quantity })
+          continue
+        }
         await deductStockForOrder(client, item.productId, item.quantity, id)
         logEvent('stock_deducted', { orderId: id, productId: item.productId, quantity: item.quantity })
       }

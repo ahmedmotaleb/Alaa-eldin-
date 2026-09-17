@@ -8,6 +8,7 @@ import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../s
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, type ImportConfirmRow } from '../services/productImportService.js'
 import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
+import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
@@ -283,6 +284,84 @@ adminProductsRouter.post('/:id/generate-sku', requirePermission('products.edit')
     entityId: String(req.params.id), newValues: { sku: result.sku }
   })
   res.json(result)
+})
+
+function validateVariantBody(body: unknown): VariantInput | null {
+  const b = body as Record<string, unknown>
+  if (
+    typeof b?.name !== 'string' || !b.name.trim() ||
+    typeof b?.price !== 'number' || b.price < 0 ||
+    typeof b?.available !== 'boolean'
+  ) return null
+
+  return {
+    name: b.name.trim(),
+    sku: typeof b.sku === 'string' && b.sku.trim() ? b.sku.trim().toUpperCase() : null,
+    barcode: typeof b.barcode === 'string' ? b.barcode.trim() : '',
+    price: b.price as number,
+    cost: typeof b.cost === 'number' && b.cost >= 0 ? b.cost : 0,
+    stock: typeof b.stock === 'number' && b.stock >= 0 ? Math.round(b.stock) : 0,
+    available: b.available as boolean,
+    sortOrder: typeof b.sortOrder === 'number' ? Math.round(b.sortOrder) : 0
+  }
+}
+
+adminProductsRouter.get('/:id/variants', requirePermission('products.view'), async (req, res) => {
+  res.json({ variants: await listVariantsForProduct(String(req.params.id)) })
+})
+
+adminProductsRouter.post('/:id/variants', requirePermission('products.edit'), async (req, res) => {
+  const data = validateVariantBody(req.body)
+  if (!data) { res.status(400).json({ error: 'missing_fields' }); return }
+
+  try {
+    const variant = await createVariant(String(req.params.id), data)
+    await recordAuditLog({
+      adminUserId: req.user!.id, action: 'product_variant_created', entityType: 'product_variant',
+      entityId: variant.id, newValues: variant
+    })
+    res.status(201).json({ variant })
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'sku_taken' })
+      return
+    }
+    throw err
+  }
+})
+
+adminProductsRouter.patch('/:id/variants/:variantId', requirePermission('products.edit'), async (req, res) => {
+  const data = validateVariantBody(req.body)
+  if (!data) { res.status(400).json({ error: 'missing_fields' }); return }
+
+  try {
+    const variant = await updateVariant(String(req.params.variantId), data)
+    if (!variant) { res.status(404).json({ error: 'variant_not_found' }); return }
+    await recordAuditLog({
+      adminUserId: req.user!.id, action: 'product_variant_updated', entityType: 'product_variant',
+      entityId: variant.id, newValues: variant
+    })
+    res.json({ variant })
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'sku_taken' })
+      return
+    }
+    throw err
+  }
+})
+
+adminProductsRouter.delete('/:id/variants/:variantId', requirePermission('products.edit'), async (req, res) => {
+  const result = await deleteVariant(String(req.params.variantId))
+  if (!result.ok) {
+    res.status(result.error === 'variant_not_found' ? 404 : 409).json({ error: result.error })
+    return
+  }
+  await recordAuditLog({
+    adminUserId: req.user!.id, action: 'product_variant_deleted', entityType: 'product_variant',
+    entityId: String(req.params.variantId)
+  })
+  res.status(204).end()
 })
 
 // بحث بالباركود لصفحة "مسح الباركود" — تطابق تام (مسح فعلي أو إدخال يدوي/جهاز قارئ).

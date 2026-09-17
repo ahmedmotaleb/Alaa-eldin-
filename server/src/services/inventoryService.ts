@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg'
 import { getSellableStockMap, consumeBatchesFefo, restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
+import { restoreVariantStock } from './productVariantService.js'
 
 export interface LockedProduct {
   id: string
@@ -64,7 +65,7 @@ export async function lockProductsForOrder(client: PoolClient, productIds: strin
 export function validateItemAgainstProduct(
   productId: string,
   quantity: number,
-  product: LockedProduct | undefined
+  product: { available: boolean, stock: number } | undefined
 ): InventoryErrorDetail | null {
   if (!Number.isInteger(quantity) || quantity <= 0 || quantity > MAX_QUANTITY_PER_ITEM) {
     return { code: 'invalid_quantity', productId }
@@ -140,8 +141,11 @@ export async function restoreStockForCancelledOrder(client: PoolClient, orderId:
   // صنف اتاعتمد استبداله فعلاً (substitution_status='approved') رصيده الأصلي اتسترجع
   // بالفعل وقت اعتماد الاستبدال — استرجاعه تاني هنا هيبقى تكرار خاطئ. اللي فعلاً لسه
   // "مُلتزم بيه" في هذه الحالة هو المنتج البديل (اللي اتخصم فعلاً)، مش الأصلي.
-  const { rows: items } = await client.query<{ productId: string, quantity: number, substitutionStatus: string, replacementProductId: string | null, replacementQuantity: number | null }>(
-    `SELECT product_id as "productId", quantity, substitution_status as "substitutionStatus",
+  const { rows: items } = await client.query<{
+    productId: string, variantId: string | null, quantity: number, substitutionStatus: string,
+    replacementProductId: string | null, replacementQuantity: number | null
+  }>(
+    `SELECT product_id as "productId", variant_id as "variantId", quantity, substitution_status as "substitutionStatus",
             replacement_product_id as "replacementProductId", replacement_quantity as "replacementQuantity"
      FROM order_items WHERE order_id = $1`,
     [orderId]
@@ -149,7 +153,11 @@ export async function restoreStockForCancelledOrder(client: PoolClient, orderId:
 
   for (const item of items) {
     if (item.substitutionStatus === 'approved' && item.replacementProductId && item.replacementQuantity) {
+      // الاستبدال (Phase 4) منتجات أساسية بس حالياً، مفيش متغيرات فيه — البديل دايماً منتج
+      // أب، مش متغير.
       await restoreProductStock(client, item.replacementProductId, item.replacementQuantity, orderId, 'cancel_restore', `إلغاء طلب ${orderId}`)
+    } else if (item.variantId) {
+      await restoreVariantStock(client, item.variantId, item.quantity, orderId, 'cancel_restore')
     } else {
       await restoreProductStock(client, item.productId, item.quantity, orderId, 'cancel_restore', `إلغاء طلب ${orderId}`)
     }

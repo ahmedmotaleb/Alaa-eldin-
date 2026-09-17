@@ -21,6 +21,7 @@ export function ProductPage() {
   const { items, addItem } = useCart()
   const flash = useToast()
   const [product, setProduct] = useState<ApiProductDetail | null | undefined>(undefined)
+  const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(undefined)
 
   // صفحة المنتج بتجيب تفاصيله (وصف، معرض صور، بدائل، منتجات مشابهة) من GET /api/products/:slug
   // مباشرة — من غير ما تحتاج الكتالوج كامل محمّل مقدماً.
@@ -42,6 +43,12 @@ export function ProductPage() {
   useEffect(() => {
     if (product) recordProductView(product.id)
   }, [product?.id])
+
+  // كل منتج جديد يبدأ بدون اختيار متغير محفوظ من صفحة سابقة — الاختيار الافتراضي (أول متغير
+  // متاح) بيتحسب في الأسفل بدل ما ننتظر تشغيل useEffect، عشان ما يظهرش وميض "غير متوفر" لحظي.
+  useEffect(() => {
+    setSelectedVariantId(undefined)
+  }, [slug])
 
   useEffect(() => {
     if (!product || !slug) return
@@ -69,7 +76,13 @@ export function ProductPage() {
   if (product === null) return <Navigate to="/" replace />
   if (product === undefined) return null
 
-  const quantity = items.find(item => item.productId === product.id)?.quantity ?? 0
+  const hasVariants = product.variants.length > 0
+  const activeVariantId = selectedVariantId ?? (hasVariants ? product.variants[0].id : undefined)
+  const selectedVariant = product.variants.find(v => v.id === activeVariantId)
+  const variantOutOfStock = hasVariants && selectedVariant !== undefined && selectedVariant.stock <= 0
+  const effectiveAvailable = product.available && (!hasVariants || (selectedVariant !== undefined && !variantOutOfStock))
+  const effectivePrice = selectedVariant ? selectedVariant.price : product.price
+  const quantity = items.find(item => item.productId === product.id && item.variantId === activeVariantId)?.quantity ?? 0
   const primaryImage = product.gallery.find(img => img.isPrimary) ?? product.gallery[0]
   const artProduct = {
     id: product.id,
@@ -87,8 +100,8 @@ export function ProductPage() {
   }
 
   function addOne() {
-    if (!product!.available) return
-    addItem(product!.id)
+    if (!effectiveAvailable) return
+    addItem(product!.id, 1, activeVariantId)
     flash(ar.common.addedToCart)
   }
 
@@ -106,20 +119,40 @@ export function ProductPage() {
             <h1>{product.name}</h1>
             <FavoriteButton productId={product.id} className="product-detail-favorite" />
           </div>
-          <span className={`stock-badge ${product.available ? (product.stockState === 'low_stock' ? 'low-stock' : 'available') : 'unavailable'}`}>
-            {product.available
-              ? (product.stockState === 'low_stock'
-                ? (typeof product.lowStockRemaining === 'number' ? ar.product.lowStockRemaining(product.lowStockRemaining) : ar.product.lowStock)
-                : ar.product.available)
-              : ar.product.unavailable}
+          <span className={`stock-badge ${effectiveAvailable ? (!hasVariants && product.stockState === 'low_stock' ? 'low-stock' : 'available') : 'unavailable'}`}>
+            {!product.available
+              ? ar.product.unavailable
+              : hasVariants
+                ? (variantOutOfStock ? ar.product.variantOutOfStock : ar.product.available)
+                : (product.stockState === 'low_stock'
+                  ? (typeof product.lowStockRemaining === 'number' ? ar.product.lowStockRemaining(product.lowStockRemaining) : ar.product.lowStock)
+                  : ar.product.available)}
           </span>
         </div>
         <div className="product-detail-meta">{ar.product.pricePerUnit(product.unit, product.categoryName)}</div>
 
         <div className="product-detail-price">
-          <span>{formatMoney(product.price)}</span>
-          {product.oldPrice && <s>{formatMoney(product.oldPrice)}</s>}
+          <span>{formatMoney(effectivePrice)}</span>
+          {!selectedVariant && product.oldPrice && <s>{formatMoney(product.oldPrice)}</s>}
         </div>
+
+        {hasVariants && (
+          <div className="product-detail-variants" role="radiogroup" aria-label={ar.product.chooseOption}>
+            {product.variants.map(variant => (
+              <button
+                key={variant.id}
+                type="button"
+                role="radio"
+                aria-checked={variant.id === activeVariantId}
+                className={`variant-chip ${variant.id === activeVariantId ? 'selected' : ''} ${variant.stock <= 0 ? 'out-of-stock' : ''}`}
+                onClick={() => setSelectedVariantId(variant.id)}
+              >
+                {variant.name}
+                {variant.stock <= 0 && <span className="variant-chip-note"> ({ar.product.variantOutOfStock})</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="product-detail-description">{product.description}</div>
 
@@ -174,10 +207,10 @@ export function ProductPage() {
       </div>
 
       <StickyActionBar
-        label={product.available ? (quantity > 0 ? ar.product.updateCart : ar.product.addToCart) : ar.product.unavailable}
-        meta={product.available ? formatMoney(product.price * Math.max(1, quantity)) : undefined}
+        label={effectiveAvailable ? (quantity > 0 ? ar.product.updateCart : ar.product.addToCart) : ar.product.unavailable}
+        meta={effectiveAvailable ? formatMoney(effectivePrice * Math.max(1, quantity)) : undefined}
         onClick={addOne}
-        disabled={!product.available}
+        disabled={!effectiveAvailable}
       />
     </div>
   )

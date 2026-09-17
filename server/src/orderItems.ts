@@ -20,6 +20,8 @@ export interface OrderItemDTO {
   replacementQuantity: number | null
   replacementUnitPrice: number | null
   replacementLineTotal: number | null
+  variantId: string | null
+  variantName: string | null
 }
 
 // استعلام واحد لكل عناصر أي عدد من الطلبات، بدل استعلام منفصل لكل طلب (N+1). بيُستخدم
@@ -35,7 +37,8 @@ export async function fetchItemsForOrders(orderIds: string[]): Promise<Map<strin
             picked_status as "pickedStatus", picked_note as "pickedNote", substitution_status as "substitutionStatus",
             replacement_product_id as "replacementProductId", NULLIF(replacement_name, '') as "replacementName",
             NULLIF(replacement_unit, '') as "replacementUnit", replacement_quantity as "replacementQuantity",
-            replacement_unit_price as "replacementUnitPrice", replacement_line_total as "replacementLineTotal"
+            replacement_unit_price as "replacementUnitPrice", replacement_line_total as "replacementLineTotal",
+            variant_id as "variantId", variant_name as "variantName"
      FROM order_items WHERE order_id = ANY($1::text[])`,
     [orderIds]
   )

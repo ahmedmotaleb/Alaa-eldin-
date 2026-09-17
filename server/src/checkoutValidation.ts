@@ -6,6 +6,7 @@ export const PAYMENT_METHOD_COD = 'COD'
 
 export interface CheckoutItemInput {
   productId: string
+  variantId?: string
   quantity: number
 }
 
@@ -107,11 +108,13 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
 
   if (
     !Array.isArray(b.items) || b.items.length === 0 || b.items.length > MAX_ITEM_LINES ||
-    !b.items.every(item =>
-      item && typeof item === 'object' &&
-      typeof (item as Record<string, unknown>).productId === 'string' && (item as Record<string, unknown>).productId &&
-      typeof (item as Record<string, unknown>).quantity === 'number'
-    )
+    !b.items.every(item => {
+      const i = item as Record<string, unknown>
+      return item && typeof item === 'object' &&
+        typeof i.productId === 'string' && i.productId &&
+        typeof i.quantity === 'number' &&
+        (i.variantId === undefined || (typeof i.variantId === 'string' && i.variantId))
+    })
   ) {
     return { ok: false, error: 'invalid_items' }
   }
@@ -135,10 +138,15 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'invalid_substitution_preference' }
   }
 
-  // يدمج أي عناصر بنفس productId مكرّرة (بدل ما يرفض الطلب أو يقفل نفس المنتج مرتين).
-  const mergedItems = new Map<string, number>()
+  // يدمج أي عناصر بنفس productId (ونفس variantId تحديداً — متغيرين مختلفين لنفس المنتج
+  // صنفين منفصلين تماماً، مش نفس السطر) مكرّرة، بدل ما يرفض الطلب أو يقفل نفس الصنف مرتين.
+  const mergedItems = new Map<string, CheckoutItemInput>()
   for (const item of b.items as CheckoutItemInput[]) {
-    mergedItems.set(item.productId, (mergedItems.get(item.productId) ?? 0) + item.quantity)
+    const key = `${item.productId}::${item.variantId ?? ''}`
+    const existing = mergedItems.get(key)
+    mergedItems.set(key, existing
+      ? { ...existing, quantity: existing.quantity + item.quantity }
+      : { productId: item.productId, variantId: item.variantId, quantity: item.quantity })
   }
 
   return {
@@ -153,7 +161,7 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
         governorate: rawGovernorate,
         address: rawAddress
       },
-      items: Array.from(mergedItems, ([productId, quantity]) => ({ productId, quantity })),
+      items: Array.from(mergedItems.values()),
       discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined,
       deliveryInstructions: rawDeliveryInstructions || undefined,
       substitutionPreference: substitutionPreference as SubstitutionPreference

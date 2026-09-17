@@ -6,7 +6,9 @@ import { ar } from '../i18n/ar'
 export function AddControl({ product, size = 'md' }: { product: Product, size?: 'sm' | 'md' }) {
   const { items, addItem, setQuantity } = useCart()
   const flash = useToast()
-  const quantity = items.find(item => item.productId === product.id)?.quantity ?? 0
+  // الإضافة السريعة من كارت المنتج دايماً بتضيف المنتج الأساسي من غير متغير — لو المنتج له
+  // متغيرات مختارة من صفحة التفاصيل، دي بنود منفصلة في السلة ومالهاش تأثير على العداد هنا.
+  const quantity = items.find(item => item.productId === product.id && item.variantId === undefined)?.quantity ?? 0
 
   if (quantity > 0) {
     return (
