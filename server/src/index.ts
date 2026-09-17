@@ -62,6 +62,8 @@ import { deliveryRouter } from './routes/delivery.js'
 import { adminDeliveryRouter } from './routes/adminDelivery.js'
 import { seoRouter } from './routes/seo.js'
 import { loyaltyRouter } from './routes/loyalty.js'
+import { cartSnapshotRouter } from './routes/cartSnapshot.js'
+import { backInStockRouter } from './routes/backInStock.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
@@ -165,6 +167,8 @@ app.use('/api/account/addresses', addressesRouter)
 app.use('/api/account/favorites', favoritesRouter)
 app.use('/api/account/shopping-lists', shoppingListsRouter)
 app.use('/api/loyalty', loyaltyRouter)
+app.use('/api/account/cart-snapshot', cartSnapshotRouter)
+app.use('/api/products/notify-when-available', backInStockRouter)
 app.use('/api/notifications', notificationsRouter)
 app.use('/api/account/frequently-purchased', frequentlyPurchasedRouter)
 app.use('/api/delivery', deliveryRouter)

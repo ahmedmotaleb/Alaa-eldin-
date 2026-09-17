@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg'
 import { getSellableStockMap, consumeBatchesFefo, restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
 import { restoreVariantStock } from './productVariantService.js'
+import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export interface LockedProduct {
   id: string
@@ -127,6 +128,8 @@ async function restoreProductStock(
     [orderId, productId]
   )
   if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
+
+  await notifyBackInStockIfNeeded(client, productId)
 }
 
 // استرجاع مخزون طلب مُلغى — idempotent: لو فيه حركة cancel_restore مسجّلة لنفس الطلب

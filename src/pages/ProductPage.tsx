@@ -5,6 +5,7 @@ import { ProductGallery } from '../components/ProductGallery'
 import { FavoriteButton } from '../components/FavoriteButton'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { useCart } from '../store/CartContext'
+import { useAuth } from '../store/AuthContext'
 import { useToast } from '../store/ToastContext'
 import { setPageTitle } from '../store/pageTitleStore'
 import { setPageMeta, setProductJsonLd, clearProductJsonLd } from '../utils/pageMeta'
@@ -19,9 +20,12 @@ export function ProductPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { items, addItem } = useCart()
+  const { user } = useAuth()
   const flash = useToast()
   const [product, setProduct] = useState<ApiProductDetail | null | undefined>(undefined)
   const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>(undefined)
+  const [notifySubscribed, setNotifySubscribed] = useState(false)
+  const [notifyBusy, setNotifyBusy] = useState(false)
 
   // صفحة المنتج بتجيب تفاصيله (وصف، معرض صور، بدائل، منتجات مشابهة) من GET /api/products/:slug
   // مباشرة — من غير ما تحتاج الكتالوج كامل محمّل مقدماً.
@@ -43,6 +47,36 @@ export function ProductPage() {
   useEffect(() => {
     if (product) recordProductView(product.id)
   }, [product?.id])
+
+  // زرار "أعلمني عند التوفر" بيتاح بس للعميل المسجّل دخول (نفس مبدأ عدم طلب أي إذن/تسجيل
+  // بيانات من زائر ما عندناش وسيلة نوصله بيها لاحقاً أصلاً) ولو المنتج فعلاً نافد المخزون.
+  useEffect(() => {
+    if (!user || !product || product.stockState !== 'out_of_stock') { setNotifySubscribed(false); return }
+    let cancelled = false
+    api.getBackInStockStatus(product.id)
+      .then(({ subscribed }) => { if (!cancelled) setNotifySubscribed(subscribed) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [user, product?.id, product?.stockState])
+
+  async function toggleNotifyWhenAvailable() {
+    if (!product || notifyBusy) return
+    setNotifyBusy(true)
+    try {
+      if (notifySubscribed) {
+        await api.unsubscribeFromBackInStock(product.id)
+        setNotifySubscribed(false)
+      } else {
+        await api.subscribeToBackInStock(product.id)
+        setNotifySubscribed(true)
+        flash(ar.product.notifyWhenAvailableConfirmed)
+      }
+    } catch {
+      flash(ar.errors.generic)
+    } finally {
+      setNotifyBusy(false)
+    }
+  }
 
   // كل منتج جديد يبدأ بدون اختيار متغير محفوظ من صفحة سابقة — الاختيار الافتراضي (أول متغير
   // متاح) بيتحسب في الأسفل بدل ما ننتظر تشغيل useEffect، عشان ما يظهرش وميض "غير متوفر" لحظي.
@@ -135,6 +169,12 @@ export function ProductPage() {
           <span>{formatMoney(effectivePrice)}</span>
           {!selectedVariant && product.oldPrice && <s>{formatMoney(product.oldPrice)}</s>}
         </div>
+
+        {!hasVariants && product.stockState === 'out_of_stock' && user && (
+          <button type="button" className="notify-when-available-btn" disabled={notifyBusy} onClick={toggleNotifyWhenAvailable}>
+            {notifySubscribed ? ar.product.notifyWhenAvailableSubscribed : ar.product.notifyWhenAvailable}
+          </button>
+        )}
 
         {hasVariants && (
           <div className="product-detail-variants" role="radiogroup" aria-label={ar.product.chooseOption}>

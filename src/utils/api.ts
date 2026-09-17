@@ -397,6 +397,15 @@ export const api = {
   resolveProducts: (ids: string[]) => request<{ products: ApiProduct[] }>('/products/resolve', { method: 'POST', body: JSON.stringify({ ids }) }),
   resolveVariants: (ids: string[]) =>
     request<{ variants: (ApiProductVariant & { productId: string })[] }>('/product-variants/resolve', { method: 'POST', body: JSON.stringify({ ids }) }),
+  syncCartSnapshot: (items: { productId: string, variantId?: string, quantity: number }[]) =>
+    request<void>('/account/cart-snapshot', { method: 'PUT', body: JSON.stringify({ items }) }),
+  clearCartSnapshot: () => request<void>('/account/cart-snapshot', { method: 'DELETE' }),
+  getBackInStockStatus: (productId: string) =>
+    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}`),
+  subscribeToBackInStock: (productId: string) =>
+    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}`, { method: 'POST' }),
+  unsubscribeFromBackInStock: (productId: string) =>
+    request<void>(`/products/notify-when-available/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings }>('/settings'),

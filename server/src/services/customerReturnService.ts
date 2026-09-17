@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
+import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export type CustomerReturnStatus = 'requested' | 'approved' | 'received' | 'refunded' | 'rejected' | 'cancelled'
 export type ReturnItemCondition = 'return_to_stock' | 'damaged' | 'expired' | 'discard'
@@ -204,6 +205,7 @@ export async function updateCustomerReturnStatus(
            VALUES ($1, 'return', $2, $3, $4, $5, $6)`,
           [item.productId, item.quantity, `مرتجع عميل ${id}`, new Date().toISOString(), stockRows[0].stock - item.quantity, stockRows[0].stock]
         )
+        await notifyBackInStockIfNeeded(client, item.productId)
       }
     }
 

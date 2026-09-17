@@ -51,6 +51,7 @@ type BusinessEvent =
   | 'integration_test_connection'
   | 'startup_config_summary' | 'startup_config_partial_warning'
   | 'substitution_proposed' | 'substitution_approved' | 'substitution_rejected'
+  | 'back_in_stock_subscribed'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

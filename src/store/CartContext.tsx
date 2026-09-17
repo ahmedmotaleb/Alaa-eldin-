@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getSettings } from './settingsStore'
+import { useAuth } from './AuthContext'
 import { api, type ApiDiscount, type ApiProductVariant } from '../utils/api'
 import type { CartItem, Product } from '../types/models'
 
@@ -54,6 +55,7 @@ function loadInitialCart(): CartItem[] {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [items, setItems] = useState<CartItem[]>(loadInitialCart)
   const [resolved, setResolved] = useState<Record<string, Product>>({})
   const [resolvedVariants, setResolvedVariants] = useState<Record<string, ApiProductVariant>>({})
@@ -62,6 +64,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
   }, [items])
+
+  // مرآة بسيطة للسلة على السيرفر — للعميل المسجّل دخول بس (الزائر مفيش أي وسيلة نوصله
+  // بيها لاحقاً أصلاً)، بغرض تذكير السلة المهجورة فقط، مش أي قرار سعر/مخزون. مؤجّلة (debounce)
+  // عشان ما نبعتش طلب مع كل تغيير كمية فوري.
+  useEffect(() => {
+    if (!user) return
+    const timeout = setTimeout(() => {
+      if (items.length === 0) {
+        api.clearCartSnapshot().catch(() => {})
+        return
+      }
+      api.syncCartSnapshot(items.map(i => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity }))).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(timeout)
+  }, [items, user])
 
   // السلة بتاخد بيانات المنتجات الحالية (سعر/صورة/توفر/وحدة) من نقطة الحل الجماعي
   // POST /api/products/resolve بدل ما تحمّل الكتالوج كامل — بيتعاد الطلب لما تتغير مجموعة

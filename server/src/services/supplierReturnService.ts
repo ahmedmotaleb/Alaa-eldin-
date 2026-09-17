@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
 import { writeOffStockWithClient } from './stockWriteOffService.js'
 import { restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
+import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export type SupplierReturnStatus = 'draft' | 'approved' | 'sent' | 'completed' | 'cancelled'
 
@@ -165,6 +166,7 @@ export async function updateSupplierReturnStatus(
         if (!item.stockMovementId) continue
         await client.query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.quantity, item.productId])
         await restoreBatchConsumptionsForMovement(client, item.stockMovementId)
+        await notifyBackInStockIfNeeded(client, item.productId)
       }
     }
 

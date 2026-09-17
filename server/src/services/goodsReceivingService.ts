@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { withTransaction, pool } from '../db.js'
 import type { PurchaseOrderStatus } from './purchaseOrderService.js'
+import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export interface ReceiveItemInput {
   productId: string
@@ -137,6 +138,7 @@ export async function receiveGoodsForPurchaseOrder(
            VALUES ($1, 'restock', $2, $3, $4, $5, $6)`,
           [item.productId, item.quantity, `استلام بضاعة — إيصال ${receiptNumber} (أمر شراء ${po.poNumber})`, new Date().toISOString(), newStock - item.quantity, newStock]
         )
+        await notifyBackInStockIfNeeded(client, item.productId)
 
         await client.query(
           `INSERT INTO product_cost_history (id, product_id, supplier_id, unit_cost, source_type, source_id)

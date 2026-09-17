@@ -246,6 +246,8 @@ h1, h2, h3, p { margin: 0; }
 .product-detail-price { display: flex; align-items: baseline; gap: 9px; }
 .product-detail-price span:first-child { font-weight: 900; font-size: 28px; color: var(--green-dark); }
 .product-detail-price s { font-weight: 500; font-size: 15px; color: #a3ada6; }
+.notify-when-available-btn { border: 1.5px solid var(--green-dark); background: #fff; color: var(--green-dark); border-radius: 12px; padding: 10px 14px; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+.notify-when-available-btn:disabled { opacity: .6; cursor: default; }
 .product-detail-variants { display: flex; flex-wrap: wrap; gap: 8px; }
 .variant-chip { border: 1.5px solid var(--border); background: #fff; border-radius: 12px; padding: 8px 14px; font-weight: 700; font-size: 13px; color: #2c3a31; cursor: pointer; }
 .variant-chip.selected { border-color: var(--green-dark); background: #eaf7ee; color: var(--green-dark); }

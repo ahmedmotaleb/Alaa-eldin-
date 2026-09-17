@@ -85,7 +85,10 @@ export const ar = {
     addToCart: 'أضف إلى السلة',
     updateCart: 'تحديث السلة',
     chooseOption: 'اختر النوع',
-    variantOutOfStock: 'نفد المخزون'
+    variantOutOfStock: 'نفد المخزون',
+    notifyWhenAvailable: 'أعلمني عند التوفر',
+    notifyWhenAvailableSubscribed: 'هنبلغك عند التوفر ✓ (إلغاء)',
+    notifyWhenAvailableConfirmed: 'تمام، هنبلغك أول ما يتوفر'
   },
 
   search: {

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pool, withTransaction } from '../db.js'
 import { requireAdmin } from '../auth.js'
+import { notifyBackInStockIfNeeded } from '../services/backInStockService.js'
 
 export const adminStockMovementsRouter = Router()
 adminStockMovementsRouter.use(requireAdmin)
@@ -107,6 +108,7 @@ adminStockMovementsRouter.post('/', async (req, res) => {
       [productId, type, quantityChange, typeof note === 'string' ? note.trim() : '', new Date().toISOString()]
     )
     await client.query('UPDATE products SET stock = $1 WHERE id = $2', [newStock, productId])
+    await notifyBackInStockIfNeeded(client, productId)
     return rows[0].id
   })
 
