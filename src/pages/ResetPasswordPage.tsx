@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, api } from '../utils/api'
 import { ar } from '../i18n/ar'
+import { PasswordField } from '../components/PasswordField'
 
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -26,7 +27,8 @@ export function ResetPasswordPage() {
     )
   }
 
-  async function submit() {
+  async function submit(e: FormEvent) {
+    e.preventDefault()
     setError('')
     if (password !== confirmPassword) {
       setError(ar.auth.passwordsDontMatch)
@@ -45,23 +47,22 @@ export function ResetPasswordPage() {
 
   return (
     <div className="auth-page">
-      <div className="form-card">
+      <form className="form-card" onSubmit={submit}>
         <h2>{ar.auth.resetPasswordTitle}</h2>
         {success ? (
           <p>{ar.auth.resetPasswordSuccess}</p>
         ) : (
           <>
-            <label>{ar.auth.newPasswordLabel}
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
-            </label>
-            <label>{ar.auth.confirmPasswordLabel}
-              <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
-            </label>
+            <PasswordField
+              label={ar.auth.newPasswordLabel} value={password} onChange={setPassword}
+              autoComplete="new-password" helpText={ar.auth.passwordRequirementsHint}
+            />
+            <PasswordField label={ar.auth.confirmPasswordLabel} value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
             {error && <div className="form-error-banner">{error}</div>}
-            <button className="primary-button" disabled={submitting} onClick={submit}>{ar.auth.resetPasswordSubmit}</button>
+            <button type="submit" className="primary-button" disabled={submitting}>{ar.auth.resetPasswordSubmit}</button>
           </>
         )}
-      </div>
+      </form>
       {success && (
         <div className="auth-switch">
           <Link to="/login">{ar.auth.backToLogin}</Link>

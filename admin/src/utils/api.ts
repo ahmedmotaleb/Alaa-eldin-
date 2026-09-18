@@ -1233,12 +1233,33 @@ export interface TwoFactorStatus {
   remainingBackupCodes: number
 }
 
+export interface SecurityStatus {
+  https: { detected: boolean }
+  headers: {
+    contentSecurityPolicy: boolean
+    strictTransportSecurity: boolean
+    xContentTypeOptions: boolean
+    frameAncestorsDenied: boolean
+    referrerPolicy: boolean
+  }
+  twoFactor: { enabled: boolean, remainingBackupCodes: number }
+  captcha: { configured: boolean }
+  passwordPolicy: {
+    minLength: number
+    requiresLetter: boolean
+    requiresDigit: boolean
+    sameForAdminAndCustomer: boolean
+  }
+  dependencySecurity: { status: string, note: string }
+}
+
 export const api = {
   login: (body: { email: string, password: string }) =>
     request<{ user: AdminUser } | { requiresTwoFactor: true, pendingToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   verifyTwoFactorLogin: (body: { pendingToken: string, code: string }) =>
     request<{ user: AdminUser }>('/auth/2fa/verify-login', { method: 'POST', body: JSON.stringify(body) }),
   twoFactorStatus: () => request<TwoFactorStatus>('/auth/2fa/status'),
+  getSecurityStatus: () => request<SecurityStatus>('/admin/security-status'),
   startTwoFactorSetup: () => request<TwoFactorSetup>('/auth/2fa/setup', { method: 'POST' }),
   confirmTwoFactorSetup: (token: string) =>
     request<{ backupCodes: string[] }>('/auth/2fa/confirm', { method: 'POST', body: JSON.stringify({ token }) }),

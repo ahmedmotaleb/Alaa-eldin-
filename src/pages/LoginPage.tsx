@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { ApiError } from '../utils/api'
 import { ar } from '../i18n/ar'
+import { PasswordField } from '../components/PasswordField'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -13,7 +14,8 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  async function submit() {
+  async function submit(e: FormEvent) {
+    e.preventDefault()
     setSubmitting(true)
     setError('')
     try {
@@ -29,18 +31,16 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <div className="form-card">
+      <form className="form-card" onSubmit={submit}>
         <h2>{ar.auth.loginTitle}</h2>
         <label>{ar.auth.emailLabel}
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={ar.auth.emailPlaceholder} />
+          <input type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={ar.auth.emailPlaceholder} />
         </label>
-        <label>{ar.auth.passwordLabel}
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
-        </label>
+        <PasswordField label={ar.auth.passwordLabel} value={password} onChange={setPassword} autoComplete="current-password" />
         {error && <div className="form-error-banner">{error}</div>}
-        <button className="primary-button" disabled={submitting} onClick={submit}>{ar.auth.loginSubmit}</button>
+        <button type="submit" className="primary-button" disabled={submitting}>{ar.auth.loginSubmit}</button>
         <Link to="/forgot-password" className="auth-forgot-link">{ar.auth.forgotPasswordLink}</Link>
-      </div>
+      </form>
       <div className="auth-switch">
         <span>{ar.auth.noAccountYet}</span>
         <Link to="/register" state={location.state}>{ar.auth.createAccountLink}</Link>

@@ -428,7 +428,8 @@ export const ar = {
     newPasswordLabel: 'كلمة المرور الجديدة',
     resetPasswordSubmit: 'حفظ كلمة المرور الجديدة',
     resetPasswordSuccess: 'تم تغيير كلمة المرور بنجاح، تقدر تسجّل دخولك دلوقتي.',
-    resetPasswordInvalidLink: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد.'
+    resetPasswordInvalidLink: 'رابط الاستعادة غير صالح أو منتهي — اطلب رابط جديد.',
+    passwordRequirementsHint: '8 أحرف على الأقل، تحتوي على حرف ورقم على الأقل'
   },
 
   onboarding: {

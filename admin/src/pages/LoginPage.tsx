@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { ApiError } from '../utils/api'
+import { PasswordField } from '../components/PasswordField'
 
 export function LoginPage() {
   const { login, verifyTwoFactorLogin } = useAuth()
@@ -13,7 +14,8 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  async function submit() {
+  async function submit(e: FormEvent) {
+    e.preventDefault()
     setSubmitting(true)
     setError('')
     try {
@@ -34,7 +36,8 @@ export function LoginPage() {
     }
   }
 
-  async function submitTwoFactor() {
+  async function submitTwoFactor(e: FormEvent) {
+    e.preventDefault()
     setSubmitting(true)
     setError('')
     try {
@@ -62,16 +65,18 @@ export function LoginPage() {
   if (pendingToken) {
     return (
       <div className="admin-login-page">
-        <div className="admin-login-card">
+        <form className="admin-login-card" onSubmit={submitTwoFactor}>
           <div className="admin-login-brand">
             <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="علاء الدين" />
             <h1>التحقق بخطوتين</h1>
             <p>ادخل الكود من تطبيق المصادقة، أو استخدم كود احتياطي</p>
           </div>
-          <label>الكود
+          <label htmlFor="admin-2fa-code">الكود
             <input
+              id="admin-2fa-code"
               type="text"
               inputMode="numeric"
+              autoComplete="one-time-code"
               autoFocus
               value={code}
               onChange={e => setCode(e.target.value.trim())}
@@ -79,31 +84,29 @@ export function LoginPage() {
             />
           </label>
           {error && <div className="admin-login-error">{error}</div>}
-          <button className="admin-login-submit" disabled={submitting || !code} onClick={submitTwoFactor}>تأكيد</button>
-        </div>
+          <button type="submit" className="admin-login-submit" disabled={submitting || !code}>تأكيد</button>
+        </form>
       </div>
     )
   }
 
   return (
     <div className="admin-login-page">
-      <div className="admin-login-card">
+      <form className="admin-login-card" onSubmit={submit}>
         <div className="admin-login-brand">
           <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="علاء الدين" />
           <h1>لوحة تحكم علاء الدين</h1>
           <p>تسجيل الدخول لإدارة المتجر</p>
         </div>
-        <label>البريد الإلكتروني
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@example.com" />
+        <label htmlFor="admin-login-email">البريد الإلكتروني
+          <input id="admin-login-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@example.com" />
         </label>
-        <label>كلمة المرور
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
-        </label>
+        <PasswordField label="كلمة المرور" value={password} onChange={setPassword} autoComplete="current-password" />
         {error && <div className="admin-login-error">{error}</div>}
-        <button className="admin-login-submit" disabled={submitting} onClick={submit}>تسجيل الدخول</button>
+        <button type="submit" className="admin-login-submit" disabled={submitting}>تسجيل الدخول</button>
         <a className="admin-login-forgot" href="/forgot-password">نسيت كلمة المرور؟</a>
         <p className="admin-login-note">هذا الحساب يجب أن يكون مسجّلاً كعميل أولاً ثم مرقّى لصلاحية مدير عبر: npm run make-admin --prefix server -- email</p>
-      </div>
+      </form>
     </div>
   )
 }

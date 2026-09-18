@@ -1,0 +1,41 @@
+title = "gitleaks config — Alaa Eldin"
+
+# نبني فوق قواعد gitleaks الافتراضية (مفاتيح AWS/Google/Stripe عامة، مفاتيح خاصة PEM،
+# JWT، إلخ) ونضيف قواعد خاصة بمتغيرات البيئة المستخدمة فعلياً في هذا المشروع.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "ملفات آمنة معروفة: أمثلة بدون قيم حقيقية، أو مخرجات بناء/تبعيات"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)dist/''',
+  '''(^|/)node_modules/''',
+]
+
+# التوكنات دي عالية العشوائية وبدون بادئة مميزة كفاية لقواعد gitleaks الافتراضية —
+# القواعد دي بتتحقق تحديداً من شكل "الاسم = القيمة" زي ما بيظهر فعلياً في .env حقيقي.
+[[rules]]
+id = "whatsapp-access-token"
+description = "WhatsApp Cloud API access token"
+regex = '''WHATSAPP_ACCESS_TOKEN\s*=\s*['"]?(EAA[A-Za-z0-9]{20,})['"]?'''
+tags = ["whatsapp", "token"]
+
+[[rules]]
+id = "vapid-private-key"
+description = "Web Push VAPID private key assignment"
+regex = '''VAPID_PRIVATE_KEY\s*=\s*['"]?([A-Za-z0-9_\-]{40,})['"]?'''
+tags = ["vapid", "key"]
+
+[[rules]]
+id = "cloudinary-api-secret"
+description = "Cloudinary API secret assignment"
+regex = '''CLOUDINARY_API_SECRET\s*=\s*['"]?([A-Za-z0-9_\-]{15,})['"]?'''
+tags = ["cloudinary", "secret"]
+
+[[rules]]
+id = "session-ip-hash-salt"
+description = "Session IP hash salt assignment (should never be a real committed value)"
+regex = '''SESSION_IP_HASH_SALT\s*=\s*['"]?([A-Za-z0-9_\-]{16,})['"]?'''
+tags = ["session", "salt"]

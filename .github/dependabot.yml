@@ -1,0 +1,100 @@
+version: 2
+
+updates:
+  # واجهة المتجر (الجذر) — package.json الرئيسي
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      patch-and-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      security-updates:
+        applies-to: security-updates
+        update-types:
+          - patch
+          - minor
+          - major
+    # ترقيات النسخ الرئيسية (major) لازم تتراجع يدوياً — مش هتتضم لمجموعة تلقائية،
+    # وبتفضل PR منفصل واضح لكل حزمة عشان تتراجع بعناية قبل الدمج.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # السيرفر (Express + Postgres)
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - server
+    commit-message:
+      prefix: "chore(server-deps)"
+    groups:
+      patch-and-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      security-updates:
+        applies-to: security-updates
+        update-types:
+          - patch
+          - minor
+          - major
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # لوحة تحكم الإدارة
+  - package-ecosystem: npm
+    directory: /admin
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - admin
+    commit-message:
+      prefix: "chore(admin-deps)"
+    groups:
+      patch-and-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      security-updates:
+        applies-to: security-updates
+        update-types:
+          - patch
+          - minor
+          - major
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # تحديثات GitHub Actions المستخدمة في ci.yml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci-deps)"

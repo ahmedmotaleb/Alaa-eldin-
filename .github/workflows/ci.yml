@@ -29,21 +29,71 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/alaa_eldin_test
 
     steps:
+      # fetch-depth: 0 لازم عشان فحص الأسرار (الخطوة التالية) يقدر يفحص تاريخ الـ git
+      # كامل، مش بس آخر commit.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
+      # ============ فحص الأسرار (قبل أي تثبيت تبعيات — أسرع فشل ممكن) ============
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # فحص إلزامي (بيوقف الـ CI) على محتوى المستودع الحالي (working tree) — أي سر
+      # موجود فعلياً في الملفات المتتبّعة الآن، سواء كان جديد أو قديم، لازم يوقف البناء.
+      - name: Secret scan — current repository content (blocking)
+        run: gitleaks detect --source . --no-git --redact -v --config .gitleaks.toml
+
+      # فحص تقريري فقط (مش بيوقف الـ CI) على تاريخ git الكامل — عشان يلقط أسرار
+      # اتشالت من الملفات الحالية بس لسه موجودة في commits قديمة. النتيجة بتتسجل في
+      # ملخص الـ job كتقرير، والتصحيح (تدوير أي سر حقيقي) قرار بشري لاحق.
+      - name: Secret scan — full git history (report only, non-blocking)
+        if: always()
+        run: |
+          gitleaks detect --source . --redact -v --config .gitleaks.toml --exit-code 0 \
+            --report-format json --report-path gitleaks-history-report.json
+          echo "## Gitleaks — full history scan (report only)" >> "$GITHUB_STEP_SUMMARY"
+          COUNT=$(python3 -c "import json;print(len(json.load(open('gitleaks-history-report.json'))))" 2>/dev/null || echo "?")
+          echo "Findings: $COUNT (see uploaded artifact for details; secret values are redacted)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload gitleaks history report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-history-report
+          path: gitleaks-history-report.json
+          retention-days: 30
+
+      # ============ تثبيت التبعيات + تدقيق أمني لكل جزء ============
       - name: Install storefront dependencies
         run: npm ci
+
+      - name: Audit storefront dependencies
+        run: npm audit --audit-level=high
 
       - name: Install server dependencies
         run: npm ci
         working-directory: server
 
+      - name: Audit server dependencies
+        run: npm audit --audit-level=high
+        working-directory: server
+
       - name: Install admin dependencies
         run: npm ci
+        working-directory: admin
+
+      - name: Audit admin dependencies
+        run: npm audit --audit-level=high
         working-directory: admin
 
       - name: Apply database migrations

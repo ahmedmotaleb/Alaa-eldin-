@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../utils/api'
 import { ar } from '../i18n/ar'
@@ -8,7 +8,8 @@ export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  async function submit() {
+  async function submit(e: FormEvent) {
+    e.preventDefault()
     if (!email.trim()) return
     setSubmitting(true)
     try {
@@ -23,7 +24,7 @@ export function ForgotPasswordPage() {
 
   return (
     <div className="auth-page">
-      <div className="form-card">
+      <form className="form-card" onSubmit={submit}>
         <h2>{ar.auth.forgotPasswordTitle}</h2>
         {sent ? (
           <p>{ar.auth.forgotPasswordSent}</p>
@@ -31,12 +32,12 @@ export function ForgotPasswordPage() {
           <>
             <p>{ar.auth.forgotPasswordNote}</p>
             <label>{ar.auth.emailLabel}
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={ar.auth.emailPlaceholder} />
+              <input type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={ar.auth.emailPlaceholder} />
             </label>
-            <button className="primary-button" disabled={submitting} onClick={submit}>{ar.auth.forgotPasswordSubmit}</button>
+            <button type="submit" className="primary-button" disabled={submitting}>{ar.auth.forgotPasswordSubmit}</button>
           </>
         )}
-      </div>
+      </form>
       <div className="auth-switch">
         <Link to="/login">{ar.auth.backToLogin}</Link>
       </div>
