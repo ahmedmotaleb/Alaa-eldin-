@@ -3,7 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { NAV } from '../nav'
 import { useAuth } from '../store/AuthContext'
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean
+  // بينادى لما المستخدم يختار عنصر تنقل فعلي (مش مجرد فتح/قفل مجموعة) — على الموبايل ده
+  // بيقفل الـ drawer تلقائياً؛ على الديسكتوب مفيش تأثير حقيقي (الشريط الجانبي ظاهر دايماً).
+  onNavigate: () => void
+}
+
+export function Sidebar({ open, onNavigate }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
@@ -14,13 +21,19 @@ export function Sidebar() {
     setOpenGroups(current => ({ ...current, [groupId]: !current[groupId] }))
   }
 
+  function goTo(path: string) {
+    navigate(path)
+    onNavigate()
+  }
+
   async function handleLogout() {
     await logout()
+    onNavigate()
     navigate('/login', { replace: true })
   }
 
   return (
-    <aside className="sidebar">
+    <aside id="admin-sidebar" className={`sidebar ${open ? 'sidebar-open' : ''}`}>
       <div className="sidebar-brand">
         <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" />
         <div>
@@ -43,7 +56,7 @@ export function Sidebar() {
             <div className="sidebar-group" key={group.id}>
               <button
                 className={`sidebar-group-btn ${isActiveGroup && group.children.length === 0 ? 'active' : ''}`}
-                onClick={() => visibleChildren.length ? toggle(group.id) : navigate(group.id === 'home' ? '/' : `/${group.id}`)}
+                onClick={() => visibleChildren.length ? toggle(group.id) : goTo(group.id === 'home' ? '/' : `/${group.id}`)}
               >
                 <span className="sidebar-group-icon">{group.icon}</span>
                 <span className="sidebar-group-label">{group.label}</span>
@@ -58,7 +71,7 @@ export function Sidebar() {
                       <button
                         key={child.id}
                         className={`sidebar-child ${isActive ? 'active' : ''}`}
-                        onClick={() => navigate(path)}
+                        onClick={() => goTo(path)}
                       >
                         <span>{child.label}</span>
                       </button>

@@ -21,6 +21,10 @@ button { cursor: pointer; }
 img { display: block; max-width: 100%; }
 h1, h2, h3, p { margin: 0; }
 
+/* شبكة أمان أخيرة ضد أي overflow أفقي غير متوقع (مش بديل عن تصحيح السبب الحقيقي فوق —
+   الشريط الجانبي على الموبايل off-canvas والفورمات بتاعة عمود واحد أصلاً تحت). */
+html, body, #root { max-width: 100%; overflow-x: hidden; }
+
 @keyframes fadein { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
 @keyframes drawerin { 0% { opacity: 0; transform: translateX(24px); } 100% { opacity: 1; transform: translateX(0); } }
 
@@ -32,6 +36,13 @@ h1, h2, h3, p { margin: 0; }
   display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; align-self: flex-start;
   height: 100vh; overflow: auto;
 }
+
+/* زر فتح/قفل القائمة على الموبايل — متخفي تماماً على الديسكتوب (الشريط الجانبي ظاهر دايماً هناك). */
+.admin-menu-button {
+  display: none; border: 1px solid var(--border); background: #fff; border-radius: 11px;
+  width: 38px; height: 38px; font-size: 17px; flex: none; line-height: 1;
+}
+.sidebar-backdrop { display: none; }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
 .sidebar-brand img { width: 40px; height: 40px; object-fit: contain; background: #fff; border-radius: 11px; padding: 2px; }
 .sidebar-brand-name { font-weight: 900; font-size: 14.5px; }
@@ -244,6 +255,46 @@ h1, h2, h3, p { margin: 0; }
 
 @media (max-width: 860px) {
   .admin-layout-with-side.has-side { grid-template-columns: 1fr; }
+}
+
+/* ==================== موبايل/تابلت (≤768px) ==================== */
+@media (max-width: 768px) {
+  /* الشريط الجانبي بيبقى drawer عائم فوق الصفحة (off-canvas) بدل ما ياخد عرض حقيقي من
+     الـ flex layout — كده .admin-main بياخد عرض الشاشة كامل تلقائياً من غير أي تعديل
+     تاني مطلوب على .admin-shell نفسه (position:fixed بيشيله من تدفق الـ flex أصلاً). */
+  .sidebar {
+    position: fixed; top: 0; right: 0; bottom: 0; height: 100dvh; width: min(84vw, 300px);
+    z-index: 70; transform: translateX(100%); transition: transform .25s ease; box-shadow: -10px 0 30px rgba(0,0,0,.25);
+  }
+  .sidebar.sidebar-open { transform: translateX(0); }
+
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; height: 100dvh; background: rgba(8,18,12,.5); z-index: 65;
+  }
+
+  .admin-menu-button { display: inline-flex; align-items: center; justify-content: center; }
+
+  .admin-header { padding: 12px 14px; gap: 10px; }
+  .admin-title { font-size: 16.5px; }
+  .admin-content { padding: 14px 14px 32px; }
+
+  /* عمود واحد بس على الموبايل — الحد الأدنى 320px بتاع الديسكتوب هو سبب انسكاب الفورمات
+     برة الشاشة على شاشات أضيق من كده (زي 360px بعد الـ padding). */
+  .admin-form-grid { grid-template-columns: 1fr; }
+  .admin-row-2 { grid-template-columns: 1fr; }
+  .admin-drawer-actions-grid, .admin-drawer-footer-actions { grid-template-columns: 1fr 1fr; }
+
+  /* عناصر flex/grid كتير عندها نص بيتقطع بـ ellipsis (زي أسماء المنتجات/العملاء) — من
+     غير min-width:0 هنا كانت بتفرض عرض أكبر من المتاح على أب الـ flex/grid وتتسبب في
+     overflow أفقي على الصفحة كلها بدل ما تتقطع بصريًا جوه حدودها. */
+  .admin-stat-card, .admin-side-card, .admin-form-card, .admin-category-card, .admin-segment-card,
+  .admin-alert-shortcut, .admin-alert-shortcut-body, .admin-cell-product, .admin-side-row-info {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
 }
 
 /* صفحة الطباعة — مستقلة تماماً عن شكل لوحة التحكم، مفيش شريط جانبي ولا هيدر هنا أصلاً. */

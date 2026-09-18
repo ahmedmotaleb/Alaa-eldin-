@@ -30,7 +30,7 @@ export function NotificationCenterPage() {
   return (
     <div className="admin-table-card">
       <div className="admin-table-scroll">
-        <div style={{ minWidth: 480 }}>
+        <div>
           {alerts.map(alert => {
             const tint = ALERT_SEVERITY_TINT[alert.severity]
             return (

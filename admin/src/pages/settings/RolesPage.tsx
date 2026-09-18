@@ -54,7 +54,7 @@ export function RolesPage() {
   if (!roles) return null
 
   return (
-    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+    <div className="admin-form-grid">
       {roles.map(role => (
         <div key={role.id} className="admin-table-card" style={{ padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

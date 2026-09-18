@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { useRequireAdmin } from '../hooks/useRequireAdmin'
 import { api } from '../utils/api'
@@ -21,8 +21,10 @@ export interface LayoutContext {
 export function AdminLayout() {
   const { user, loading } = useRequireAdmin()
   const navigate = useNavigate()
+  const location = useLocation()
   const [header, setHeader] = useState<HeaderConfig>({ crumb: '', title: '' })
   const [alertsCount, setAlertsCount] = useState(0)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -35,13 +37,46 @@ export function AdminLayout() {
     return () => { cancelled = true; clearInterval(interval) }
   }, [user])
 
+  // أي تنقل لصفحة تانية (سواء من الشريط الجانبي أو أي رابط تاني) لازم يقفل الـ drawer على
+  // الموبايل تلقائياً — احتياط إضافي فوق onNavigate بتاع Sidebar نفسه.
+  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+
+  // قفل تمرير الصفحة اللي وراء الـ drawer وهو مفتوح، وإرجاعه لطبيعته لما يتقفل أو الصفحة تتغير.
+  useEffect(() => {
+    if (!drawerOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [drawerOpen])
+
+  // زر Escape بيقفل الـ drawer، بس وهو مفتوح فعلاً.
+  useEffect(() => {
+    if (!drawerOpen) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [drawerOpen])
+
   if (loading || !user) return null
 
   return (
     <div className="admin-shell">
-      <Sidebar />
+      <Sidebar open={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
+      {drawerOpen && <div className="sidebar-backdrop" onClick={() => setDrawerOpen(false)} />}
       <main className="admin-main">
         <header className="admin-header">
+          <button
+            type="button"
+            className="admin-menu-button"
+            aria-label={drawerOpen ? 'إغلاق القائمة' : 'فتح القائمة'}
+            aria-expanded={drawerOpen}
+            aria-controls="admin-sidebar"
+            onClick={() => setDrawerOpen(current => !current)}
+          >
+            ☰
+          </button>
           <div style={{ minWidth: 0 }}>
             <div className="admin-crumb">{header.crumb}</div>
             <div className="admin-title">{header.title}</div>
