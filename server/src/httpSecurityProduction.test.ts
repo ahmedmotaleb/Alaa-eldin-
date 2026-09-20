@@ -5,6 +5,31 @@
 // إن db.ts يعمل process.exit(1) بسبب غياب رابط قاعدة البيانات.
 import { afterAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// اختبارات الـ SPA fallback تحت محتاجة dist/index.html وadmin/dist/index.html موجودين
+// فعلياً على القرص (نفس المسارات اللي app.ts بيحسبها) — في CI، اختبارات السيرفر بتشتغل
+// قبل خطوتي بناء المتجر واللوحة في الـ pipeline، فمفيش ضمان إن الملفين دول موجودين وقت
+// تشغيل الاختبار ده. بننشئ نسخة placeholder بس لو مش موجودين أصلاً (وبنمسحها تاني في
+// afterAll)، عشان الاختبار يفضل مستقل عن ترتيب باقي خطوات الـ pipeline ومايعتمدش على أثر
+// جانبي من بناء سابق حصل بالصدفة في نفس البيئة.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const clientDir = path.join(__dirname, '..', '..', 'dist')
+const adminDistDir = path.join(__dirname, '..', '..', 'admin', 'dist')
+const createdPlaceholderFiles: string[] = []
+const createdPlaceholderDirs: string[] = []
+
+for (const dir of [clientDir, adminDistDir]) {
+  const indexPath = path.join(dir, 'index.html')
+  if (!fs.existsSync(indexPath)) {
+    if (!fs.existsSync(dir)) createdPlaceholderDirs.push(dir)
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(indexPath, '<!doctype html><html><body>test placeholder</body></html>')
+    createdPlaceholderFiles.push(indexPath)
+  }
+}
 
 process.env.NODE_ENV = 'production'
 const { app } = await import('./app.js')
@@ -12,6 +37,12 @@ const { pool } = await import('./db.js')
 
 afterAll(async () => {
   await pool.end()
+  for (const p of createdPlaceholderFiles) fs.rmSync(p, { force: true })
+  // بنمسح المجلد نفسه بس لو إحنا اللي أنشأناه من الصفر (مش موجود قبل كده) وفضل فاضي —
+  // عشان محدش يمسح مجلد بناء حقيقي كان موجود مسبقاً بالصدفة.
+  for (const dir of createdPlaceholderDirs) {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir)
+  }
 })
 
 describe('CSRF/Origin protection in production mode', () => {
