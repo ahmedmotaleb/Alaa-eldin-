@@ -81,6 +81,9 @@ export function ConfirmationPage() {
         {order.discountCode && (
           <div className="invoice-line"><span>{ar.cart.discountApplied(order.discountCode)}</span><span>-{formatMoney(order.discountAmount)}</span></div>
         )}
+        {order.loyaltyPointsRedeemed > 0 && (
+          <div className="invoice-line"><span>{ar.receipt.loyaltyDiscountLabel}</span><span>-{formatMoney(order.loyaltyDiscountAmount)}</span></div>
+        )}
         <div className="invoice-line"><span>{ar.confirmation.delivery}</span><span>{order.deliveryFee ? formatMoney(order.deliveryFee) : ar.cart.free}</span></div>
         <div className="invoice-line invoice-total"><span>{ar.confirmation.totalCash}</span><span>{formatMoney(order.total)}</span></div>
       </div>

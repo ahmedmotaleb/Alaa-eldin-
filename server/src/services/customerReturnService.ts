@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
+import type { PoolClient } from 'pg'
 import { pool, withTransaction } from '../db.js'
 import { notifyBackInStockIfNeeded } from './backInStockService.js'
+import { restoreRedeemedPointsForOrder, reverseEarnedPointsForOrder } from './loyaltyService.js'
 
 export type CustomerReturnStatus = 'requested' | 'approved' | 'received' | 'refunded' | 'rejected' | 'cancelled'
 export type ReturnItemCondition = 'return_to_stock' | 'damaged' | 'expired' | 'discard'
@@ -210,7 +212,43 @@ export async function updateCustomerReturnStatus(
     }
 
     await client.query('UPDATE customer_returns SET status = $2, updated_at = now() WHERE id = $1', [id, toStatus])
+
+    // "refunded" هي اللحظة الوحيدة اللي ممكن تعني إن الطلب "اتلغى فعلياً" بعد التسليم من
+    // منظور الولاء — لو الطلب بقى مُرجَّع بالكامل (كل بند فيه اتغطّى برضه بمرتجعات غير
+    // مرفوضة/ملغاة)، بنرجّع أي نقاط اتستخدمت فيه ونلغي أي نقاط اتكسبت منه. مرتجع جزئي (بعض
+    // البنود بس) مش بيتعامل معاه هنا عمداً — راجع التعليق فوق reverseEarnedPointsForOrder
+    // وreverseLoyaltyForFullyReturnedOrder تحت لتفاصيل هذا القيد.
+    if (toStatus === 'refunded') {
+      const { rows: returnRows } = await client.query<{ orderId: string }>('SELECT order_id as "orderId" FROM customer_returns WHERE id = $1', [id])
+      const orderId = returnRows[0]?.orderId
+      if (orderId && await isOrderFullyReturned(client, orderId)) {
+        await restoreRedeemedPointsForOrder(client, orderId)
+        await reverseEarnedPointsForOrder(client, orderId)
+      }
+    }
+
     const { rows } = await client.query<CustomerReturnRow>(`${RETURN_SELECT} WHERE cr.id = $1`, [id])
     return rows[0]
   })
+}
+
+// بيتأكد إن كل بنود الطلب (مش بس بند المرتجع الحالي) اتغطّت بالكامل بمرتجعات فعلية (غير
+// مرفوضة/ملغاة) — ده الفرق بين "مرتجع كامل" و"مرتجع جزئي". مرتجع جزئي متعمّد إنه ما يتعاملش
+// معاه هنا (لا استرجاع نقاط ولا إلغاء اكتساب جزئي) — حساب تناسبي دقيق يحتاج ربط كل نقطة
+// مكتسبة/مستخدمة بسطر بعينه في الطلب، وده تعقيد وخطر عدم دقة برة نطاق هذه الدفعة؛ التوثيق
+// ده صريح بدل اختراع حساب تناسبي غير موثوق.
+async function isOrderFullyReturned(client: PoolClient, orderId: string): Promise<boolean> {
+  const { rows } = await client.query<{ fullyReturned: boolean }>(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM order_items oi
+       WHERE oi.order_id = $1
+         AND oi.quantity > COALESCE((
+           SELECT SUM(cri.quantity) FROM customer_return_items cri
+           JOIN customer_returns cr ON cr.id = cri.customer_return_id
+           WHERE cri.order_item_id = oi.id AND cr.status NOT IN ('rejected', 'cancelled')
+         ), 0)
+     ) as "fullyReturned"`,
+    [orderId]
+  )
+  return !!rows[0]?.fullyReturned
 }

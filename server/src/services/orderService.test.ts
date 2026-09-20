@@ -3,9 +3,10 @@
 // مُقلَّدة. هي الطريقة الوحيدة اللي تثبت فعلياً إن قفل الصفوف (FOR UPDATE) وحماية السباق
 // على الخصومات والمخزون بيشتغلوا صح تحت تزامن حقيقي.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { pool } from '../db.js'
+import { pool, withTransaction } from '../db.js'
 import { createOrder, cancelOrder, getOrderByNumberForGuestToken } from './orderService.js'
-import { listOrderStatusHistory } from './orderStatusHistoryService.js'
+import { listOrderStatusHistory, recordOrderStatusChange } from './orderStatusHistoryService.js'
+import { adjustLoyaltyPointsManually, getLoyaltyBalance } from './loyaltyService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
 import { todayInCairo, addCalendarDays } from '../cairoDate.js'
 
@@ -453,6 +454,148 @@ describe('createOrder — discount handling', () => {
     await makeDiscount({ type: 'fixed', value: 0, freeDelivery: 1 })
     const { order } = await createOrder(baseInput({ discountCode: 'TESTCODE' }), null, nextKey())
     expect(order.deliveryFee).toBe(0)
+  })
+})
+
+describe('createOrder — loyalty points redemption', () => {
+  it('rejects any redemption attempt for a guest checkout (no account, no balance)', async () => {
+    await expect(createOrder(baseInput({ loyaltyPointsRedeemed: 500 }), null, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'loyalty_disabled' })
+  })
+
+  it('rejects a redemption that exceeds the real server-side balance, even if the client believes it has more', async () => {
+    await adjustLoyaltyPointsManually(USER_ID, 100, 'تعبئة', USER_ID)
+    await expect(createOrder(baseInput({ loyaltyPointsRedeemed: 150 }), USER_ID, nextKey()))
+      .rejects.toMatchObject({ status: 409, code: 'loyalty_balance_changed', details: { balance: 100 } })
+    // الرفض ما بيسيبش أي أثر جانبي — لا طلب اتعمل ولا نقاط اتخصمت.
+    expect(await getLoyaltyBalance(USER_ID)).toBe(100)
+    const { rows } = await pool.query('SELECT count(*) as n FROM orders')
+    expect(Number(rows[0].n)).toBe(0)
+  })
+
+  it('rejects a redemption below the configured minimum redeemable points', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 100 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    await expect(createOrder(baseInput({ loyaltyPointsRedeemed: 50 }), USER_ID, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'below_minimum_redeem_points' })
+  })
+
+  it('rejects a redemption exceeding the maximum percentage of the eligible order value', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_max_redemption_percent = 20, loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 10000, 'تعبئة', USER_ID)
+    // فرعي 190، أقصى نسبة 20% -> أقصى خصم 38 ج.م -> بقيمة نقطة 0.05 يبقى أقصى 760 نقطة.
+    await expect(createOrder(baseInput({ loyaltyPointsRedeemed: 900 }), USER_ID, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'redemption_exceeds_limit', details: { maxAllowedPoints: 760 } })
+  })
+
+  it('rejects a redemption when the eligible order subtotal is below the configured minimum for redemption', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_order_for_redemption = 1000, loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    await expect(createOrder(baseInput({ loyaltyPointsRedeemed: 100 }), USER_ID, nextKey()))
+      .rejects.toMatchObject({ status: 400, code: 'order_below_minimum_for_redemption' })
+  })
+
+  it('computes the correct final total and persists the exact redemption snapshot on the order', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    // فرعي 190 (5×38)، استخدام 200 نقطة بقيمة 0.05 -> خصم 10 ج.م -> الإجمالي = 190-10+30(توصيل) = 210.
+    const { order } = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, nextKey())
+    expect(order.loyaltyPointsRedeemed).toBe(200)
+    expect(order.loyaltyDiscountAmount).toBe(10)
+    expect(order.total).toBe(210)
+    expect(await getLoyaltyBalance(USER_ID)).toBe(300)
+  })
+
+  it('a historical order snapshot is never recalculated after a later settings change', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    const { order } = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, nextKey())
+
+    await pool.query('UPDATE store_settings SET loyalty_point_value_egp = 5 WHERE id = 1') // تغيير جذري لاحقاً
+    const { rows } = await pool.query('SELECT loyalty_points_redeemed as "pointsRedeemed", loyalty_discount_amount as "discountAmount" FROM orders WHERE id = $1', [order.id])
+    expect(rows[0]).toEqual({ pointsRedeemed: 200, discountAmount: 10 })
+  })
+
+  it('computes earning-after-redemption on the eligible amount only (subtotal minus promo minus loyalty discount, excluding delivery)', async () => {
+    await pool.query(`
+      UPDATE store_settings SET loyalty_min_redeem_points = 1, loyalty_max_redemption_percent = 100, free_shipping_threshold = 500
+      WHERE id = 1
+    `)
+    await pool.query(
+      `INSERT INTO discounts (code, type, value, min_order, used_count, active, created_at)
+       VALUES ('EARNTEST', 'fixed', 50, 0, 0, 1, now())`
+    )
+    await adjustLoyaltyPointsManually(USER_ID, 2000, 'تعبئة', USER_ID)
+
+    // فرعي 500 (20×25)، خصم كوبون 50 ج.م، استخدام 2000 نقطة بقيمة 0.05 = خصم 100 ج.م.
+    // الأساس المؤهّل للاكتساب = 500 - 50 - 100 = 350 ج.م -> بمعدّل 0.1 نقطة/ج.م = 35 نقطة.
+    const { order } = await createOrder(
+      baseInput({
+        items: [{ productId: SECOND_PRODUCT_ID, quantity: 20 }],
+        discountCode: 'EARNTEST',
+        loyaltyPointsRedeemed: 2000
+      }),
+      USER_ID, nextKey()
+    )
+    expect(order.subtotal).toBe(500)
+    expect(order.discountAmount).toBe(50)
+    expect(order.loyaltyDiscountAmount).toBe(100)
+    expect(order.deliveryFee).toBe(0) // فوق حد الشحن المجاني
+    expect(order.total).toBe(350)
+    expect(await getLoyaltyBalance(USER_ID)).toBe(0) // 2000 - 2000 المستخدمة
+
+    await withTransaction(async client => {
+      await client.query('UPDATE orders SET status = $1 WHERE id = $2', ['delivered', order.id])
+      await recordOrderStatusChange(client, { orderId: order.id, fromStatus: 'placed', toStatus: 'delivered', source: 'system' })
+    })
+    expect(await getLoyaltyBalance(USER_ID)).toBe(35) // نقاط الاكتساب فقط، مفيش نقاط عن الجزء المدفوع بالنقاط
+  })
+
+  it('idempotency retry with the same key does not double-redeem points', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    const key = nextKey()
+    const first = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, key)
+    const second = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, key)
+    expect(second.replay).toBe(true)
+    expect(second.order.id).toBe(first.order.id)
+    expect(await getLoyaltyBalance(USER_ID)).toBe(300) // 500 - 200، مش 500 - 400
+  })
+
+  it('double-spend protection: two concurrent checkouts requesting the full balance — only one may succeed', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1, loyalty_max_redemption_percent = 100 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 200, 'تعبئة', USER_ID)
+
+    const results = await Promise.allSettled([
+      createOrder(baseInput({ loyaltyPointsRedeemed: 150 }), USER_ID, nextKey()),
+      createOrder(baseInput({ loyaltyPointsRedeemed: 150 }), USER_ID, nextKey())
+    ])
+    const succeeded = results.filter(r => r.status === 'fulfilled')
+    const failed = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[]
+    expect(succeeded).toHaveLength(1)
+    expect(failed).toHaveLength(1)
+    expect(failed[0].reason).toMatchObject({ code: 'loyalty_balance_changed' })
+    expect(await getLoyaltyBalance(USER_ID)).toBe(50) // 200 - 150 لمحاولة واحدة ناجحة بس
+  })
+
+  it('restores redeemed points when the order is cancelled before delivery', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    const { order } = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, nextKey())
+    expect(await getLoyaltyBalance(USER_ID)).toBe(300)
+
+    await cancelOrder(order.id)
+    expect(await getLoyaltyBalance(USER_ID)).toBe(500)
+  })
+
+  it('processing the same cancellation twice does not double-credit restored points', async () => {
+    await pool.query('UPDATE store_settings SET loyalty_min_redeem_points = 1 WHERE id = 1')
+    await adjustLoyaltyPointsManually(USER_ID, 500, 'تعبئة', USER_ID)
+    const { order } = await createOrder(baseInput({ loyaltyPointsRedeemed: 200 }), USER_ID, nextKey())
+
+    await cancelOrder(order.id)
+    await cancelOrder(order.id) // ثاني استدعاء هيترفض (invalid_status_transition) لكن لازم يفضل آمن برضه
+    expect(await getLoyaltyBalance(USER_ID)).toBe(500)
   })
 })
 

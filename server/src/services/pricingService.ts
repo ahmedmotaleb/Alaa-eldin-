@@ -37,8 +37,13 @@ export function calculateDeliveryFee(subtotal: number, settings: DeliverySetting
   return subtotal >= settings.freeShippingThreshold ? 0 : settings.deliveryFee
 }
 
-export function computeTotal(subtotal: number, discountAmount: number, deliveryFee: number): number {
+// ترتيب الحساب ثابت ومقصود: الإجمالي الفرعي -> خصم الكوبون/العرض -> خصم نقاط الولاء ->
+// رسوم التوصيل -> الإجمالي النهائي. الأساس المؤهّل لاكتساب نقاط ولاء جديدة على نفس الطلب
+// (لو تم التسليم) هو "afterLoyaltyPiastres" ده بالظبط — يعني النقاط بتتكسب على المتبقي بعد
+// خصم العرض وخصم الولاء الاتنين، مش على رسوم التوصيل ومش على القيمة اللي اتدفعت بنقاط.
+export function computeTotal(subtotal: number, discountAmount: number, deliveryFee: number, loyaltyDiscountAmount = 0): number {
   const afterDiscountPiastres = Math.max(0, toPiastres(subtotal) - toPiastres(discountAmount))
-  const totalPiastres = afterDiscountPiastres + toPiastres(deliveryFee)
+  const afterLoyaltyPiastres = Math.max(0, afterDiscountPiastres - toPiastres(loyaltyDiscountAmount))
+  const totalPiastres = afterLoyaltyPiastres + toPiastres(deliveryFee)
   return toEgp(totalPiastres)
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminRider, type PickedStatus, type WhatsAppTemplate } from '../utils/api'
+import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminOrderLoyaltyLedgerRow, type AdminRider, type PickedStatus, type WhatsAppTemplate } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
 import { toWhatsAppInternational } from '../utils/phone'
@@ -39,6 +39,7 @@ export function OrderDrawer({
   const [notes, setNotes] = useState<AdminOrderNote[]>([])
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
+  const [loyaltyLedgerForOrder, setLoyaltyLedgerForOrder] = useState<AdminOrderLoyaltyLedgerRow[]>([])
 
   useEffect(() => {
     api.getWhatsAppStatus().then(({ configured }) => setWaConfigured(configured)).catch(() => setWaConfigured(false))
@@ -50,6 +51,14 @@ export function OrderDrawer({
   }
 
   useEffect(loadNotes, [order.id])
+
+  useEffect(() => {
+    api.getOrder(order.id).then(({ loyaltyLedgerForOrder }) => setLoyaltyLedgerForOrder(loyaltyLedgerForOrder)).catch(() => setLoyaltyLedgerForOrder([]))
+  }, [order.id])
+
+  const pointsEarned = loyaltyLedgerForOrder.find(e => e.sourceType === 'order_delivered')?.pointsChange ?? 0
+  const pointsEarnedReversed = loyaltyLedgerForOrder.find(e => e.sourceType === 'earned_reversal')?.pointsChange ?? 0
+  const pointsRedemptionRestored = loyaltyLedgerForOrder.find(e => e.sourceType === 'redemption_reversal')?.pointsChange ?? 0
 
   async function submitNote() {
     if (!newNote.trim()) return
@@ -165,9 +174,30 @@ export function OrderDrawer({
           {order.discountCode && (
             <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>خصم ({order.discountCode})</span><span style={{ color: '#B42318' }}>-{formatMoney(order.discountAmount)}</span></div>
           )}
+          {order.loyaltyPointsRedeemed > 0 && (
+            <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>خصم النقاط ({order.loyaltyPointsRedeemed} نقطة)</span><span style={{ color: '#B42318' }}>-{formatMoney(order.loyaltyDiscountAmount)}</span></div>
+          )}
           <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>التوصيل</span><span>{order.deliveryFee ? formatMoney(order.deliveryFee) : 'مجاني'}</span></div>
           <div className="admin-drawer-total-line" style={{ fontWeight: 900, fontSize: 15 }}><span>الإجمالي</span><span style={{ color: '#12813C' }}>{formatMoney(order.total)}</span></div>
         </div>
+
+        {(order.loyaltyPointsRedeemed > 0 || pointsEarned !== 0 || pointsEarnedReversed !== 0 || pointsRedemptionRestored !== 0) && (
+          <div className="admin-drawer-card">
+            <div className="admin-drawer-card-title">نقاط الولاء</div>
+            {order.loyaltyPointsRedeemed > 0 && (
+              <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>نقاط مستخدمة في هذا الطلب</span><span style={{ fontWeight: 800, color: '#B42318' }}>-{order.loyaltyPointsRedeemed}</span></div>
+            )}
+            {pointsEarned !== 0 && (
+              <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>نقاط مكتسبة من هذا الطلب</span><span style={{ fontWeight: 800, color: '#12813C' }}>+{pointsEarned}</span></div>
+            )}
+            {pointsRedemptionRestored !== 0 && (
+              <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>نقاط استخدام مُستردة (بعد إلغاء/إرجاع)</span><span style={{ fontWeight: 800, color: '#12813C' }}>+{pointsRedemptionRestored}</span></div>
+            )}
+            {pointsEarnedReversed !== 0 && (
+              <div className="admin-drawer-line"><span style={{ color: '#68746B' }}>نقاط اكتساب مُلغاة (بعد إلغاء/إرجاع)</span><span style={{ fontWeight: 800, color: '#B42318' }}>{pointsEarnedReversed}</span></div>
+            )}
+          </div>
+        )}
 
         {riders && onSetRider && (
           <div className="admin-drawer-card">

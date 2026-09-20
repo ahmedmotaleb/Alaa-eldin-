@@ -60,7 +60,7 @@ describe('recordReferralSignup / getReferralStats', () => {
   it('records a pending referral', async () => {
     const code = await getOrCreateReferralCode(USER_A)
     await recordReferralSignup(USER_A, USER_B, code)
-    expect(await getReferralStats(USER_A)).toEqual({ pending: 1, rewarded: 0 })
+    expect(await getReferralStats(USER_A)).toEqual({ pending: 1, qualified: 0, rewarded: 0 })
   })
 
   it('ignores a self-referral attempt (referrer === referred)', async () => {
@@ -76,7 +76,7 @@ describe('recordReferralSignup / getReferralStats', () => {
     await recordReferralSignup(USER_A, USER_B, codeA)
     await recordReferralSignup(USER_C, USER_B, codeC)
 
-    expect(await getReferralStats(USER_A)).toEqual({ pending: 1, rewarded: 0 })
-    expect(await getReferralStats(USER_C)).toEqual({ pending: 0, rewarded: 0 })
+    expect(await getReferralStats(USER_A)).toEqual({ pending: 1, qualified: 0, rewarded: 0 })
+    expect(await getReferralStats(USER_C)).toEqual({ pending: 0, qualified: 0, rewarded: 0 })
   })
 })

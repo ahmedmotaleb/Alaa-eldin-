@@ -405,6 +405,11 @@ h1, h2, h3, p { margin: 0; }
 .device-current-badge { font-size: 10.5px; font-weight: 700; color: var(--green-dark); background: #eaf7ee; border-radius: 8px; padding: 2px 7px; }
 .device-row-meta { display: flex; flex-direction: column; gap: 1px; font-weight: 500; font-size: 11px; color: var(--muted); }
 .checkout-policy-link { display: block; text-align: center; color: var(--green-dark); font-weight: 700; font-size: 12.5px; text-decoration: underline; padding: 4px 0; }
+.loyalty-balance-row { display: flex; align-items: baseline; justify-content: space-between; background: #f4fbf6; border-radius: 12px; padding: 10px 12px; }
+.loyalty-balance-points { font-weight: 900; font-size: 14.5px; color: var(--green-dark); }
+.loyalty-balance-egp { font-weight: 700; font-size: 12px; color: var(--muted); }
+.loyalty-actions { display: flex; gap: 8px; }
+.loyalty-actions .secondary-button { flex: none; padding: 8px 14px; font-size: 12.5px; }
 
 /* ---------- auth ---------- */
 .auth-page { display: flex; flex-direction: column; gap: 16px; max-width: 420px; margin-inline: auto; padding-top: 12px; }
@@ -575,6 +580,7 @@ h1, h2, h3, p { margin: 0; }
 .receipt-totals > div { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
 .receipt-discount { color: var(--danger); }
 .receipt-grand-total { font-size: 16px; font-weight: 900; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+.receipt-loyalty-note { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .receipt-actions { display: flex; gap: 10px; }
 .receipt-actions button { flex: 1; }
 
@@ -595,7 +601,9 @@ h1, h2, h3, p { margin: 0; }
 .rewards-referral-code { font-weight: 900; font-size: 22px; letter-spacing: 2px; text-align: center; background: var(--green-soft); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
 .rewards-referral-actions { display: flex; gap: 10px; margin-bottom: 12px; }
 .rewards-referral-actions button { flex: 1; }
-.rewards-referral-stats { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); }
+.rewards-referral-stats { display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); gap: 8px; }
+.rewards-rules-list { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; font-weight: 600; color: #4C5B51; padding-inline-start: 18px; margin: 0; }
+.rewards-rules-list li { line-height: 1.6; }
 .rewards-ledger-empty { font-size: 12.5px; color: var(--muted); font-weight: 500; }
 .rewards-ledger-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .rewards-ledger-row:last-child { border-bottom: none; }

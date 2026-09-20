@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
-import { requireAdmin } from '../auth.js'
-import { getLoyaltyBalance, listLoyaltyLedger, adjustLoyaltyPointsManually } from '../services/loyaltyService.js'
+import { requireAdmin, requirePermission } from '../auth.js'
+import { getLoyaltyBalance, listLoyaltyLedger, adjustLoyaltyPointsManually, type LoyaltyExpiryPolicy } from '../services/loyaltyService.js'
 import { getReferralStats } from '../services/referralService.js'
+import { recordAuditLog } from '../services/auditLogService.js'
 
 export const adminCustomersRouter = Router()
 adminCustomersRouter.use(requireAdmin)
@@ -98,11 +99,17 @@ adminCustomersRouter.get('/:id', async (req, res) => {
 })
 
 // تعديل يدوي لرصيد الولاء (زيادة أو خصم) — بيتسجّل كصف جديد في السجل (loyalty_ledger)
-// زي أي حركة تانية، مش تحرير مباشر لأي رقم إجمالي.
-adminCustomersRouter.post('/:id/loyalty-adjustments', async (req, res) => {
-  const { points, note } = req.body ?? {}
+// زي أي حركة تانية، مش تحرير مباشر لأي رقم إجمالي. الرصيد النهائي ما ينفعش يبقى سالب
+// بصمت (لا يوجد تجاوز/override لهذا القيد) — لو الخصم المطلوب أكبر من الرصيد الحالي
+// الطلب بيترفض بدل ما يوصل الرصيد لقيمة سالبة.
+adminCustomersRouter.post('/:id/loyalty-adjustments', requirePermission('loyalty.adjust'), async (req, res) => {
+  const { points, note, expiryPolicy } = req.body ?? {}
   if (typeof points !== 'number' || !Number.isInteger(points) || points === 0 || typeof note !== 'string' || !note.trim()) {
     res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+  if (expiryPolicy !== undefined && expiryPolicy !== 'default' && expiryPolicy !== 'never') {
+    res.status(400).json({ error: 'invalid_expiry_policy' })
     return
   }
   const { rows } = await pool.query('SELECT 1 FROM users WHERE id = $1', [req.params.id])
@@ -110,6 +117,22 @@ adminCustomersRouter.post('/:id/loyalty-adjustments', async (req, res) => {
     res.status(404).json({ error: 'customer_not_found' })
     return
   }
-  await adjustLoyaltyPointsManually(String(req.params.id), points, note.trim(), req.user!.id)
-  res.status(201).json({ balance: await getLoyaltyBalance(String(req.params.id)) })
+
+  const balanceBefore = await getLoyaltyBalance(String(req.params.id))
+  if (points < 0 && balanceBefore + points < 0) {
+    res.status(400).json({ error: 'resulting_balance_negative', details: { balanceBefore } })
+    return
+  }
+
+  await adjustLoyaltyPointsManually(String(req.params.id), points, note.trim(), req.user!.id, (expiryPolicy as LoyaltyExpiryPolicy) ?? 'default')
+  const balanceAfter = await getLoyaltyBalance(String(req.params.id))
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'loyalty_points_adjusted',
+    entityType: 'user',
+    entityId: String(req.params.id),
+    oldValues: { balance: balanceBefore },
+    newValues: { balance: balanceAfter, points, note: note.trim() }
+  })
+  res.status(201).json({ balance: balanceAfter })
 })

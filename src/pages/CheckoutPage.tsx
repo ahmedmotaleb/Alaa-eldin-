@@ -8,6 +8,7 @@ import type { CustomerDetails, Order } from '../types/models'
 import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
 import { api, ApiError, type ApiAddress, type ApiDeliveryDayAvailability } from '../utils/api'
+import { formatNumber } from '../utils/format'
 import { getSettings } from '../store/settingsStore'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
@@ -65,6 +66,8 @@ export function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false)
   const [addresses, setAddresses] = useState<ApiAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>('new')
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0)
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState('')
 
   // العميل المسجّل بيشوف عناوينه المحفوظة كخيارات جاهزة (الافتراضي مُختار أوتوماتيك)، مع
   // خيار "عنوان جديد" دايماً متاح — العميل الزائر يفضل يستخدم الحقول العادية زي ما هي.
@@ -85,6 +88,14 @@ export function CheckoutPage() {
     }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  // رصيد النقاط بيتحمّل مرة واحدة للعميل المسجّل دخول بس — الزائر مايقدرش يستخدم نقاط
+  // أصلاً (مفيش حساب يتحسبله رصيد)، فمفيش داعي لأي استدعاء ليه.
+  function loadLoyaltyBalance() {
+    if (!user) return
+    api.getLoyalty().then(({ balance }) => setLoyaltyBalance(balance)).catch(() => {})
+  }
+  useEffect(loadLoyaltyBalance, [user])
 
   function pickAddress(id: string) {
     setSelectedAddressId(id)
@@ -109,7 +120,25 @@ export function CheckoutPage() {
   const previewDeliveryFee = zoneFee !== undefined
     ? (subtotal === 0 || subtotal >= settings.freeShippingThreshold ? 0 : zoneFee)
     : deliveryFee
-  const previewTotal = Math.max(0, subtotal - (discount?.amount ?? 0)) + previewDeliveryFee
+
+  // معاينة الواجهة بس — نفس ترتيب الحساب الفعلي في السيرفر (فرعي -> خصم كوبون -> نقاط ولاء
+  // -> توصيل -> إجمالي)، لكن السيرفر هو المصدر الوحيد اللي بيتحقق فعلياً من الرصيد والحدود
+  // وبيحسب الرقم النهائي المعتمد وقت إرسال الطلب — أي فرق هنا (رصيد قديم مثلاً) بيترفض
+  // ويتوضّح للعميل برسالة "loyalty_balance_changed" بدل ما يتقبل بصمت برقم غلط.
+  const eligibleSubtotalForLoyalty = Math.max(0, subtotal - (discount?.amount ?? 0))
+  const loyaltyAvailable = settings.loyaltyEnabled && !!user
+  const loyaltyMeetsMinOrder = eligibleSubtotalForLoyalty >= settings.loyaltyMinOrderForRedemption
+  const maxDiscountByPercent = eligibleSubtotalForLoyalty * settings.loyaltyMaxRedemptionPercent / 100
+  const maxPointsByPercent = settings.loyaltyPointValueEgp > 0 ? Math.floor(maxDiscountByPercent / settings.loyaltyPointValueEgp) : 0
+  const maxAllowedLoyaltyPoints = Math.max(0, Math.min(loyaltyBalance, maxPointsByPercent))
+  const requestedLoyaltyPoints = Math.max(0, Math.round(Number(loyaltyPointsInput) || 0))
+  const loyaltyBelowMinimum = requestedLoyaltyPoints > 0 && requestedLoyaltyPoints < settings.loyaltyMinRedeemPoints
+  const loyaltyAboveMaximum = requestedLoyaltyPoints > maxAllowedLoyaltyPoints
+  const loyaltyPointsToApply = loyaltyAvailable && loyaltyMeetsMinOrder && requestedLoyaltyPoints > 0 && !loyaltyBelowMinimum && !loyaltyAboveMaximum
+    ? requestedLoyaltyPoints
+    : 0
+  const loyaltyDiscountPreview = loyaltyPointsToApply * settings.loyaltyPointValueEgp
+  const previewTotal = Math.max(0, eligibleSubtotalForLoyalty - loyaltyDiscountPreview) + previewDeliveryFee
 
   const nameValid = customer.fullName.trim().length >= 2 && customer.fullName.trim().length <= 100
   const mobileValid = isValidEgyptianMobile(customer.mobile.trim())
@@ -198,7 +227,8 @@ export function CheckoutPage() {
         items,
         discountCode: discount?.code,
         deliveryInstructions: deliveryInstructions.trim() || undefined,
-        substitutionPreference
+        substitutionPreference,
+        loyaltyPointsRedeemed: loyaltyPointsToApply > 0 ? loyaltyPointsToApply : undefined
       }, idempotencyKey)
 
       const order = created as unknown as Order
@@ -206,6 +236,14 @@ export function CheckoutPage() {
       clearCart()
       navigate(`/confirmation/${order.orderNumber}`, { state: { order } })
     } catch (err) {
+      // رصيد النقاط المعروض في الواجهة كان أقدم من رصيد السيرفر الفعلي (مثلاً استُخدم من
+      // جهاز تاني في نفس الوقت) — نحدّث الرصيد المعروض فوراً من القيمة اللي رجعها السيرفر
+      // نفسه بدل ما نستنى استدعاء تاني، عشان العميل يقدر يعدّل عدد النقاط ويحاول تاني.
+      if (err instanceof ApiError && err.code === 'loyalty_balance_changed') {
+        const freshBalance = err.data.balance
+        if (typeof freshBalance === 'number') setLoyaltyBalance(freshBalance)
+        else loadLoyaltyBalance()
+      }
       setApiError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
       setSubmitting(false)
     }
@@ -383,9 +421,62 @@ export function CheckoutPage() {
         </div>
       </div>
 
+      {settings.loyaltyEnabled && (
+        <div className="form-card">
+          <h2>{ar.checkout.loyalty.sectionTitle}</h2>
+          {!user ? (
+            <div className="field-error">{ar.checkout.loyalty.guestNote}</div>
+          ) : (
+            <>
+              <div className="loyalty-balance-row">
+                <span className="loyalty-balance-points">{ar.checkout.loyalty.balanceLabel(formatNumber(loyaltyBalance))}</span>
+                <span className="loyalty-balance-egp">{ar.checkout.loyalty.balanceValueEgp(formatMoney(loyaltyBalance * settings.loyaltyPointValueEgp))}</span>
+              </div>
+              {!loyaltyMeetsMinOrder && (
+                <div className="field-error">{ar.checkout.loyalty.minOrderNote(formatMoney(settings.loyaltyMinOrderForRedemption))}</div>
+              )}
+              {loyaltyMeetsMinOrder && loyaltyBalance > 0 && (
+                <>
+                  <label>{ar.checkout.loyalty.inputLabel}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      value={loyaltyPointsInput}
+                      onChange={e => setLoyaltyPointsInput(e.target.value)}
+                      placeholder={ar.checkout.loyalty.inputPlaceholder}
+                    />
+                  </label>
+                  <div className="loyalty-actions">
+                    <button type="button" className="secondary-button" onClick={() => setLoyaltyPointsInput(String(maxAllowedLoyaltyPoints))}>
+                      {ar.checkout.loyalty.useMaxButton}
+                    </button>
+                    {requestedLoyaltyPoints > 0 && (
+                      <button type="button" className="secondary-button" onClick={() => setLoyaltyPointsInput('')}>
+                        {ar.checkout.loyalty.clearButton}
+                      </button>
+                    )}
+                  </div>
+                  {loyaltyBelowMinimum && (
+                    <div className="field-error">{ar.errors.codes.below_minimum_redeem_points}</div>
+                  )}
+                  {loyaltyAboveMaximum && (
+                    <div className="field-error">{ar.errors.codes.redemption_exceeds_limit}</div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="summary-card">
         <div><span>{ar.checkout.orderSummaryItemsCount(detailedItems.reduce((sum, i) => sum + i.quantity, 0))}</span><span>{formatMoney(subtotal)}</span></div>
         {discount && <div className="summary-discount"><span>{ar.cart.discountApplied(discount.code)}</span><span>-{formatMoney(discount.amount)}</span></div>}
+        {loyaltyPointsToApply > 0 && (
+          <div className="summary-discount"><span>{ar.checkout.loyalty.discountLine(formatNumber(loyaltyPointsToApply))}</span><span>-{formatMoney(loyaltyDiscountPreview)}</span></div>
+        )}
         <div><span>{ar.cart.delivery}</span><span>{previewDeliveryFee ? formatMoney(previewDeliveryFee) : ar.cart.free}</span></div>
         <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(previewTotal)}</span></div>
       </div>

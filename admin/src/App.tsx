@@ -44,6 +44,8 @@ const BarcodeScanPage = lazy(() => import('./pages/products/BarcodeScanPage').th
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
+const ReferralsPage = lazy(() => import('./pages/customers/ReferralsPage').then(m => ({ default: m.ReferralsPage })))
+const ReferralDetailPage = lazy(() => import('./pages/customers/ReferralDetailPage').then(m => ({ default: m.ReferralDetailPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
 const WalletPage = lazy(() => import('./pages/WalletPage').then(m => ({ default: m.WalletPage })))
 const DiscountsListPage = lazy(() => import('./pages/discounts/DiscountsListPage').then(m => ({ default: m.DiscountsListPage })))
@@ -118,6 +120,8 @@ export default function App() {
               <Route path="/customers" element={<Navigate to="/customers/all" replace />} />
               <Route path="/customers/all" element={<CustomersListPage />} />
               <Route path="/customers/segments" element={<SegmentsPage />} />
+              <Route path="/customers/referrals" element={<ReferralsPage />} />
+              <Route path="/customers/referrals/:id" element={<ReferralDetailPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/analytics" element={<Navigate to="/analytics/overview" replace />} />
               <Route path="/analytics/:tab" element={<AnalyticsPage />} />

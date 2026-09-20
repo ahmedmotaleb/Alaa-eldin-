@@ -12,7 +12,17 @@ const DEFAULT_SETTINGS: ApiSettings = {
   showTodaysOffers: true,
   showBestSellers: true,
   codEnabled: true,
-  loyaltyPointsPerEgp: 0.1
+  loyaltyPointsPerEgp: 0.1,
+  loyaltyEnabled: false,
+  loyaltyPointValueEgp: 0,
+  loyaltyMinRedeemPoints: 0,
+  loyaltyMaxRedemptionPercent: 0,
+  loyaltyMinOrderForRedemption: 0,
+  loyaltyExpiryEnabled: false,
+  loyaltyExpiryDays: 0,
+  referralEnabled: false,
+  referralReferredBonusPoints: 0,
+  referralMinQualifyingOrder: 0
 }
 
 let current: ApiSettings = DEFAULT_SETTINGS

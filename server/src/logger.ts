@@ -52,6 +52,8 @@ type BusinessEvent =
   | 'startup_config_summary' | 'startup_config_partial_warning'
   | 'substitution_proposed' | 'substitution_approved' | 'substitution_rejected'
   | 'back_in_stock_subscribed'
+  | 'loyalty_redemption_rejected' | 'loyalty_points_redeemed' | 'loyalty_points_expired'
+  | 'referral_qualified' | 'referral_rewarded'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

@@ -93,6 +93,8 @@ export interface ApiOrder {
   statusHistory?: { fromStatus: string | null, toStatus: string, source: string, createdAt: string }[]
   deliveryInstructions?: string
   substitutionPreference: 'replace_similar' | 'contact_me' | 'remove_item'
+  loyaltyPointsRedeemed: number
+  loyaltyDiscountAmount: number
 }
 
 export interface ApiAddress {
@@ -308,15 +310,34 @@ export interface ApiSettings {
   showBestSellers: boolean
   codEnabled: boolean
   loyaltyPointsPerEgp: number
+  loyaltyEnabled: boolean
+  loyaltyPointValueEgp: number
+  loyaltyMinRedeemPoints: number
+  loyaltyMaxRedemptionPercent: number
+  loyaltyMinOrderForRedemption: number
+  loyaltyExpiryEnabled: boolean
+  loyaltyExpiryDays: number
+  referralEnabled: boolean
+  referralReferredBonusPoints: number
+  referralMinQualifyingOrder: number
 }
+
+export type ApiLoyaltySourceType =
+  | 'order_delivered' | 'referral_bonus' | 'manual_adjustment'
+  | 'redeemed' | 'redemption_reversal' | 'earned_reversal' | 'expired'
 
 export interface ApiLoyaltyLedgerEntry {
   id: number
   pointsChange: number
-  sourceType: 'order_delivered' | 'referral_bonus' | 'manual_adjustment'
+  sourceType: ApiLoyaltySourceType
   sourceOrderId: string | null
   note: string
   createdAt: string
+}
+
+export interface ApiUpcomingLoyaltyExpiry {
+  points: number
+  expiresAt: string
 }
 
 export interface ApiLoyaltySummary {
@@ -327,7 +348,8 @@ export interface ApiLoyaltySummary {
   total: number
   totalPages: number
   referralCode: string
-  referralStats: { pending: number, rewarded: number }
+  referralStats: { pending: number, qualified: number, rewarded: number }
+  upcomingExpiry: ApiUpcomingLoyaltyExpiry[]
 }
 
 export const api = {
@@ -426,6 +448,7 @@ export const api = {
     discountCode?: string
     deliveryInstructions?: string
     substitutionPreference?: 'replace_similar' | 'contact_me' | 'remove_item'
+    loyaltyPointsRedeemed?: number
   }, idempotencyKey: string) =>
     request<{ order: ApiOrder }>('/orders', {
       method: 'POST',

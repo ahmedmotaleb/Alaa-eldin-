@@ -30,6 +30,9 @@ export interface CheckoutInput {
   discountCode?: string
   deliveryInstructions?: string
   substitutionPreference: SubstitutionPreference
+  // عدد صحيح فقط، أو undefined (يعني صفر/مفيش استخدام). القيمة دي شكل بس — الرصيد والحد
+  // الأقصى المسموح بيهم بيتحقق منهم السيرفر بالكامل جوه orderService.createOrder، مش هنا.
+  loyaltyPointsRedeemed?: number
 }
 
 export type CheckoutValidationError =
@@ -46,6 +49,7 @@ export type CheckoutValidationError =
   | 'invalid_discount_code'
   | 'delivery_instructions_too_long'
   | 'invalid_substitution_preference'
+  | 'invalid_loyalty_points'
 
 export type CheckoutValidationResult =
   | { ok: true, data: CheckoutInput }
@@ -138,6 +142,15 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
     return { ok: false, error: 'invalid_substitution_preference' }
   }
 
+  // اختياري تماماً — لازم يكون عدد صحيح غير سالب لو اتبعت. مفيش قيمة عشرية ولا NaN ولا سالبة
+  // مقبولة أبداً؛ صفر أو undefined معناها "مفيش استخدام نقاط" في الطلب ده.
+  if (
+    b.loyaltyPointsRedeemed !== undefined &&
+    (typeof b.loyaltyPointsRedeemed !== 'number' || !Number.isInteger(b.loyaltyPointsRedeemed) || b.loyaltyPointsRedeemed < 0)
+  ) {
+    return { ok: false, error: 'invalid_loyalty_points' }
+  }
+
   // يدمج أي عناصر بنفس productId (ونفس variantId تحديداً — متغيرين مختلفين لنفس المنتج
   // صنفين منفصلين تماماً، مش نفس السطر) مكرّرة، بدل ما يرفض الطلب أو يقفل نفس الصنف مرتين.
   const mergedItems = new Map<string, CheckoutItemInput>()
@@ -164,7 +177,8 @@ export function validateCheckoutInput(body: unknown): CheckoutValidationResult {
       items: Array.from(mergedItems.values()),
       discountCode: typeof b.discountCode === 'string' ? b.discountCode.trim() : undefined,
       deliveryInstructions: rawDeliveryInstructions || undefined,
-      substitutionPreference: substitutionPreference as SubstitutionPreference
+      substitutionPreference: substitutionPreference as SubstitutionPreference,
+      loyaltyPointsRedeemed: typeof b.loyaltyPointsRedeemed === 'number' ? b.loyaltyPointsRedeemed : undefined
     }
   }
 }

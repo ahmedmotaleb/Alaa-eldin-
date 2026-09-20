@@ -22,6 +22,8 @@
     "db:cleanup:dev": "tsx src/cleanup.ts",
     "notify:abandoned-cart": "node dist/sendAbandonedCartReminders.js",
     "notify:abandoned-cart:dev": "tsx src/sendAbandonedCartReminders.ts",
+    "loyalty:expire": "node dist/loyaltyExpire.js",
+    "loyalty:expire:dev": "tsx src/loyaltyExpire.ts",
     "db:backup": "bash scripts/backup.sh",
     "db:restore": "bash scripts/restore.sh",
     "smoke-test": "tsx src/scripts/smokeTest.ts",

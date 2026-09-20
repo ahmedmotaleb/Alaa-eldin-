@@ -43,7 +43,9 @@ describe('validateCheckoutInput', () => {
       subtotal: 0.01,
       deliveryFee: 0,
       total: 0.01,
-      discountCode: 'X'
+      discountCode: 'X',
+      loyaltyDiscountAmount: 99999,
+      loyaltyBalance: 999999
     }
     const result = validateCheckoutInput(maliciousBody)
     expect(result.ok).toBe(true)
@@ -52,6 +54,8 @@ describe('validateCheckoutInput', () => {
     expect('subtotal' in result.data).toBe(false)
     expect('deliveryFee' in result.data).toBe(false)
     expect('total' in result.data).toBe(false)
+    expect('loyaltyDiscountAmount' in result.data).toBe(false)
+    expect('loyaltyBalance' in result.data).toBe(false)
     expect((result.data.items[0] as unknown as Record<string, unknown>).unitPrice).toBeUndefined()
   })
 
@@ -286,5 +290,43 @@ describe('validateCheckoutInput', () => {
   it('rejects an unknown substitution preference', () => {
     const result = validateCheckoutInput({ ...withCustomer({}), substitutionPreference: 'ask_nicely' })
     expect(result).toEqual({ ok: false, error: 'invalid_substitution_preference' })
+  })
+
+  it('accepts an absent loyaltyPointsRedeemed as undefined (no redemption requested)', () => {
+    const result = validateCheckoutInput(withCustomer({}))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.loyaltyPointsRedeemed).toBeUndefined()
+  })
+
+  it('accepts a valid non-negative integer loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: 500 })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.loyaltyPointsRedeemed).toBe(500)
+  })
+
+  it('accepts an explicit 0 loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: 0 })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.loyaltyPointsRedeemed).toBe(0)
+  })
+
+  it('rejects a negative loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: -1 })
+    expect(result).toEqual({ ok: false, error: 'invalid_loyalty_points' })
+  })
+
+  it('rejects a decimal loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: 10.5 })
+    expect(result).toEqual({ ok: false, error: 'invalid_loyalty_points' })
+  })
+
+  it('rejects a non-numeric loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: '500' })
+    expect(result).toEqual({ ok: false, error: 'invalid_loyalty_points' })
+  })
+
+  it('rejects a NaN loyaltyPointsRedeemed', () => {
+    const result = validateCheckoutInput({ ...withCustomer({}), loyaltyPointsRedeemed: NaN })
+    expect(result).toEqual({ ok: false, error: 'invalid_loyalty_points' })
   })
 })

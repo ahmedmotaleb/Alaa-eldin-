@@ -177,7 +177,19 @@ export const ar = {
     substitutionContactMeNote: 'مش هيتحدد أي بديل غير بموافقتك',
     substitutionRemoveItem: 'احذف الصنف من الطلب',
     substitutionRemoveItemNote: 'كمّل الطلب من غيره',
-    submit: 'تأكيد الطلب وإرسال واتساب'
+    submit: 'تأكيد الطلب وإرسال واتساب',
+    loyalty: {
+      sectionTitle: 'رصيد النقاط',
+      balanceLabel: (points: string) => `لديك ${points} نقطة`,
+      balanceValueEgp: (value: string) => `تساوي ${value}`,
+      inputLabel: 'عدد النقاط اللي عايز تستخدمها',
+      inputPlaceholder: 'مثال: 500',
+      useMaxButton: 'استخدام الحد الأقصى',
+      clearButton: 'إلغاء الاستخدام',
+      guestNote: 'سجّل الدخول لاستخدام نقاط الولاء في هذا الطلب',
+      discountLine: (points: string) => `خصم النقاط (${points} نقطة)`,
+      minOrderNote: (min: string) => `أقل قيمة طلب لاستخدام النقاط ${min}`
+    }
   },
 
   confirmation: {
@@ -237,6 +249,8 @@ export const ar = {
     unavailableBadge: 'غير متوفر',
     subtotalLabel: 'الإجمالي الفرعي',
     discountLabel: (code: string) => `خصم (${code})`,
+    loyaltyDiscountLabel: 'خصم النقاط',
+    loyaltyPointsUsedNote: (points: string) => `تم استخدام ${points} نقطة`,
     deliveryFeeLabel: 'رسوم التوصيل',
     freeLabel: 'مجاني',
     totalLabel: 'الإجمالي الكلي',
@@ -283,19 +297,33 @@ export const ar = {
   rewards: {
     title: 'المكافآت',
     pointsBalance: (points: string) => `رصيدك ${points} نقطة`,
+    pointsBalanceEgp: (value: string) => `تساوي ${value}`,
     earnRateNote: (perPoint: string) => `اكسب نقطة عن كل ${perPoint} تقريباً من قيمة مشترياتك، تُضاف بعد تسليم الطلب فعلياً`,
+    redemptionRulesTitle: 'استخدام النقاط عند الدفع',
+    redemptionPointValueNote: (value: string) => `كل نقطة تساوي ${value}`,
+    redemptionMinPointsNote: (min: string) => `أقل عدد نقاط يمكن استخدامه في الطلب الواحد ${min} نقطة`,
+    redemptionMaxPercentNote: (percent: string) => `يمكن تغطية حتى ${percent}% من قيمة الطلب بالنقاط`,
+    redemptionMinOrderNote: (min: string) => `بشرط ألا تقل قيمة الطلب عن ${min}`,
+    redemptionDisabledNote: 'استخدام النقاط عند الدفع غير متاح حالياً',
+    expiryTitle: 'نقاط ستنتهي قريباً',
+    expiryNote: (points: string, date: string) => `${points} نقطة تنتهي في ${date}`,
     referralTitle: 'ادعُ صديق',
     referralNote: 'شارك الكود ده مع صديق — لما يسجّل حساب ويكمّل أول طلب، تاخد نقاط مكافأة',
     copyCode: 'نسخ الكود',
     shareLink: 'مشاركة رابط الدعوة',
     linkCopied: 'تم نسخ الرابط',
     referralPending: (count: string) => `${count} صديق لسه ما أكملش أول طلب`,
+    referralQualified: (count: string) => `${count} صديق أكمل الطلب وبانتظار صرف المكافأة`,
     referralRewarded: (count: string) => `${count} صديق كافأتك مكافأته بالفعل`,
     ledgerTitle: 'سجل النقاط',
     noLedgerEntries: 'لسه مفيش أي حركة نقاط',
     sourceOrderDelivered: 'نقاط طلب',
     sourceReferralBonus: 'مكافأة إحالة',
     sourceManualAdjustment: 'تعديل من الإدارة',
+    sourceRedeemed: 'استخدام نقاط في الطلب',
+    sourceRedemptionReversal: 'استرجاع بعد إلغاء الطلب',
+    sourceEarnedReversal: 'إلغاء نقاط بعد إرجاع الطلب',
+    sourceExpired: 'انتهاء صلاحية نقاط',
     loginRequired: 'سجّل الدخول لعرض نقاط المكافآت الخاصة بك'
   },
 
@@ -493,7 +521,14 @@ export const ar = {
       invalid_quantity: 'الكمية المطلوبة غير صحيحة لأحد المنتجات',
       insufficient_stock: 'الكمية المطلوبة من أحد المنتجات غير متوفرة في المخزون حالياً',
       minimum_order_not_met: 'الطلب لم يصل الحد الأدنى المسموح به',
-      idempotency_conflict: 'تم تعديل السلة أثناء إرسال الطلب — يرجى إعادة المحاولة'
+      idempotency_conflict: 'تم تعديل السلة أثناء إرسال الطلب — يرجى إعادة المحاولة',
+      invalid_loyalty_points: 'عدد نقاط الولاء المُدخل غير صحيح',
+      invalid_points: 'عدد نقاط الولاء المُدخل غير صحيح',
+      loyalty_disabled: 'برنامج نقاط الولاء غير متاح حالياً لهذا الطلب',
+      below_minimum_redeem_points: 'عدد النقاط أقل من الحد الأدنى المسموح باستخدامه',
+      order_below_minimum_for_redemption: 'قيمة الطلب أقل من الحد الأدنى المطلوب لاستخدام النقاط',
+      redemption_exceeds_limit: 'عدد النقاط أكبر من الحد الأقصى المسموح لهذا الطلب',
+      loyalty_balance_changed: 'رصيد النقاط تغيّر. يرجى مراجعة النقاط المستخدمة والمحاولة مرة أخرى.'
     } as Record<string, string>,
     forCode(code: string) {
       return this.codes[code] ?? this.generic

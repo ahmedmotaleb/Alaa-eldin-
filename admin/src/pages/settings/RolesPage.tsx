@@ -32,7 +32,12 @@ const PERMISSION_LABEL: Record<string, string> = {
   'audit.view': 'عرض سجل النشاط',
   'returns.manage': 'إدارة المرتجعات',
   'products.pricing.bulk_update': 'تحديث الأسعار بالجملة',
-  'products.cost.bulk_update': 'تحديث التكلفة بالجملة'
+  'products.cost.bulk_update': 'تحديث التكلفة بالجملة',
+  'loyalty.view': 'عرض نقاط الولاء',
+  'loyalty.adjust': 'تعديل نقاط الولاء يدوياً',
+  'loyalty.settings': 'إدارة إعدادات الولاء',
+  'referrals.view': 'عرض الإحالات',
+  'referrals.manage': 'إدارة الإحالات'
 }
 
 export function RolesPage() {

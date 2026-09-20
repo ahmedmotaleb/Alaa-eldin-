@@ -205,6 +205,13 @@ export interface AdminOrder {
   settlementId: number | null
   deliveryInstructions?: string
   substitutionPreference: 'replace_similar' | 'contact_me' | 'remove_item'
+  loyaltyPointsRedeemed: number
+  loyaltyDiscountAmount: number
+}
+
+export interface AdminOrderLoyaltyLedgerRow {
+  sourceType: LoyaltySourceType
+  pointsChange: number
 }
 
 export interface RiderOrder {
@@ -686,6 +693,55 @@ export interface AdminCustomerOrder {
   status: AdminOrderStatus
 }
 
+export type LoyaltySourceType =
+  | 'order_delivered' | 'referral_bonus' | 'manual_adjustment'
+  | 'redeemed' | 'redemption_reversal' | 'earned_reversal' | 'expired'
+
+export interface LoyaltyLedgerEntry {
+  id: number
+  pointsChange: number
+  sourceType: LoyaltySourceType
+  sourceOrderId: string | null
+  note: string
+  createdAt: string
+}
+
+export interface ReferralStats {
+  pending: number
+  qualified: number
+  rewarded: number
+}
+
+export type AdminReferralStatus = 'pending' | 'qualified' | 'rewarded'
+
+export interface AdminReferralRow {
+  id: number
+  referralCode: string
+  status: AdminReferralStatus
+  createdAt: string
+  rewardedAt: string | null
+  referrerUserId: string
+  referrerName: string
+  referredUserId: string
+  referredName: string
+  qualifyingOrderId: string | null
+  qualifyingOrderNumber: string | null
+  qualifyingOrderValue: number | null
+  referrerRewardPoints: number | null
+  referredRewardPoints: number | null
+}
+
+export interface ReferralAnalytics {
+  totalReferrals: number
+  pendingReferrals: number
+  qualifiedReferrals: number
+  rewardedReferrals: number
+  customersAcquired: number
+  totalPointsAwarded: number
+  revenueFromQualifyingOrders: number
+  conversionRate: number
+}
+
 export interface AdminDiscount {
   code: string
   type: 'percentage' | 'fixed'
@@ -1030,6 +1086,17 @@ export interface AdminSettings {
   loyaltyPointsPerEgp: number
   referralBonusPoints: number
   minMarginPercent: number
+  loyaltyEnabled: boolean
+  loyaltyPointValueEgp: number
+  loyaltyMinRedeemPoints: number
+  loyaltyMaxRedemptionPercent: number
+  loyaltyMinOrderForRedemption: number
+  loyaltyExpiryEnabled: boolean
+  loyaltyExpiryDays: number
+  loyaltyExpiryWarningDays: number
+  referralEnabled: boolean
+  referralReferredBonusPoints: number
+  referralMinQualifyingOrder: number
 }
 
 export interface IntegrationsStatus {
@@ -1269,7 +1336,7 @@ export const api = {
   me: () => request<{ user: AdminUser }>('/auth/me'),
   listOrders: (params: { limit?: number } = {}) =>
     request<{ orders: AdminOrder[] }>(`/admin/orders${params.limit ? `?limit=${params.limit}` : ''}`),
-  getOrder: (id: string) => request<{ order: AdminOrder, notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(id)}`),
+  getOrder: (id: string) => request<{ order: AdminOrder, notes: AdminOrderNote[], loyaltyLedgerForOrder: AdminOrderLoyaltyLedgerRow[] }>(`/admin/orders/${encodeURIComponent(id)}`),
   updateOrderStatus: (id: string, status: AdminOrderStatus) =>
     request<void>(`/admin/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   setOrderRider: (id: string, riderId: string | null) =>
@@ -1376,7 +1443,17 @@ export const api = {
   listCustomers: (params: { page?: number, limit?: number, search?: string } = {}) =>
     request<{ customers: AdminCustomer[] } & Partial<PageInfo>>(`/admin/customers${buildQuery(params)}`),
   getCustomer: (id: string) =>
-    request<{ customer: AdminCustomer, orders: AdminCustomerOrder[] }>(`/admin/customers/${encodeURIComponent(id)}`),
+    request<{
+      customer: AdminCustomer, orders: AdminCustomerOrder[],
+      loyaltyBalance: number, loyaltyLedger: LoyaltyLedgerEntry[], referralStats: ReferralStats
+    }>(`/admin/customers/${encodeURIComponent(id)}`),
+  adjustCustomerLoyalty: (id: string, body: { points: number, note: string, expiryPolicy?: 'default' | 'never' }) =>
+    request<{ balance: number }>(`/admin/customers/${encodeURIComponent(id)}/loyalty-adjustments`, { method: 'POST', body: JSON.stringify(body) }),
+  listReferrals: (params: { page?: number, limit?: number, status?: AdminReferralStatus, search?: string, dateFrom?: string, dateTo?: string } = {}) =>
+    request<{ referrals: AdminReferralRow[] } & Partial<PageInfo>>(`/admin/referrals${buildQuery(params)}`),
+  getReferral: (id: number) =>
+    request<{ referral: AdminReferralRow }>(`/admin/referrals/${encodeURIComponent(String(id))}`),
+  getReferralAnalytics: () => request<ReferralAnalytics>('/admin/referrals/analytics'),
   listDiscounts: (params: { page?: number, limit?: number, search?: string } = {}) =>
     request<{ discounts: AdminDiscount[] } & Partial<PageInfo>>(`/admin/discounts${buildQuery(params)}`),
   createDiscount: (body: AdminDiscountInput) =>

@@ -102,8 +102,14 @@ export function ReceiptPage() {
           {order.discountCode && (
             <div className="receipt-discount"><span>{ar.receipt.discountLabel(order.discountCode)}</span><span>-{formatMoney(order.discountAmount)}</span></div>
           )}
+          {order.loyaltyPointsRedeemed > 0 && (
+            <div className="receipt-discount"><span>{ar.receipt.loyaltyDiscountLabel}</span><span>-{formatMoney(order.loyaltyDiscountAmount)}</span></div>
+          )}
           <div><span>{ar.receipt.deliveryFeeLabel}</span><span>{order.deliveryFee ? formatMoney(order.deliveryFee) : ar.receipt.freeLabel}</span></div>
           <div className="receipt-grand-total"><span>{ar.receipt.totalLabel}</span><span>{formatMoney(order.total)}</span></div>
+          {order.loyaltyPointsRedeemed > 0 && (
+            <div className="receipt-loyalty-note">{ar.receipt.loyaltyPointsUsedNote(String(order.loyaltyPointsRedeemed))}</div>
+          )}
         </div>
 
       </div>

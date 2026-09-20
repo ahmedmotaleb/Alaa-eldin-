@@ -11,6 +11,7 @@ import { notifyOrderStatusChange } from '../services/pushService.js'
 import { setItemPickedStatus, isValidPickedStatus } from '../services/orderPickingService.js'
 import { proposeSubstitution } from '../services/substitutionService.js'
 import { listOrderNotes, addOrderNote } from '../services/orderNotesService.js'
+import type { LoyaltySourceType } from '../services/loyaltyService.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
@@ -38,6 +39,8 @@ interface OrderRow {
   settlementId: number | null
   deliveryInstructions: string
   substitutionPreference: string
+  loyaltyPointsRedeemed: number
+  loyaltyDiscountAmount: number
 }
 
 function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
@@ -66,7 +69,9 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
     riderName: row.riderName,
     settlementId: row.settlementId,
     deliveryInstructions: row.deliveryInstructions || undefined,
-    substitutionPreference: row.substitutionPreference
+    substitutionPreference: row.substitutionPreference,
+    loyaltyPointsRedeemed: row.loyaltyPointsRedeemed,
+    loyaltyDiscountAmount: row.loyaltyDiscountAmount
   }
 }
 
@@ -76,7 +81,8 @@ const SELECT_ORDER = `
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
          o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
-         o.delivery_instructions as "deliveryInstructions", o.substitution_preference as "substitutionPreference", u.email as "accountEmail"
+         o.delivery_instructions as "deliveryInstructions", o.substitution_preference as "substitutionPreference", u.email as "accountEmail",
+         o.loyalty_points_redeemed as "loyaltyPointsRedeemed", o.loyalty_discount_amount as "loyaltyDiscountAmount"
   FROM orders o LEFT JOIN users u ON u.id = o.user_id
        LEFT JOIN riders r ON r.id = o.rider_id
 `
@@ -143,7 +149,11 @@ adminOrdersRouter.get('/:id', async (req, res) => {
   }
   const itemsByOrder = await fetchItemsForOrders([row.id])
   const notes = await listOrderNotes(row.id)
-  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []), notes })
+  const { rows: loyaltyRows } = await pool.query<{ sourceType: LoyaltySourceType, pointsChange: number }>(
+    'SELECT source_type as "sourceType", points_change as "pointsChange" FROM loyalty_ledger WHERE source_order_id = $1 ORDER BY created_at ASC',
+    [row.id]
+  )
+  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []), notes, loyaltyLedgerForOrder: loyaltyRows })
 })
 
 adminOrdersRouter.patch('/:id/status', async (req, res) => {

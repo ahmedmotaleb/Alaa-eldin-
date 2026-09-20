@@ -17,6 +17,7 @@ import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen } from './deliveryService.js'
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
+import { lockAndValidateLoyaltyRedemption, commitLoyaltyRedemption, restoreRedeemedPointsForOrder, reverseEarnedPointsForOrder } from './loyaltyService.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
@@ -50,6 +51,8 @@ interface OrderRow {
   status: string
   discountCode: string | null
   discountAmount: number
+  loyaltyPointsRedeemed: number
+  loyaltyDiscountAmount: number
   requestFingerprint: string | null
   guestTrackingToken: string | null
   deliveryInstructions: string
@@ -71,6 +74,8 @@ export interface SerializedOrder {
   status: string
   discountCode?: string
   discountAmount: number
+  loyaltyPointsRedeemed: number
+  loyaltyDiscountAmount: number
   // بيتحدد بس لو الطلب من غير تسجيل دخول (guest) — العميل المسجّل بيستخدم ownership العادي
   // بدل التوكن ده. راجع getOrderByNumberForGuestToken.
   guestTrackingToken?: string
@@ -85,6 +90,7 @@ const SELECT_ORDER_FIELDS = `
   id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", delivery_date as "deliveryDate", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
+  loyalty_points_redeemed as "loyaltyPointsRedeemed", loyalty_discount_amount as "loyaltyDiscountAmount",
   request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions",
   substitution_preference as "substitutionPreference"
 `
@@ -111,6 +117,8 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
+    loyaltyPointsRedeemed: row.loyaltyPointsRedeemed,
+    loyaltyDiscountAmount: row.loyaltyDiscountAmount,
     guestTrackingToken: row.guestTrackingToken ?? undefined,
     deliveryInstructions: row.deliveryInstructions || undefined,
     substitutionPreference: row.substitutionPreference as SubstitutionPreference
@@ -124,7 +132,8 @@ function computeFingerprint(userId: string | null, input: CheckoutInput): string
     deliveryDate: input.deliveryDate,
     customer: input.customer,
     items: [...input.items].sort((a, b) => a.productId.localeCompare(b.productId)),
-    discountCode: input.discountCode ?? null
+    discountCode: input.discountCode ?? null,
+    loyaltyPointsRedeemed: input.loyaltyPointsRedeemed ?? 0
   })
   return crypto.createHash('sha256').update(normalized).digest('hex')
 }
@@ -302,10 +311,24 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount, freeDelivery: discountGrantsFreeDelivery })
       }
 
+      // استخدام نقاط الولاء (لو مطلوب) — لازم يتحقق منه هنا، بعد ما خصم الكوبون اتحدد وقبل
+      // ما رسوم التوصيل تتحسب، بالظبط زي ترتيب الحساب المطلوب: الإجمالي الفرعي -> الخصم ->
+      // الولاء -> التوصيل -> الإجمالي النهائي. القفل والتحقق بيحصلوا هنا جوه نفس المعاملة —
+      // لو اتنين طلبوا نفس اللحظة يستخدموا كل رصيد العميل، التاني هيلاقي القفل مستني ويرفض
+      // برصيد محدّث فعلياً، مش نسخة قديمة (راجع lockAndValidateLoyaltyRedemption).
+      const requestedLoyaltyPoints = input.loyaltyPointsRedeemed ?? 0
+      const eligibleSubtotalForLoyalty = Math.max(0, subtotal - discountAmount)
+      const redemption = await lockAndValidateLoyaltyRedemption(client, userId, requestedLoyaltyPoints, eligibleSubtotalForLoyalty)
+      if (!redemption.ok) {
+        logWarn('loyalty_redemption_rejected', { errorCode: redemption.error, requestedLoyaltyPoints })
+        throw new OrderError(redemption.error === 'loyalty_balance_changed' ? 409 : 400, redemption.error, redemption.details)
+      }
+      const loyaltyDiscountAmount = redemption.discountAmount
+
       const deliveryFee = discountGrantsFreeDelivery
         ? 0
         : calculateDeliveryFee(subtotal, { freeShippingThreshold: settings.freeShippingThreshold, deliveryFee: zoneDeliveryFee })
-      const total = computeTotal(subtotal, discountAmount, deliveryFee)
+      const total = computeTotal(subtotal, discountAmount, deliveryFee, loyaltyDiscountAmount)
 
       const id = crypto.randomUUID()
       const orderNumber = await nextOrderNumber(client)
@@ -320,12 +343,14 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
              id, order_number, user_id, created_at, delivery_slot, delivery_date, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
              subtotal, delivery_fee, total, status, discount_code, discount_amount,
+             loyalty_points_redeemed, loyalty_discount_amount,
              idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions, substitution_preference
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20,$21)`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
           [
             id, orderNumber, userId, createdAt, input.deliverySlot, input.deliveryDate, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
             subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
+            redemption.pointsToRedeem, loyaltyDiscountAmount,
             idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? '', input.substitutionPreference
           ]
         )
@@ -359,6 +384,13 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         const incremented = await incrementDiscountUsageAtomic(client, appliedDiscountCode)
         if (!incremented) throw new OrderError(409, 'discount_max_uses')
         await recordDiscountUsage(client, appliedDiscountCode, id, userId, input.customer.mobile)
+      }
+
+      // آخر خطوة قبل الـ commit: تسجيل حركة استخدام النقاط السالبة + استهلاك الدفعات المقفولة
+      // من التحقق فوق. لو أي حاجة فوق فشلت (مخزون، خصم...) الطلب كله بيترجع، فمفيش نقاط
+      // اتخصمت من غير طلب فعلاً اتعمل.
+      if (userId && redemption.pointsToRedeem > 0) {
+        await commitLoyaltyRedemption(client, userId, id, redemption.pointsToRedeem)
       }
 
       return id
@@ -454,6 +486,8 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
+    loyaltyPointsRedeemed: row.loyaltyPointsRedeemed,
+    loyaltyDiscountAmount: row.loyaltyDiscountAmount,
     deliveryInstructions: row.deliveryInstructions || undefined,
     substitutionPreference: row.substitutionPreference as SubstitutionPreference
   }))
@@ -476,6 +510,13 @@ export async function cancelOrder(orderId: string, changedByUserId: string | nul
     await client.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId])
     await recordOrderStatusChange(client, { orderId, fromStatus: current.status, toStatus: 'cancelled', changedByUserId, source: 'admin' })
     const restoreResult = await restoreStockForCancelledOrder(client, orderId)
+    // بيرجّع أي نقاط اتستخدمت في الطلب ده (سيناريو حقيقي: طلب استخدم نقاط قبل التسليم ثم
+    // اتلغى). إلغاء اكتساب نقاط سبق منحها غير قابل للوصول فعلياً هنا (طلب "delivered" حالة
+    // نهائية ما بترجعش لـ "cancelled" — راجع orderStatus.ts) لكن الاستدعاء آمن ومثالي عشان
+    // يفضل صحيح لو آلة الحالات اتغيّرت مستقبلاً؛ المسار الحقيقي لإلغاء نقاط مكتسبة بعد
+    // التسليم هو مرتجع/استرداد كامل — راجع customerReturnService.ts.
+    await restoreRedeemedPointsForOrder(client, orderId)
+    await reverseEarnedPointsForOrder(client, orderId)
     logEvent('order_cancelled', { orderId })
     if (restoreResult === 'restored') logEvent('stock_restored', { orderId })
     return { ok: true }
