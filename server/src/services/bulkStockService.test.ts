@@ -34,7 +34,10 @@ async function cleanupFixtures() {
   await pool.query('DELETE FROM bulk_operation_batches')
   await pool.query('DELETE FROM audit_logs')
   await pool.query('DELETE FROM back_in_stock_subscriptions')
-  await pool.query('DELETE FROM product_variants')
+  // مقيّد بمعرّف المتغيّر الخاص بالملف ده بس — حذف عام (بدون WHERE) هنا كان بيقفل مع ملفات
+  // اختبار تانية شغّالة في نفس اللحظة على متغيرات لسه مرتبطة بصفوف order_items بتاعتها
+  // (foreign key violation)، مش مشكلة في المنتج/المتغيّر بتاع الملف ده نفسه.
+  await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_A])
   await pool.query(`DELETE FROM products WHERE id IN ($1, $2) OR id LIKE 'test-prod-bs-chunk-%'`, [PRODUCT_A, PRODUCT_B])
   await pool.query(`DELETE FROM categories WHERE id = $1`, [CATEGORY_ID])
   await pool.query('DELETE FROM users WHERE id = $1', [ADMIN_ID])
