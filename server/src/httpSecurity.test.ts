@@ -289,15 +289,16 @@ describe('cookie security attributes', () => {
 })
 
 describe('error handling (no internal detail leakage)', () => {
-  it('responds to malformed JSON with a generic error and no stack trace, SQL, or file path', async () => {
+  it('responds to malformed JSON with 400 and a generic error, no stack trace, SQL, or file path', async () => {
     const res = await request(app).post('/api/auth/login')
       .set('Content-Type', 'application/json')
       .send('{"email": "a@a.com", "password":')
     const bodyText = JSON.stringify(res.body)
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'invalid_json' })
     expect(bodyText).not.toMatch(/at\s+.*\(.*:\d+:\d+\)/) // نمط سطر stack trace نموذجي
     expect(bodyText).not.toMatch(/\/(home|tmp|usr|src)\//)
     expect(bodyText).not.toMatch(/SELECT|INSERT|UPDATE|DELETE FROM/i)
-    expect(res.body.error).toBeTruthy()
   })
 })
 

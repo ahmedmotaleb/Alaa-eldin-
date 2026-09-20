@@ -45,3 +45,21 @@ describe('cookie security attributes in production mode', () => {
     await pool.query('DELETE FROM users WHERE email = $1', [email])
   })
 })
+
+// الـ SPA fallback (وبالتبعية isSensitivePath) بيتفعّل بس في وضع الإنتاج (isProduction جوه
+// app.ts) لما بيقدر يلاقي dist/ الحقيقي المبني فعلاً — عشان كده الاختبار هنا في نفس الملف.
+describe('static file exposure paths in production mode', () => {
+  it('returns a generic 404 (not the SPA shell) for dotfile-style and infra-looking paths', async () => {
+    for (const p of ['/.env', '/.git/config', '/server/', '/logs/', '/backup/', '/admin/server']) {
+      const res = await request(app).get(p)
+      expect(res.status, `expected 404 for ${p}`).toBe(404)
+      expect(res.text).not.toMatch(/<!doctype html>/i)
+    }
+  })
+
+  it('still serves the SPA shell for a real client-side navigation route', async () => {
+    const res = await request(app).get('/product/some-slug')
+    expect(res.status).toBe(200)
+    expect(res.text).toMatch(/<!doctype html>/i)
+  })
+})

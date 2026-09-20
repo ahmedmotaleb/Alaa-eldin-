@@ -10,6 +10,7 @@ import { assertMigrationsUpToDate } from './checkMigrations.js'
 import { attachUser } from './auth.js'
 import { isRequestOriginAllowed } from './csrfOriginCheck.js'
 import { isContentTypeAllowed } from './contentTypeCheck.js'
+import { isSensitivePath } from './staticFallbackCheck.js'
 import { attachRequestId } from './requestId.js'
 import { apiRequestLogger } from './httpLogger.js'
 import { logger, logEvent, logError } from './logger.js'
@@ -262,7 +263,7 @@ if (isProduction) {
     // worker بتشاور على hash قديم بعد نشر جديد مثلاً) الفرونت إند ياخد خطأ واضح بدل ما
     // ياخد صفحة HTML كاملة بـ 200 مكان الملف ويحصله خطأ تشغيل غامض.
     const lastSegment = req.path.split('/').pop() ?? ''
-    if (req.method !== 'GET' || req.path.startsWith('/api') || lastSegment.includes('.')) {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || lastSegment.includes('.') || isSensitivePath(req.path)) {
       next()
       return
     }
@@ -287,6 +288,12 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   // حالة HTTP الصحيح لحمولة JSON زيادة عن اللازم هو 413 (مش 400).
   if (err && typeof err === 'object' && 'type' in err && (err as { type: unknown }).type === 'entity.too.large') {
     res.status(413).json({ error: 'payload_too_large' })
+    return
+  }
+  // جسم JSON غير صالح نحوياً (body-parser بيرمي SyntaxError بـ type: 'entity.parse.failed')
+  // — خطأ من العميل نفسه، مش السيرفر، فكود الحالة الصحيح 400 (مش 500 العام).
+  if (err && typeof err === 'object' && 'type' in err && (err as { type: unknown }).type === 'entity.parse.failed') {
+    res.status(400).json({ error: 'invalid_json' })
     return
   }
   // اللوج هنا فيه تفاصيل الخطأ الكاملة (stack) للسيرفر بس — العميل بياخد رسالة عامة آمنة
