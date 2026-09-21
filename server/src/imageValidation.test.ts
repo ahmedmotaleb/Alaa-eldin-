@@ -1,7 +1,8 @@
 // اختبار وحدة (unit) على التحقق من magic bytes الحقيقية للملف — بيتأكد إن ملف متنكر بامتداد/
 // mimetype صورة مزيّف (زي سكريبت أو ملف تنفيذي) بيترفض حتى لو الـ mimetype المُعلن كان صورة.
+// المنطق ده مشترك بين رفع صور المنتجات/البنرات/الأقسام ومرفقات تذاكر الدعم.
 import { describe, expect, it } from 'vitest'
-import { isRealImage } from './adminProductImages.js'
+import { isRealImage } from './imageValidation.js'
 
 const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])

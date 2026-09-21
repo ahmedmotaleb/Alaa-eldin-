@@ -653,6 +653,72 @@ export interface AdminVariant {
   createdAt: string
 }
 
+export interface AdminBarcodeSearchProduct {
+  id: string
+  name: string
+  barcode: string
+  sku: string | null
+  price: number
+  stock: number
+  brand: string
+  emoji: string
+  categoryName: string
+  variants: AdminVariant[]
+}
+
+export interface ProductSearchResult { type: 'products', id: string, name: string, price: number, stock: number, categoryName: string, url: string }
+export interface OrderSearchResult { type: 'orders', id: string, orderNumber: string, status: string, customerFullName: string, total: number, createdAt: string, url: string }
+export interface CustomerSearchResult { type: 'customers', id: string, fullName: string, email: string, mobile: string | null, url: string }
+export interface SupplierSearchResult { type: 'suppliers', id: string, name: string, mobile: string, url: string }
+export interface PurchaseOrderSearchResult { type: 'purchase_orders', id: string, poNumber: string, supplierName: string, status: string, total: number, createdAt: string, url: string }
+export interface SupportTicketSearchResult { type: 'support_tickets', id: string, ticketNumber: string, customerFullName: string, status: string, relatedOrderNumber: string | null, url: string }
+export type GlobalSearchResultItem =
+  ProductSearchResult | OrderSearchResult | CustomerSearchResult | SupplierSearchResult | PurchaseOrderSearchResult
+  | SupportTicketSearchResult
+export type GlobalSearchResults = Partial<Record<GlobalSearchResultItem['type'], GlobalSearchResultItem[]>>
+
+export interface AdminSupportTicket {
+  id: string
+  ticketNumber: string
+  customerId: string
+  category: string
+  subject: string
+  relatedOrderId: string | null
+  relatedOrderNumber: string | null
+  status: string
+  priority: string
+  assignedAdminId: string | null
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface AdminSupportTicketAttachment {
+  id: string
+  messageId: number
+  fileUrl: string
+  mimeType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface AdminSupportTicketMessage {
+  id: number
+  ticketId: string
+  senderType: 'customer' | 'admin'
+  senderUserId: string
+  message: string
+  internalNote: boolean
+  createdAt: string
+  attachments: AdminSupportTicketAttachment[]
+}
+
+export interface AdminSupportTicketDetail {
+  ticket: AdminSupportTicket
+  customer: { id: string, fullName: string, email: string, mobile: string | null }
+  messages: AdminSupportTicketMessage[]
+}
+
 export interface AdminVariantInput {
   name: string
   sku: string | null
@@ -1414,6 +1480,41 @@ export const api = {
     request<{ variant: AdminVariant }>(`/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteProductVariant: (productId: string, variantId: string) =>
     request<void>(`/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`, { method: 'DELETE' }),
+  searchBarcodeLabels: (search: string) =>
+    request<{ products: AdminBarcodeSearchProduct[] }>(`/admin/barcode-labels/search?search=${encodeURIComponent(search)}`),
+  generateBarcode: (targetType: 'product' | 'variant', targetId: string, confirmOverwrite = false) =>
+    request<{ id: string, barcode: string }>('/admin/barcode-labels/generate', {
+      method: 'POST', body: JSON.stringify({ targetType, targetId, confirmOverwrite })
+    }),
+  globalSearch: (q: string) =>
+    request<{ results: GlobalSearchResults }>(`/admin/search?q=${encodeURIComponent(q)}`),
+  listSupportTickets: (params: {
+    page?: number, limit?: number, status?: string, priority?: string, category?: string,
+    assignedAdminId?: string, customerId?: string, search?: string
+  } = {}) =>
+    request<{ tickets: AdminSupportTicket[], pagination: { page: number, limit: number, total: number, pages: number } }>(
+      `/admin/support/tickets${buildQuery(params)}`
+    ),
+  getSupportTicket: (id: string) =>
+    request<AdminSupportTicketDetail>(`/admin/support/tickets/${encodeURIComponent(id)}`),
+  replyToSupportTicket: (id: string, message: string, internalNote = false) =>
+    request<{ message: AdminSupportTicketMessage }>(`/admin/support/tickets/${encodeURIComponent(id)}/messages`, {
+      method: 'POST', body: JSON.stringify({ message, internalNote })
+    }),
+  updateSupportTicketStatus: (id: string, status: string) =>
+    request<{ ticket: AdminSupportTicket }>(`/admin/support/tickets/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH', body: JSON.stringify({ status })
+    }),
+  updateSupportTicketPriority: (id: string, priority: string) =>
+    request<{ ticket: AdminSupportTicket }>(`/admin/support/tickets/${encodeURIComponent(id)}/priority`, {
+      method: 'PATCH', body: JSON.stringify({ priority })
+    }),
+  assignSupportTicket: (id: string, assigneeId: string | null) =>
+    request<{ ticket: AdminSupportTicket }>(`/admin/support/tickets/${encodeURIComponent(id)}/assign`, {
+      method: 'PATCH', body: JSON.stringify({ assigneeId })
+    }),
+  listAssignableSupportStaff: () =>
+    request<{ staff: { id: string, fullName: string, email: string }[] }>('/admin/support/assignable-staff'),
   listAuditLogs: (page = 1, limit = 20) =>
     request<{ logs: AdminAuditLog[], page: number, limit: number, total: number, totalPages: number }>(
       `/admin/audit-logs?page=${page}&limit=${limit}`

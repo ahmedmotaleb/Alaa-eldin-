@@ -24,6 +24,9 @@ import { adminBulkPricingRouter } from './routes/adminBulkPricing.js'
 import { adminBulkStockRouter } from './routes/adminBulkStock.js'
 import { adminBulkCostRouter } from './routes/adminBulkCost.js'
 import { adminProductImagesRouter } from './routes/adminProductImages.js'
+import { adminBarcodeLabelsRouter } from './routes/adminBarcodeLabels.js'
+import { adminSearchRouter } from './routes/adminSearch.js'
+import { adminSupportRouter } from './routes/adminSupport.js'
 import { adminProductAlternativesRouter } from './routes/adminProductAlternatives.js'
 import { adminSuppliersRouter } from './routes/adminSuppliers.js'
 import { adminPurchaseOrdersRouter } from './routes/adminPurchaseOrders.js'
@@ -62,6 +65,7 @@ import { pagesRouter } from './routes/pages.js'
 import { trackRouter } from './routes/track.js'
 import { addressesRouter } from './routes/addresses.js'
 import { favoritesRouter } from './routes/favorites.js'
+import { supportRouter } from './routes/support.js'
 import { shoppingListsRouter } from './routes/shoppingLists.js'
 import { notificationsRouter } from './routes/notifications.js'
 import { frequentlyPurchasedRouter } from './routes/frequentlyPurchased.js'
@@ -190,6 +194,7 @@ app.use('/api/orders', ordersRouter)
 app.use('/api/track', trackRouter)
 app.use('/api/account/addresses', addressesRouter)
 app.use('/api/account/favorites', favoritesRouter)
+app.use('/api/account/support', supportRouter)
 app.use('/api/account/shopping-lists', shoppingListsRouter)
 app.use('/api/loyalty', loyaltyRouter)
 app.use('/api/account/cart-snapshot', cartSnapshotRouter)
@@ -211,6 +216,9 @@ app.use('/api/admin/products/bulk-stock', adminBulkStockRouter)
 app.use('/api/admin/products/bulk-cost', adminBulkCostRouter)
 app.use('/api/admin/products', adminProductImagesRouter)
 app.use('/api/admin/products', adminProductAlternativesRouter)
+app.use('/api/admin/barcode-labels', adminBarcodeLabelsRouter)
+app.use('/api/admin/search', adminSearchRouter)
+app.use('/api/admin/support', adminSupportRouter)
 app.use('/api/admin/suppliers', adminSuppliersRouter)
 app.use('/api/admin/purchase-orders', adminPurchaseOrdersRouter)
 app.use('/api/admin/goods-receipts', adminGoodsReceivingRouter)

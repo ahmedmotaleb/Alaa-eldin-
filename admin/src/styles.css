@@ -317,3 +317,112 @@ html, body, #root { max-width: 100%; overflow-x: hidden; }
   .print-order-page { padding: 0; }
   .print-order-sheet { border: none; padding: 0; }
 }
+
+/* صفحة طباعة ملصقات الباركود — بنية بانية+معاينة على نفس الصفحة داخل لوحة التحكم العادية،
+   والطباعة نفسها بتخفي كل حاجة غير ورقة الملصقات عن طريق @media print تحت. */
+.barcode-labels-page { display: flex; flex-direction: column; gap: 14px; }
+.barcode-labels-builder { display: flex; flex-direction: column; gap: 14px; }
+.barcode-hint { font-weight: 600; font-size: 12px; color: var(--muted); }
+.barcode-search-results { max-height: 420px; overflow-y: auto; }
+.barcode-search-product { border-bottom: 1px solid #eef2ef; padding-bottom: 10px; margin-bottom: 4px; display: flex; flex-direction: column; gap: 6px; }
+.barcode-search-product:last-child { border-bottom: none; }
+.barcode-search-product-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 13.5px; gap: 8px; flex-wrap: wrap; }
+.barcode-search-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 600; flex-wrap: wrap; padding-inline-start: 8px; }
+.barcode-search-code { font-family: 'Courier New', monospace; font-weight: 800; color: #3b4a40; }
+.barcode-fields-toggles { display: flex; flex-wrap: wrap; gap: 10px 18px; font-weight: 600; font-size: 12.5px; }
+.barcode-fields-toggles label { flex-direction: row; align-items: center; gap: 6px; }
+.barcode-btn-secondary { border: 1px solid var(--green); background: #fff; color: var(--green-dark); border-radius: 10px; padding: 6px 12px; font-weight: 700; font-size: 12px; cursor: pointer; }
+.barcode-btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+.barcode-btn-icon { border: 1px solid #dce4de; background: #fbfcfb; border-radius: 8px; width: 30px; height: 30px; font-weight: 800; cursor: pointer; }
+.barcode-btn-icon:disabled { opacity: .35; cursor: not-allowed; }
+.barcode-queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eef2ef; flex-wrap: wrap; }
+.barcode-queue-name { font-weight: 700; font-size: 13px; flex: 1; min-width: 140px; }
+.barcode-queue-qty { width: 64px; border: 1px solid #dce4de; border-radius: 8px; padding: 6px 8px; font-weight: 700; text-align: center; }
+
+/* ورقة المعاينة/الطباعة — على الشاشة بتتعرض كشبكة معاينة مصغّرة تحت البانية، ووقت الطباعة
+   الفعلية بتتحول للحجم الحقيقي بالمليمتر وكل حاجة تانية بتتخفي. */
+.barcode-print-sheet { display: flex; flex-wrap: wrap; gap: 8px; border-top: 2px dashed #dce4de; padding-top: 14px; }
+.barcode-label {
+  border: 1px solid #17221a; border-radius: 4px; padding: 3mm; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5mm;
+  text-align: center; overflow: hidden; background: #fff;
+}
+.barcode-label-store { font-weight: 900; font-size: 9px; }
+.barcode-label-product { font-weight: 800; font-size: 9.5px; line-height: 1.2; }
+.barcode-label-variant { font-weight: 600; font-size: 8.5px; color: #3b4a40; }
+.barcode-label-price { font-weight: 900; font-size: 11px; }
+.barcode-label-sku { font-weight: 600; font-size: 8px; color: var(--muted); }
+.barcode-graphic { display: flex; flex-direction: column; align-items: center; }
+.barcode-graphic-warning { font-size: 7.5px; color: var(--danger); font-weight: 700; max-width: 100%; }
+
+/* أحجام صفحة الطباعة (@page) — لازم تكون CSS ثابت في ملف مُستضاف (مش <style> ديناميكي جوه
+   الصفحة نفسها)، عشان Content-Security-Policy الصارم للمشروع (style-src 'self') بيرفض أي
+   عنصر <style> بمحتوى مُتولّد وقت التشغيل. الحل: أربع صفحات مُسمّاة ثابتة مسبقاً (CSS Paged
+   Media)، وكل مقاس ملصق بيتحدد له صفحته عن طريق خاصية page على عنصر الجذر (page: <اسم>). */
+@page label-40x30 { size: 40mm 30mm; margin: 0; }
+@page label-50x30 { size: 50mm 30mm; margin: 0; }
+@page label-50x40 { size: 50mm 40mm; margin: 0; }
+@page label-a4 { size: A4; margin: 10mm; }
+
+.barcode-page-size-40x30 { page: label-40x30; }
+.barcode-page-size-50x30 { page: label-50x30; }
+.barcode-page-size-50x40 { page: label-50x40; }
+.barcode-page-size-a4 { page: label-a4; }
+
+@media print {
+  .barcode-labels-builder { display: none; }
+  .barcode-labels-page { gap: 0; }
+  .barcode-print-sheet { border-top: none; padding-top: 0; gap: 0; }
+  .barcode-print-sheet-single .barcode-label { border: none; border-radius: 0; page-break-after: always; width: 100%; height: 100%; }
+  .barcode-print-sheet-a4 .barcode-label { border: 1px solid #ccc; page-break-inside: avoid; }
+}
+
+@media (max-width: 640px) {
+  .barcode-queue-row { flex-wrap: wrap; }
+  .barcode-search-row { padding-inline-start: 0; }
+}
+
+/* Command Palette — البحث الشامل (Ctrl+K / Cmd+K) */
+.command-palette-backdrop {
+  position: fixed; inset: 0; background: rgba(8,18,12,.5); z-index: 80;
+  display: flex; align-items: flex-start; justify-content: center; padding: 10vh 16px 16px;
+}
+.command-palette {
+  width: 100%; max-width: 640px; max-height: 70vh; background: #fff; border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3); display: flex; flex-direction: column; overflow: hidden;
+}
+.command-palette-input-row {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.command-palette-icon { font-size: 16px; color: var(--muted); }
+.command-palette-input-row input {
+  flex: 1; border: none; outline: none; font-size: 16px; font-family: inherit; background: transparent;
+}
+.command-palette-close {
+  border: none; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px 6px;
+}
+.command-palette-results { overflow-y: auto; padding: 6px; }
+.command-palette-hint { padding: 16px; color: var(--muted); font-size: 14px; text-align: center; }
+.command-palette-group { padding: 6px 0; }
+.command-palette-group-label { padding: 6px 10px; font-size: 12px; color: var(--muted); font-weight: 700; }
+.command-palette-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 10px; border: none; background: transparent; border-radius: 8px; cursor: pointer; text-align: right;
+}
+.command-palette-row:hover, .command-palette-row.active { background: var(--green-soft); }
+.command-palette-row-icon { flex-shrink: 0; }
+.command-palette-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.command-palette-row-title { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-row-subtitle { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-row-date { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .command-palette-backdrop { padding: 0; align-items: stretch; }
+  .command-palette { max-width: none; max-height: 100dvh; border-radius: 0; height: 100dvh; }
+}
+
+/* select مستقل داخل أشرطة أدوات الجداول (فلتر أولوية/فئة...) — مش جوه .admin-form-card */
+.admin-form-select {
+  border: 1px solid var(--border); border-radius: 11px; padding: 8px 11px; font-weight: 600;
+  font-size: 12.5px; color: #17221a; background: #fbfcfb; min-height: 38px;
+}

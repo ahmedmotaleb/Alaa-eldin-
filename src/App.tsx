@@ -14,6 +14,8 @@ import { ar } from './i18n/ar'
 // اللي المستخدم ممكن ميزورهاش أصلاً في نفس الجلسة.
 const AccountPage = lazy(() => import('./pages/AccountPage').then(m => ({ default: m.AccountPage })))
 const AddressesPage = lazy(() => import('./pages/AddressesPage').then(m => ({ default: m.AddressesPage })))
+const SupportTicketsPage = lazy(() => import('./pages/SupportTicketsPage').then(m => ({ default: m.SupportTicketsPage })))
+const SupportTicketDetailPage = lazy(() => import('./pages/SupportTicketDetailPage').then(m => ({ default: m.SupportTicketDetailPage })))
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(m => ({ default: m.FavoritesPage })))
 const ShoppingListsPage = lazy(() => import('./pages/ShoppingListsPage').then(m => ({ default: m.ShoppingListsPage })))
 const ShoppingListDetailPage = lazy(() => import('./pages/ShoppingListDetailPage').then(m => ({ default: m.ShoppingListDetailPage })))
@@ -101,6 +103,8 @@ export default function App() {
                         <Route path="/orders" element={<OrdersPage />} />
                         <Route path="/account" element={<AccountPage />} />
                         <Route path="/account/addresses" element={<AddressesPage />} />
+                        <Route path="/account/support" element={<SupportTicketsPage />} />
+                        <Route path="/account/support/:id" element={<SupportTicketDetailPage />} />
                         <Route path="/account/favorites" element={<FavoritesPage />} />
                         <Route path="/account/shopping-lists" element={<ShoppingListsPage />} />
                         <Route path="/account/shopping-lists/:id" element={<ShoppingListDetailPage />} />

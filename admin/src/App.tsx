@@ -41,9 +41,12 @@ const CustomerReturnDetailPage = lazy(() => import('./pages/CustomerReturnDetail
 const ExpiryDashboardPage = lazy(() => import('./pages/products/ExpiryDashboardPage').then(m => ({ default: m.ExpiryDashboardPage })))
 const StockWriteOffPage = lazy(() => import('./pages/products/StockWriteOffPage').then(m => ({ default: m.StockWriteOffPage })))
 const BarcodeScanPage = lazy(() => import('./pages/products/BarcodeScanPage').then(m => ({ default: m.BarcodeScanPage })))
+const BarcodeLabelsPage = lazy(() => import('./pages/products/BarcodeLabelsPage').then(m => ({ default: m.BarcodeLabelsPage })))
 const CustomersListPage = lazy(() => import('./pages/customers/CustomersListPage').then(m => ({ default: m.CustomersListPage })))
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })))
 const SegmentsPage = lazy(() => import('./pages/customers/SegmentsPage').then(m => ({ default: m.SegmentsPage })))
+const SupportTicketsListPage = lazy(() => import('./pages/SupportTicketsListPage').then(m => ({ default: m.SupportTicketsListPage })))
+const SupportTicketDetailPage = lazy(() => import('./pages/SupportTicketDetailPage').then(m => ({ default: m.SupportTicketDetailPage })))
 const ReferralsPage = lazy(() => import('./pages/customers/ReferralsPage').then(m => ({ default: m.ReferralsPage })))
 const ReferralDetailPage = lazy(() => import('./pages/customers/ReferralDetailPage').then(m => ({ default: m.ReferralDetailPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
@@ -100,6 +103,7 @@ export default function App() {
               <Route path="/products/expiry" element={<ExpiryDashboardPage />} />
               <Route path="/products/writeoff" element={<StockWriteOffPage />} />
               <Route path="/products/barcode" element={<BarcodeScanPage />} />
+              <Route path="/products/barcode-labels" element={<BarcodeLabelsPage />} />
               <Route path="/products/valuation" element={<InventoryValuationPage />} />
               <Route path="/products/moves" element={<StockMovesPage />} />
               <Route path="/products/cyclecounts" element={<CycleCountsListPage />} />
@@ -123,6 +127,8 @@ export default function App() {
               <Route path="/customers/referrals" element={<ReferralsPage />} />
               <Route path="/customers/referrals/:id" element={<ReferralDetailPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
+              <Route path="/support/tickets" element={<SupportTicketsListPage />} />
+              <Route path="/support/tickets/:id" element={<SupportTicketDetailPage />} />
               <Route path="/analytics" element={<Navigate to="/analytics/overview" replace />} />
               <Route path="/analytics/:tab" element={<AnalyticsPage />} />
               <Route path="/wallet" element={<Navigate to="/wallet/overview" replace />} />

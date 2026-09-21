@@ -8,6 +8,7 @@ const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME
 const API_KEY = process.env.CLOUDINARY_API_KEY
 const API_SECRET = process.env.CLOUDINARY_API_SECRET
 const FOLDER = process.env.CLOUDINARY_FOLDER ?? 'alaa-eldin/products'
+const SUPPORT_FOLDER = process.env.CLOUDINARY_SUPPORT_FOLDER ?? 'alaa-eldin/support-attachments'
 
 export const imageStorageConfigured = !!(CLOUD_NAME && API_KEY && API_SECRET)
 
@@ -21,8 +22,9 @@ export interface UploadedImage {
 }
 
 // اسم الملف الأصلي اللي بيبعته المستخدم متجاهل تماماً كمصدر لمسار التخزين — asset id
-// بيتولّد هنا في السيرفر عشان نمنع أي path traversal أو تعارض أسماء.
-export async function uploadImage(buffer: Buffer): Promise<UploadedImage> {
+// بيتولّد هنا في السيرفر عشان نمنع أي path traversal أو تعارض أسماء. `folder` اختياري —
+// مرفقات تذاكر الدعم بتتخزن في مجلد منفصل عن صور المنتجات، بنفس البنية التحتية بالظبط.
+export async function uploadImage(buffer: Buffer, folder: string = FOLDER): Promise<UploadedImage> {
   if (!imageStorageConfigured) {
     throw new Error('image_storage_not_configured')
   }
@@ -30,7 +32,7 @@ export async function uploadImage(buffer: Buffer): Promise<UploadedImage> {
   const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: FOLDER,
+        folder,
         public_id: publicId,
         resource_type: 'image',
         format: 'webp',
@@ -45,6 +47,8 @@ export async function uploadImage(buffer: Buffer): Promise<UploadedImage> {
   })
   return { url: result.secure_url, storageKey: result.public_id }
 }
+
+export const SUPPORT_ATTACHMENTS_FOLDER = SUPPORT_FOLDER
 
 export async function deleteImage(storageKey: string): Promise<void> {
   if (!imageStorageConfigured || !storageKey) return

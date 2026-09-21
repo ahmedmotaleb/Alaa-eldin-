@@ -120,3 +120,25 @@ export async function notifyOrderStatusChange(userId: string | null, orderNumber
 
   await sendPushToUser(userId, { title: `طلبك ${orderNumber}`, body: message, url: '/orders' })
 }
+
+// إشعار العميل برد الأدمن أو تحديث حالة تذكرة الدعم — بيحترم نفس تفضيل "تحديثات الطلب"
+// (مفيش تفضيل منفصل للدعم؛ التذاكر غالباً مرتبطة بالطلبات أصلاً، وإضافة تفضيل جديد كان
+// هيحتاج migration وواجهة إعدادات إضافية لمكسب محدود). أبداً ما بيبعتش لو الإرسال مش مُعدّ.
+export async function notifySupportTicketUpdate(
+  customerId: string, ticketNumber: string, event: 'admin_replied' | 'resolved'
+): Promise<void> {
+  const prefs = await getNotificationPreferences(customerId)
+  if (!prefs.orderUpdates) return
+
+  const MESSAGE: Record<typeof event, string> = {
+    admin_replied: 'وصلك رد جديد على تذكرة الدعم',
+    resolved: 'تم حل تذكرة الدعم بتاعتك'
+  }
+  await sendPushToUser(customerId, { title: `تذكرة الدعم ${ticketNumber}`, body: MESSAGE[event], url: '/account/support' })
+}
+
+// إشعار الأدمن المُسند إليه التذكرة برد جديد من العميل — بيتبعت بس لو فيه أدمن معيّن فعلاً
+// (تذكرة غير مُسندة بتظهر في تنبيه لوحة التحكم "تذاكر دعم مفتوحة" بدل ما نرسل بوش لكل مدير).
+export async function notifyAssignedAdminOfReply(assignedAdminId: string, ticketNumber: string): Promise<void> {
+  await sendPushToUser(assignedAdminId, { title: `تذكرة الدعم ${ticketNumber}`, body: 'رد جديد من العميل', url: '/support/tickets' })
+}

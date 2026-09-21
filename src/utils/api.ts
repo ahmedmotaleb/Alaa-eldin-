@@ -15,10 +15,13 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let res: Response
   try {
+    // جسم FormData (زي مرفقات تذاكر الدعم) لازم يفضل من غير Content-Type مضبوط يدوياً —
+    // المتصفح هو اللي بيحدد multipart boundary الصحيح بنفسه وقت الإرسال.
+    const isFormData = options.body instanceof FormData
     res = await fetch(BASE + path, {
       credentials: 'include',
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) }
+      headers: isFormData ? (options.headers ?? {}) : { 'Content-Type': 'application/json', ...(options.headers ?? {}) }
     })
   } catch {
     throw new ApiError('network_error', 0)
@@ -187,6 +190,49 @@ export interface ApiPagination {
   limit: number
   total: number
   pages: number
+}
+
+export type ApiSupportTicketStatus = 'open' | 'in_progress' | 'waiting_customer' | 'resolved' | 'closed'
+
+export interface ApiSupportTicket {
+  id: string
+  ticketNumber: string
+  customerId: string
+  category: string
+  subject: string
+  relatedOrderId: string | null
+  relatedOrderNumber: string | null
+  status: ApiSupportTicketStatus
+  priority: 'low' | 'normal' | 'high' | 'urgent'
+  assignedAdminId: string | null
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface ApiSupportTicketAttachment {
+  id: string
+  messageId: number
+  fileUrl: string
+  mimeType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface ApiSupportMessage {
+  id: number
+  ticketId: string
+  senderType: 'customer' | 'admin'
+  senderUserId: string
+  message: string
+  internalNote: boolean
+  createdAt: string
+  attachments: ApiSupportTicketAttachment[]
+}
+
+export interface ApiSupportTicketDetail {
+  ticket: ApiSupportTicket
+  messages: ApiSupportMessage[]
 }
 
 export interface ApiProductGalleryImage {
@@ -381,6 +427,24 @@ export const api = {
   listFavorites: () => request<{ favorites: ApiProduct[] }>('/account/favorites'),
   addFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'POST' }),
   removeFavorite: (productId: string) => request<void>(`/account/favorites/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
+  listSupportTickets: (page = 1, limit = 20) =>
+    request<{ tickets: ApiSupportTicket[], pagination: ApiPagination }>(`/account/support/tickets?page=${page}&limit=${limit}`),
+  createSupportTicket: (body: { category: string, subject: string, message: string, orderNumber?: string }, attachments: File[] = []) => {
+    const form = new FormData()
+    form.append('category', body.category)
+    form.append('subject', body.subject)
+    form.append('message', body.message)
+    if (body.orderNumber) form.append('orderNumber', body.orderNumber)
+    for (const file of attachments) form.append('attachments', file)
+    return request<{ ticket: ApiSupportTicket }>('/account/support/tickets', { method: 'POST', body: form })
+  },
+  getSupportTicket: (id: string) => request<ApiSupportTicketDetail>(`/account/support/tickets/${encodeURIComponent(id)}`),
+  replyToSupportTicket: (id: string, message: string, attachments: File[] = []) => {
+    const form = new FormData()
+    form.append('message', message)
+    for (const file of attachments) form.append('attachments', file)
+    return request<{ message: ApiSupportMessage }>(`/account/support/tickets/${encodeURIComponent(id)}/messages`, { method: 'POST', body: form })
+  },
   listFrequentlyPurchased: () => request<{ products: ApiProduct[] }>('/account/frequently-purchased'),
   listShoppingLists: () => request<{ lists: ShoppingList[] }>('/account/shopping-lists'),
   createShoppingList: (name: string) =>

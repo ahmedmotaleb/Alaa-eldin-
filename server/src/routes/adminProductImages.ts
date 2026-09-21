@@ -11,33 +11,16 @@ import {
 } from '../services/productImageService.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent, logWarn } from '../logger.js'
+import { ALLOWED_IMAGE_MIME, MAX_IMAGE_SIZE_BYTES, isRealImage } from '../imageValidation.js'
 
 export const adminProductImagesRouter = Router()
 adminProductImagesRouter.use(requireAdmin)
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const MAX_SIZE_BYTES = 5 * 1024 * 1024
-
-// ما بيثقش في الـ mimetype اللي المتصفح مبعتها لوحدها — بيتأكد كمان من magic bytes الحقيقية
-// للملف عشان يمنع ملف متنكر (مثلاً .exe بامتداد/mimetype صورة مزيّف).
-const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff])
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-const WEBP_RIFF = Buffer.from('RIFF')
-const WEBP_TAG = Buffer.from('WEBP')
-
-export function isRealImage(buffer: Buffer, mimetype: string): boolean {
-  if (buffer.length < 12) return false
-  if (mimetype === 'image/jpeg') return buffer.subarray(0, 3).equals(JPEG_MAGIC)
-  if (mimetype === 'image/png') return buffer.subarray(0, 4).equals(PNG_MAGIC)
-  if (mimetype === 'image/webp') return buffer.subarray(0, 4).equals(WEBP_RIFF) && buffer.subarray(8, 12).equals(WEBP_TAG)
-  return false
-}
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_SIZE_BYTES, files: 1 },
+  limits: { fileSize: MAX_IMAGE_SIZE_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    cb(null, ALLOWED_MIME.has(file.mimetype))
+    cb(null, ALLOWED_IMAGE_MIME.has(file.mimetype))
   }
 })
 

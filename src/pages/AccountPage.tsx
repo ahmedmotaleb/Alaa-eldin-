@@ -15,6 +15,7 @@ const ACCOUNT_ROWS = [
   { icon: '❤️', label: ar.account.favorites, path: '/account/favorites' },
   { icon: '📝', label: ar.account.shoppingLists, path: '/account/shopping-lists' },
   { icon: '🔒', label: ar.account.security, path: '/account/security' },
+  { icon: '🎧', label: ar.account.supportTickets, path: '/account/support' },
   { icon: '↺', label: ar.account.returnPolicy, path: '/refund-exchange-policy' },
   { icon: '⚙️', label: ar.account.settingsAndNotifications, path: undefined }
 ]

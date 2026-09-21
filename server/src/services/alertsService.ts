@@ -33,7 +33,8 @@ export async function getAlerts(): Promise<Alert[]> {
     pendingSupplierReturnsRows,
     unsettledRiderRows,
     pendingPurchaseOrdersRows,
-    whatsappFailedRows
+    whatsappFailedRows,
+    openSupportTicketsRows
   ] = await Promise.all([
     pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products WHERE available = 1 AND stock <= 0`),
     pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM products WHERE available = 1 AND stock > 0 AND stock <= alert_threshold`),
@@ -50,7 +51,8 @@ export async function getAlerts(): Promise<Alert[]> {
     pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM purchase_orders WHERE status IN ('submitted', 'partially_received')`),
     pool.query<{ n: string }>(
       `SELECT COUNT(*) as n FROM whatsapp_messages WHERE status = 'failed' AND created_at > now() - interval '${WHATSAPP_FAILURE_WINDOW_HOURS} hours'`
-    )
+    ),
+    pool.query<{ n: string }>(`SELECT COUNT(*) as n FROM support_tickets WHERE status IN ('open', 'in_progress', 'waiting_customer')`)
   ])
 
   const alerts: Alert[] = []
@@ -102,6 +104,11 @@ export async function getAlerts(): Promise<Alert[]> {
   const whatsappFailedCount = Number(whatsappFailedRows.rows[0].n)
   if (whatsappFailedCount > 0) {
     alerts.push({ category: 'whatsapp_failed', label: 'رسائل واتساب فشل إرسالها', count: whatsappFailedCount, severity: 'warning', link: '/settings/integrations' })
+  }
+
+  const openSupportTicketsCount = Number(openSupportTicketsRows.rows[0].n)
+  if (openSupportTicketsCount > 0) {
+    alerts.push({ category: 'open_support_tickets', label: 'تذاكر دعم مفتوحة', count: openSupportTicketsCount, severity: 'info', link: '/support/tickets' })
   }
 
   return alerts

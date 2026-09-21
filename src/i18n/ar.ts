@@ -291,7 +291,8 @@ export const ar = {
     reorderNoneAvailable: 'كل منتجات هذا الطلب غير متاحة حالياً، تعذّرت إعادة الطلب',
     editProfile: 'تعديل البيانات الشخصية',
     frequentlyPurchasedTitle: 'مشترياتي المعتادة',
-    rewards: 'المكافآت'
+    rewards: 'المكافآت',
+    supportTickets: 'الدعم والمساعدة'
   },
 
   rewards: {
@@ -530,7 +531,10 @@ export const ar = {
       redemption_exceeds_limit: 'عدد النقاط أكبر من الحد الأقصى المسموح لهذا الطلب',
       loyalty_balance_changed: 'رصيد النقاط تغيّر. يرجى مراجعة النقاط المستخدمة والمحاولة مرة أخرى.',
       captcha_required: 'تعذر التحقق الأمني. حاول مرة أخرى.',
-      captcha_failed: 'تعذر التحقق الأمني. حاول مرة أخرى.'
+      captcha_failed: 'تعذر التحقق الأمني. حاول مرة أخرى.',
+      order_not_found_or_not_yours: 'لم نتمكن من إيجاد هذا الطلب ضمن طلباتك',
+      ticket_not_found: 'تعذر العثور على هذه التذكرة',
+      ticket_closed: 'هذه التذكرة مغلقة — افتح تذكرة جديدة إذا احتجت مساعدة أخرى'
     } as Record<string, string>,
     forCode(code: string) {
       return this.codes[code] ?? this.generic
@@ -566,6 +570,51 @@ export const ar = {
       payment: 'الدفع: الدفع عند الاستلام',
       free: 'مجاني'
     }
+  },
+
+  support: {
+    title: 'الدعم والمساعدة',
+    newTicketTitle: 'فتح تذكرة دعم جديدة',
+    guestNote: 'سجّل الدخول لفتح تذكرة دعم أو متابعة تذاكرك.',
+    emptyList: 'لسه معملتش أي تذكرة دعم.',
+    newTicketButton: 'تذكرة جديدة',
+    categoryLabel: 'نوع المشكلة',
+    subjectLabel: 'عنوان مختصر',
+    subjectPlaceholder: 'مثال: منتج ناقص من الطلب',
+    messageLabel: 'تفاصيل المشكلة',
+    messagePlaceholder: 'اشرح المشكلة بالتفصيل...',
+    relatedOrderLabel: 'الطلب المرتبط (اختياري)',
+    relatedOrderNone: 'بدون طلب مرتبط',
+    attachmentsLabel: 'إرفاق صور (اختياري، حتى 3 صور)',
+    submitButton: 'إرسال التذكرة',
+    submitting: 'جارِ الإرسال...',
+    categories: {
+      order_issue: 'مشكلة في الطلب',
+      missing_item: 'منتج ناقص',
+      damaged_item: 'منتج تالف',
+      wrong_item: 'منتج خاطئ',
+      delivery_issue: 'مشكلة في التوصيل',
+      refund_request: 'استرجاع / استرداد',
+      payment_issue: 'مشكلة في الدفع',
+      account_issue: 'مشكلة في الحساب',
+      suggestion: 'اقتراح',
+      other: 'أخرى'
+    } as Record<string, string>,
+    statusLabels: {
+      open: 'مفتوحة',
+      in_progress: 'قيد المتابعة',
+      waiting_customer: 'بانتظار ردك',
+      resolved: 'تم الحل',
+      closed: 'مغلقة'
+    } as Record<string, string>,
+    relatedOrderPrefix: 'الطلب:',
+    conversationTitle: 'المحادثة',
+    replyPlaceholder: 'اكتب ردك هنا...',
+    sendButton: 'إرسال',
+    closedNote: 'هذه التذكرة مغلقة. لو محتاج مساعدة تانية، افتح تذكرة جديدة.',
+    reportIssueButton: 'الإبلاغ عن مشكلة في هذا الطلب',
+    you: 'أنت',
+    supportTeam: 'فريق الدعم'
   }
 }
 

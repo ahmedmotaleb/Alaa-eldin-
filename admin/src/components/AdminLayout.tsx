@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { CommandPalette } from './CommandPalette'
 import { useRequireAdmin } from '../hooks/useRequireAdmin'
 import { api } from '../utils/api'
 
@@ -25,6 +26,20 @@ export function AdminLayout() {
   const [header, setHeader] = useState<HeaderConfig>({ crumb: '', title: '' })
   const [alertsCount, setAlertsCount] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // Ctrl+K (وWindows/Linux) أو Cmd+K (ماك) بيفتح البحث الشامل من أي مكان في لوحة التحكم.
+  useEffect(() => {
+    if (!user) return
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(true)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -86,6 +101,15 @@ export function AdminLayout() {
             {header.action && (
               <button className="admin-action-button" onClick={header.action.onClick}>{header.action.label}</button>
             )}
+            <button
+              type="button"
+              className="admin-bell"
+              aria-label="بحث شامل في النظام"
+              title="بحث شامل (Ctrl+K)"
+              onClick={() => setPaletteOpen(true)}
+            >
+              🔎
+            </button>
             <button className="admin-bell" aria-label="الإشعارات" onClick={() => navigate('/notifications')} style={{ position: 'relative' }}>
               🔔
               {alertsCount > 0 && <span className="admin-bell-badge">{alertsCount > 99 ? '99+' : alertsCount}</span>}
@@ -96,6 +120,7 @@ export function AdminLayout() {
           <Outlet context={{ setHeader } satisfies LayoutContext} />
         </div>
       </main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }

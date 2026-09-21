@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useOutletContext, useParams } from 'react-router-dom'
+import { useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { OrderTable } from '../components/OrderTable'
 import { OrderDrawer } from '../components/OrderDrawer'
 import { StatsGrid } from '../components/StatsGrid'
@@ -12,12 +12,30 @@ const ORDERS_NAV = NAV.find(g => g.id === 'orders')!
 
 export function OrdersPage() {
   const { tab } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { setHeader } = useOutletContext<LayoutContext>()
   const [orders, setOrders] = useState<AdminOrder[] | null>(null)
   const [riders, setRiders] = useState<AdminRider[]>([])
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminOrder | null>(null)
+
+  // جاي من البحث الشامل (Ctrl+K) — لو فيه ?highlight=<id> في الرابط، نفتح تفاصيل الطلب ده
+  // مباشرة حتى لو مش من ضمن الطلبات المحمّلة أصلاً في القائمة الحالية.
+  const highlightId = searchParams.get('highlight')
+  useEffect(() => {
+    if (!highlightId) return
+    const inList = orders?.find(o => o.id === highlightId)
+    if (inList) {
+      setSelected(inList)
+      setSearchParams(params => { params.delete('highlight'); return params }, { replace: true })
+      return
+    }
+    api.getOrder(highlightId)
+      .then(({ order }) => setSelected(order))
+      .catch(() => {})
+      .finally(() => setSearchParams(params => { params.delete('highlight'); return params }, { replace: true }))
+  }, [highlightId, orders, setSearchParams])
 
   const activeTab = tab && ORDER_TAB_STATUS[tab] !== undefined ? tab : 'all'
   const tabLabel = ORDERS_NAV.children.find(c => c.id === activeTab)?.label ?? 'جميع الطلبات'

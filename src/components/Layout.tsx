@@ -24,6 +24,7 @@ function useSubTitle() {
   if (pathname.startsWith('/track/')) return t.tracking
   if (pathname.endsWith('/receipt')) return ar.receipt.title
   if (pathname === '/orders') return t.orders
+  if (pathname.startsWith('/account/support')) return ar.support.title
   if (pathname === '/account') return t.account
   if (pathname === '/login') return ar.auth.loginTitle
   if (pathname === '/register') return ar.auth.registerTitle

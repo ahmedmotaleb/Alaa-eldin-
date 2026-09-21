@@ -1,6 +1,7 @@
 import { pool } from '../db.js'
 import { listPublicAlternatives } from './productAlternativeService.js'
 import { listVariantsForProduct } from './productVariantService.js'
+import { NORMALIZE_SQL } from '../textSearch.js'
 
 export const MAX_LIMIT = 100
 export const DEFAULT_LIMIT = 20
@@ -68,11 +69,6 @@ interface ProductCardRow {
   brand: string
   total?: string
 }
-
-// عربي: نفس الاسم ممكن يتكتب بأكتر من شكل شائع (أ/إ/آ كلها همزة على الألف، ي بدل ى في آخر
-// الكلمة، ه بدل ة في العامية) — التطبيع ده بيتم وقت المقارنة في البحث فقط، الاسم المخزّن في
-// قاعدة البيانات (وعلى الواجهة) ما بيتغيرش خالص.
-const NORMALIZE_SQL = (expr: string) => `lower(translate(${expr}, 'أإآىة', 'ااايه'))`
 
 function stockStateOf(stock: number, alertThreshold: number): StockState {
   if (stock <= 0) return 'out_of_stock'

@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
 import { uploadImage, deleteImage as deleteRemoteImage, imageStorageConfigured } from '../services/imageStorageService.js'
-import { isRealImage } from './adminProductImages.js'
+import { isRealImage } from '../imageValidation.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 
 export const adminBannersRouter = Router()

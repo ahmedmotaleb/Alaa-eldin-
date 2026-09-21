@@ -9,7 +9,9 @@ export const ALL_PERMISSIONS = [
   'wallet.view', 'wallet.manage', 'delivery.manage', 'marketing.manage',
   'settings.manage', 'users.manage', 'audit.view', 'returns.manage', 'integrations.manage',
   'products.pricing.bulk_update', 'products.cost.bulk_update',
-  'loyalty.view', 'loyalty.adjust', 'loyalty.settings', 'referrals.view', 'referrals.manage'
+  'loyalty.view', 'loyalty.adjust', 'loyalty.settings', 'referrals.view', 'referrals.manage',
+  'products.barcode.view', 'products.barcode.generate', 'products.barcode.print',
+  'support.view', 'support.reply', 'support.assign', 'support.manage'
 ] as const
 
 export type Permission = typeof ALL_PERMISSIONS[number]

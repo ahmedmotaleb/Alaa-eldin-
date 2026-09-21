@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { useToast } from '../store/ToastContext'
 import { getGuestTrackingToken } from '../utils/guestTracking'
@@ -12,6 +12,7 @@ import { ar } from '../i18n/ar'
 type OrderStatus = ApiOrder['status']
 
 export function ReceiptPage() {
+  const navigate = useNavigate()
   const { orderNumber } = useParams()
   const [searchParams] = useSearchParams()
   const { user, loading: authLoading } = useAuth()
@@ -117,6 +118,11 @@ export function ReceiptPage() {
       <div className="receipt-actions no-print">
         <button className="secondary-button" onClick={() => window.print()}>{ar.receipt.printButton}</button>
         <button className="secondary-button" onClick={share}>{ar.receipt.shareButton}</button>
+        {user && (
+          <button className="secondary-button" onClick={() => navigate(`/account/support?orderNumber=${encodeURIComponent(order.orderNumber)}`)}>
+            {ar.support.reportIssueButton}
+          </button>
+        )}
       </div>
     </div>
   )
