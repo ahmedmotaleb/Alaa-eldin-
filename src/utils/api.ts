@@ -353,11 +353,11 @@ export interface ApiLoyaltySummary {
 }
 
 export const api = {
-  register: (body: { email: string, password: string, fullName: string, referralCode?: string }) =>
+  register: (body: { email: string, password: string, fullName: string, referralCode?: string, captchaToken?: string }) =>
     request<{ user: ApiUser }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   getLoyalty: (page = 1, limit = 20) =>
     request<ApiLoyaltySummary>(`/loyalty?page=${page}&limit=${limit}`),
-  login: (body: { email: string, password: string }) =>
+  login: (body: { email: string, password: string, captchaToken?: string }) =>
     request<{ user: ApiUser }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<{ user: ApiUser }>('/auth/me'),
@@ -366,7 +366,8 @@ export const api = {
   listSessions: () => request<{ sessions: ApiSession[] }>('/auth/sessions'),
   removeSession: (id: string) => request<void>(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   logoutOtherSessions: () => request<{ revoked: number }>('/auth/sessions/logout-others', { method: 'POST' }),
-  forgotPassword: (email: string) => request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  forgotPassword: (email: string, captchaToken?: string) =>
+    request<void>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email, captchaToken }) }),
   resetPassword: (token: string, password: string) =>
     request<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
   listAddresses: () => request<{ addresses: ApiAddress[] }>('/account/addresses'),
@@ -430,7 +431,7 @@ export const api = {
     request<void>(`/products/notify-when-available/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
   autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
-  getSettings: () => request<{ settings: ApiSettings }>('/settings'),
+  getSettings: () => request<{ settings: ApiSettings, captcha: { turnstileSiteKey: string | null } }>('/settings'),
   getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),
   getAlternatives: (productId: string) => request<{ alternatives: ApiAlternativeProduct[] }>(`/products/${encodeURIComponent(productId)}/alternatives`),
   listOrders: () => request<{ orders: ApiOrder[], pagination: { page: number, limit: number, total: number, pages: number } }>('/orders'),

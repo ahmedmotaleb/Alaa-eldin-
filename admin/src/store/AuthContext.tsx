@@ -4,7 +4,7 @@ import { api, type AdminUser } from '../utils/api'
 interface AuthContextValue {
   user: AdminUser | null
   loading: boolean
-  login: (email: string, password: string) => Promise<AdminUser | { requiresTwoFactor: true, pendingToken: string }>
+  login: (email: string, password: string, captchaToken?: string) => Promise<AdminUser | { requiresTwoFactor: true, pendingToken: string }>
   verifyTwoFactorLogin: (pendingToken: string, code: string) => Promise<AdminUser>
   logout: () => Promise<void>
 }
@@ -22,8 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
-  async function login(email: string, password: string) {
-    const result = await api.login({ email, password })
+  async function login(email: string, password: string, captchaToken?: string) {
+    const result = await api.login({ email, password, captchaToken })
     if ('requiresTwoFactor' in result) return result
     if (!result.user.isAdmin) throw new Error('not_admin')
     setUser(result.user)

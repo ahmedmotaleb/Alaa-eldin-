@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAdmin } from '../auth.js'
 import { isTwoFactorEnabled, countRemainingBackupCodes } from '../services/twoFactorService.js'
+import { turnstileConfigured } from '../services/turnstileService.js'
 
 export const adminSecurityStatusRouter = Router()
 adminSecurityStatusRouter.use(requireAdmin)
@@ -38,8 +39,10 @@ adminSecurityStatusRouter.get('/', async (req, res) => {
       remainingBackupCodes
     },
     captcha: {
-      // مفيش أي تكامل CAPTCHA/Turnstile في الكود حالياً — القيمة دي حقيقة، مش placeholder.
-      configured: false
+      // Cloudflare Turnstile — مُفعّل فعلياً بس لو TURNSTILE_SITE_KEY و TURNSTILE_SECRET_KEY
+      // موجودين مع بعض في متغيرات البيئة (راجع turnstileService.ts). القيمة دي حقيقية،
+      // مش قيمة ثابتة أو تفاؤلية.
+      configured: turnstileConfigured
     },
     passwordPolicy: {
       // القيمة الفعلية المطبّقة في server/src/passwordPolicy.ts — نفسها لكل من الإدارة والعملاء،

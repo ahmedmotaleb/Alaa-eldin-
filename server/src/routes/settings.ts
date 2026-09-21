@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { setShortPublicCache } from '../publicCache.js'
+import { turnstileSiteKey } from '../services/turnstileService.js'
 
 export const settingsRouter = Router()
 
@@ -23,6 +24,11 @@ settingsRouter.get('/settings', async (_req, res) => {
   const { rows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
   const row = rows[0]
   res.json({
+    // مفتاح الموقع العام بس (siteKey) — آمن للتعريض، ده تصميم Turnstile نفسه. null لو
+    // Turnstile مش مُفعّل، عشان الواجهة الأمامية تتجاهل الـ widget بالكامل.
+    captcha: {
+      turnstileSiteKey
+    },
     settings: {
       ...row,
       showTodaysOffers: !!row.showTodaysOffers, showBestSellers: !!row.showBestSellers, codEnabled: !!row.codEnabled,

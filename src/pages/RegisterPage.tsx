@@ -4,6 +4,8 @@ import { useAuth } from '../store/AuthContext'
 import { ApiError } from '../utils/api'
 import { ar } from '../i18n/ar'
 import { PasswordField } from '../components/PasswordField'
+import { TurnstileWidget } from '../components/TurnstileWidget'
+import { getCaptchaSiteKey } from '../store/settingsStore'
 
 export function RegisterPage() {
   const { register } = useAuth()
@@ -17,6 +19,9 @@ export function RegisterPage() {
   const [referralCode, setReferralCode] = useState(() => searchParams.get('ref') ?? '')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaAttempt, setCaptchaAttempt] = useState(0)
+  const captchaSiteKey = getCaptchaSiteKey()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -27,11 +32,17 @@ export function RegisterPage() {
     }
     setSubmitting(true)
     try {
-      await register(email, password, fullName, referralCode.trim() || undefined)
+      await register(email, password, fullName, referralCode.trim() || undefined, captchaToken ?? undefined)
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
+      if (err instanceof ApiError && err.code === 'captcha_required') {
+        // فشل التحقق (توكن منتهي الصلاحية غالباً) — نعيد إنشاء الـ widget من الصفر عشان
+        // المستخدم ياخد تحدي جديد بدل ما يفضل عالق على نفس التوكن اللي اترفض.
+        setCaptchaToken(null)
+        setCaptchaAttempt(a => a + 1)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -55,8 +66,9 @@ export function RegisterPage() {
         <label>{ar.auth.referralCodeLabel}
           <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder={ar.auth.referralCodePlaceholder} />
         </label>
+        {captchaSiteKey && <TurnstileWidget key={captchaAttempt} siteKey={captchaSiteKey} onToken={setCaptchaToken} />}
         {error && <div className="form-error-banner">{error}</div>}
-        <button type="submit" className="primary-button" disabled={submitting}>{ar.auth.registerSubmit}</button>
+        <button type="submit" className="primary-button" disabled={submitting || (!!captchaSiteKey && !captchaToken)}>{ar.auth.registerSubmit}</button>
       </form>
       <div className="auth-switch">
         <span>{ar.auth.alreadyHaveAccount}</span>

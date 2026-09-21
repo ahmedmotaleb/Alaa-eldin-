@@ -26,6 +26,9 @@ const DEFAULT_SETTINGS: ApiSettings = {
 }
 
 let current: ApiSettings = DEFAULT_SETTINGS
+// null = Turnstile مش مُفعّل (أو لسه ما وصلش رد /api/settings) — أي مكوّن بيعرض الـ widget
+// لازم يتجاهله بالكامل في الحالة دي، مش يحاول يعرض widget بمفتاح فاضي.
+let currentCaptchaSiteKey: string | null = null
 
 export function getSettings() {
   return current
@@ -33,4 +36,12 @@ export function getSettings() {
 
 export function setSettings(settings: ApiSettings) {
   current = settings
+}
+
+export function getCaptchaSiteKey() {
+  return currentCaptchaSiteKey
+}
+
+export function setCaptchaSiteKey(siteKey: string | null) {
+  currentCaptchaSiteKey = siteKey
 }

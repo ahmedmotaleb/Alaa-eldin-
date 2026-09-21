@@ -22,6 +22,8 @@ import {
   countRemainingBackupCodes
 } from '../services/twoFactorService.js'
 import { getReferralCodeOwner, recordReferralSignup } from '../services/referralService.js'
+import { turnstileConfigured, verifyTurnstileToken } from '../services/turnstileService.js'
+import { recordFailedLoginAttempt, clearFailedLoginAttempts, getRecentFailedLoginCount } from '../services/loginAttemptService.js'
 
 export const authRouter = Router()
 
@@ -35,6 +37,13 @@ const PUBLIC_APP_URL = publicOrigin()
 const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true })
 const forgotPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false })
 const resetPasswordRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false })
+
+// سياسة CAPTCHA التكيّفية: مش كل محاولة دخول عادية، بس بعد عدد محاولات فاشلة على نفس
+// الإيميل. حساب الإدارة بيتطلّب CAPTCHA بعد فشلة واحدة بس (أبكر من العميل العادي)، بما إن
+// اختراق حساب إداري أخطر بكتير — ده قرار سياسة أمنية موثّق هنا صراحة، مش سلوك افتراضي.
+// الاتنين بيفضلوا يشتغلوا جنب الـ rate limiter الحالي (loginRateLimit) مش بدل منه.
+const CUSTOMER_CAPTCHA_FAILURE_THRESHOLD = 3
+const ADMIN_CAPTCHA_FAILURE_THRESHOLD = 1
 
 function sessionMetaFrom(req: import('express').Request): SessionMeta {
   const rawUserAgent = req.headers['user-agent']
@@ -53,7 +62,7 @@ function setSessionCookie(res: import('express').Response, token: string, expire
 }
 
 authRouter.post('/register', async (req, res) => {
-  const { email, password, fullName, referralCode } = req.body ?? {}
+  const { email, password, fullName, referralCode, captchaToken } = req.body ?? {}
 
   if (typeof email !== 'string' || typeof password !== 'string' || typeof fullName !== 'string' || !fullName.trim()) {
     res.status(400).json({ error: 'missing_fields' })
@@ -66,6 +75,18 @@ authRouter.post('/register', async (req, res) => {
   if (!isStrongPassword(password)) {
     res.status(400).json({ error: 'weak_password' })
     return
+  }
+
+  // CAPTCHA إلزامي للتسجيل العام لما Turnstile يكون مُفعّل — قبل أي استعلام قاعدة بيانات
+  // أو إنشاء حساب فعلي. fail-closed: أي خطأ من المزوّد (تايم آوت، شبكة، رد غير مفهوم)
+  // بيترفض هنا برضه، مش يتجاوز بصمت.
+  if (turnstileConfigured) {
+    const verification = await verifyTurnstileToken(captchaToken, req.ip, req.requestId)
+    if (!verification.ok) {
+      logEvent('captcha_required', { requestId: req.requestId, context: 'register' })
+      res.status(400).json({ error: 'captcha_required' })
+      return
+    }
   }
 
   const { rows: existingRows } = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()])
@@ -100,23 +121,45 @@ authRouter.post('/register', async (req, res) => {
 })
 
 authRouter.post('/login', loginRateLimit, async (req, res) => {
-  const { email, password } = req.body ?? {}
+  const { email, password, captchaToken } = req.body ?? {}
   if (typeof email !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'missing_fields' })
     return
   }
+  const normalizedEmail = email.toLowerCase()
 
   const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin' }>(
     'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role as "role" FROM users WHERE email = $1',
-    [email.toLowerCase()]
+    [normalizedEmail]
   )
   const row = rows[0]
 
+  // CAPTCHA تكيّفي: مش على كل محاولة دخول عادية، بس بعد عدد محاولات فاشلة متكررة على
+  // الإيميل ده (أبكر بكتير لحساب إداري). fail-closed: لو Cloudflare نفسها مش متاحة وقت
+  // الطلب، بنرفض بدل ما نتجاوز التحقق بصمت — ده قرار مقصود مش باگ.
+  if (turnstileConfigured) {
+    const threshold = row?.isAdmin ? ADMIN_CAPTCHA_FAILURE_THRESHOLD : CUSTOMER_CAPTCHA_FAILURE_THRESHOLD
+    const recentFailures = await getRecentFailedLoginCount(normalizedEmail)
+    if (recentFailures >= threshold) {
+      const verification = await verifyTurnstileToken(captchaToken, req.ip, req.requestId)
+      if (!verification.ok) {
+        logEvent('captcha_required', { requestId: req.requestId, context: 'login' })
+        res.status(400).json({ error: 'captcha_required' })
+        return
+      }
+    }
+  }
+
   if (!row || !verifyPassword(password, row.passwordHash)) {
-    logWarn('login_failed', { email: email.toLowerCase() })
+    // التتبّع بس لما Turnstile يكون مُفعّل — لو الميزة كلها مطفية (تطوير محلي أو إنتاج
+    // من غير مفاتيح لسه)، مفيش داعي نكتب في قاعدة البيانات على كل محاولة دخول فاشلة.
+    if (turnstileConfigured) await recordFailedLoginAttempt(normalizedEmail)
+    logWarn('login_failed', { email: normalizedEmail })
     res.status(401).json({ error: 'invalid_credentials' })
     return
   }
+
+  if (turnstileConfigured) await clearFailedLoginAttempts(normalizedEmail)
 
   if (await isTwoFactorEnabled(row.id)) {
     const pendingToken = await createPendingTwoFactorLogin(row.id)
@@ -217,10 +260,22 @@ authRouter.get('/2fa/status', requireAuth, async (req, res) => {
 // نفس الرد بالظبط سواء كان الإيميل مسجّل أو لأ، عشان محدش يقدر يكتشف إيميلات عملاء حقيقيين
 // عن طريق تجربة إيميلات عشوائية على الـ endpoint ده (user enumeration).
 authRouter.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
-  const { email } = req.body ?? {}
+  const { email, captchaToken } = req.body ?? {}
   if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
     res.status(400).json({ error: 'invalid_email' })
     return
+  }
+
+  // مهم: التحقق من CAPTCHA لازم يحصل هنا قبل أي استعلام بالإيميل — عشان رد فشل CAPTCHA
+  // يفضل عام تماماً وميقدرش حد يربطه بوجود الحساب من عدمه (نفس مبدأ عدم كشف وجود الإيميل
+  // اللي الـ endpoint ده مبني عليه أصلاً).
+  if (turnstileConfigured) {
+    const verification = await verifyTurnstileToken(captchaToken, req.ip, req.requestId)
+    if (!verification.ok) {
+      logEvent('captcha_required', { requestId: req.requestId, context: 'forgot_password' })
+      res.status(400).json({ error: 'captcha_required' })
+      return
+    }
   }
 
   const { rows } = await pool.query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email.toLowerCase()])

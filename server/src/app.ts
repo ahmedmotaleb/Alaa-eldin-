@@ -94,13 +94,16 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      // https://challenges.cloudflare.com مطلوب لتحميل سكريبت وعرض iframe Turnstile —
+      // متطلب موثّق من Cloudflare نفسها لتشغيل الـ widget تحت CSP صارم. لا يُضاف غير ده.
+      scriptSrc: ["'self'", 'https://challenges.cloudflare.com'],
       styleSrc: ["'self'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com'],
       connectSrc: ["'self'"],
       manifestSrc: ["'self'"],
       workerSrc: ["'self'"],
+      frameSrc: ["'self'", 'https://challenges.cloudflare.com'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],

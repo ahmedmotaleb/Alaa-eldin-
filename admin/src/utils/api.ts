@@ -1321,12 +1321,16 @@ export interface SecurityStatus {
 }
 
 export const api = {
-  login: (body: { email: string, password: string }) =>
+  login: (body: { email: string, password: string, captchaToken?: string }) =>
     request<{ user: AdminUser } | { requiresTwoFactor: true, pendingToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   verifyTwoFactorLogin: (body: { pendingToken: string, code: string }) =>
     request<{ user: AdminUser }>('/auth/2fa/verify-login', { method: 'POST', body: JSON.stringify(body) }),
   twoFactorStatus: () => request<TwoFactorStatus>('/auth/2fa/status'),
   getSecurityStatus: () => request<SecurityStatus>('/admin/security-status'),
+  // بدون مصادقة عمداً — لازم تتقرا قبل تسجيل الدخول أصلاً (صفحة تسجيل دخول الإدارة نفسها
+  // بتحتاج مفتاح Turnstile العام قبل ما المستخدم يعمل login). ما فيهاش غير مفتاح الموقع العام،
+  // آمن للتعريض بتصميم Turnstile نفسه.
+  getPublicCaptchaSiteKey: () => request<{ captcha: { turnstileSiteKey: string | null } }>('/settings'),
   startTwoFactorSetup: () => request<TwoFactorSetup>('/auth/2fa/setup', { method: 'POST' }),
   confirmTwoFactorSetup: (token: string) =>
     request<{ backupCodes: string[] }>('/auth/2fa/confirm', { method: 'POST', body: JSON.stringify({ token }) }),

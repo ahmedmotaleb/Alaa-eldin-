@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
-import { ApiError } from '../utils/api'
+import { api, ApiError } from '../utils/api'
 import { PasswordField } from '../components/PasswordField'
+import { TurnstileWidget } from '../components/TurnstileWidget'
 
 export function LoginPage() {
   const { login, verifyTwoFactorLogin } = useAuth()
@@ -13,13 +14,25 @@ export function LoginPage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // حساب الإدارة بيتطلّب CAPTCHA أبكر بكتير من العميل العادي (بعد محاولة فاشلة واحدة بس) —
+  // بس برضه مش من أول محاولة دخول، فالـ widget بيظهر رد فعل لرسالة captcha_required من
+  // السيرفر، مش من أول تحميل الصفحة.
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaAttempt, setCaptchaAttempt] = useState(0)
+  const [captchaSiteKey, setCaptchaSiteKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    // بدون مصادقة عمداً — الصفحة دي هي نفسها صفحة تسجيل الدخول، فمفيش جلسة لسه.
+    api.getPublicCaptchaSiteKey().then(res => setCaptchaSiteKey(res.captcha.turnstileSiteKey)).catch(() => setCaptchaSiteKey(null))
+  }, [])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setSubmitting(true)
     setError('')
     try {
-      const result = await login(email, password)
+      const result = await login(email, password, captchaRequired ? (captchaToken ?? undefined) : undefined)
       if ('requiresTwoFactor' in result) {
         setPendingToken(result.pendingToken)
         return
@@ -27,7 +40,14 @@ export function LoginPage() {
       navigate(result.roleId === 'role-rider' ? '/rider' : '/', { replace: true })
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.code === 'invalid_credentials' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'حدث خطأ، حاول مرة أخرى')
+        if (err.code === 'captcha_required') {
+          setError('تعذر التحقق الأمني. حاول مرة أخرى.')
+          setCaptchaRequired(true)
+          setCaptchaToken(null)
+          setCaptchaAttempt(a => a + 1)
+        } else {
+          setError(err.code === 'invalid_credentials' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'حدث خطأ، حاول مرة أخرى')
+        }
       } else {
         setError('هذا الحساب لا يملك صلاحية الدخول للوحة التحكم')
       }
@@ -102,8 +122,9 @@ export function LoginPage() {
           <input id="admin-login-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@example.com" />
         </label>
         <PasswordField label="كلمة المرور" value={password} onChange={setPassword} autoComplete="current-password" />
+        {captchaRequired && captchaSiteKey && <TurnstileWidget key={captchaAttempt} siteKey={captchaSiteKey} onToken={setCaptchaToken} />}
         {error && <div className="admin-login-error">{error}</div>}
-        <button type="submit" className="admin-login-submit" disabled={submitting}>تسجيل الدخول</button>
+        <button type="submit" className="admin-login-submit" disabled={submitting || (captchaRequired && !captchaToken)}>تسجيل الدخول</button>
         <a className="admin-login-forgot" href="/forgot-password">نسيت كلمة المرور؟</a>
         <p className="admin-login-note">هذا الحساب يجب أن يكون مسجّلاً كعميل أولاً ثم مرقّى لصلاحية مدير عبر: npm run make-admin --prefix server -- email</p>
       </form>

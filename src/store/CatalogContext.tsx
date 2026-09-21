@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '../utils/api'
-import { setSettings } from './settingsStore'
+import { setSettings, setCaptchaSiteKey } from './settingsStore'
 import type { Category, DeliveryZone, DeliverySlot } from '../types/models'
 import { ar } from '../i18n/ar'
 
@@ -30,6 +30,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       .then(([catRes, settingsRes, zonesRes, slotsRes]) => {
         setCategories(catRes.categories)
         setSettings(settingsRes.settings)
+        setCaptchaSiteKey(settingsRes.captcha.turnstileSiteKey)
         setDeliveryZones(zonesRes.zones)
         setDeliverySlots(slotsRes.slots)
       })

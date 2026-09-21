@@ -51,13 +51,37 @@ export interface AbandonedCartReminderStats {
   skippedPreference: number
 }
 
+// بتحاول "تحجز" الصف ده حصرياً للتشغيلة الحالية — الشرط reminder_sent_at IS NULL جوه
+// نفس جملة الـ UPDATE (مش SELECT منفصل بعدين UPDATE) يخلي العملية ذرّية على مستوى قاعدة
+// البيانات: لو تشغيلتين اشتغلوا في نفس الوقت (تداخل، cron job اتشغّل مرتين غلط)، واحدة
+// بس هي اللي هتنجح تحجز كل صف، والتانية هترجع صف واحد أقل بدون أي تعارض أو انتظار طويل.
+// ده اللي بيمنع إرسال إشعار مكرر لنفس العميل تحت التداخل، مش مجرد افتراض في الذاكرة.
+async function claimCandidateForReminder(userId: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    'UPDATE cart_snapshots SET reminder_sent_at = now() WHERE user_id = $1 AND reminder_sent_at IS NULL',
+    [userId]
+  )
+  return (rowCount ?? 0) > 0
+}
+
+// بتُستدعى لما يتضح إن الصف المحجوز ميستأهلش إشعار فعلي (تفضيلات العميل معطّلة) — بترجع
+// reminder_sent_at لـ NULL تاني عشان التشغيلات الجاية تقدر تعيد فحصه (تفضيلات العميل ممكن
+// تتغيّر لاحقاً)، مطابق تماماً للسلوك الأصلي قبل إضافة آلية الحجز الذرّي دي.
+async function releaseUnnotifiedClaim(userId: string): Promise<void> {
+  await pool.query('UPDATE cart_snapshots SET reminder_sent_at = NULL WHERE user_id = $1', [userId])
+}
+
 // مصمّمة عشان تتشغّل من سكريبت مستقل (راجع sendAbandonedCartReminders.ts) عن طريق جدولة
 // خارجية (Railway cron job) — مفيش scheduler جوه التطبيق نفسه، نفس مبدأ cleanup.ts بالظبط.
+// آمنة تحت تداخل تشغيلتين (راجع claimCandidateForReminder فوق).
 export async function sendAbandonedCartReminders(): Promise<AbandonedCartReminderStats> {
   const candidates = await findAbandonedCartCandidates()
   const stats: AbandonedCartReminderStats = { reminded: 0, skippedConverted: 0, skippedPreference: 0 }
 
   for (const candidate of candidates) {
+    const claimed = await claimCandidateForReminder(candidate.userId)
+    if (!claimed) continue // تشغيلة تانية حجزت الصف ده قبلنا — من المفروض متعالجهوش تاني
+
     // لو العميل عمل طلب حقيقي بعد آخر تحديث لسلته، يبقى غالباً كمّل الشراء (أو غيّر رأيه) —
     // السلة القديمة بقت غير ذات صلة، تتمسح من غير أي تذكير مزعج لطلب اتنفّذ بالفعل.
     const { rows: recentOrderRows } = await pool.query(
@@ -72,6 +96,7 @@ export async function sendAbandonedCartReminders(): Promise<AbandonedCartReminde
 
     const prefs = await getNotificationPreferences(candidate.userId)
     if (!prefs.promotions) {
+      await releaseUnnotifiedClaim(candidate.userId)
       stats.skippedPreference++
       continue
     }
@@ -82,7 +107,6 @@ export async function sendAbandonedCartReminders(): Promise<AbandonedCartReminde
       body: `لسه عندك ${itemCount} صنف في السلة — كمّل طلبك قبل ما ينفد المخزون`,
       url: '/cart'
     })
-    await pool.query('UPDATE cart_snapshots SET reminder_sent_at = now() WHERE user_id = $1', [candidate.userId])
     stats.reminded++
   }
 

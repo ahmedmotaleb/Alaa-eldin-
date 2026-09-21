@@ -15,7 +15,8 @@ const INTEGRATIONS: IntegrationCheck[] = [
   { name: 'cloudinary', required: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] },
   { name: 'whatsapp', required: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'] },
   { name: 'web_push', required: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'] },
-  { name: 'email', required: ['RESEND_API_KEY'] }
+  { name: 'email', required: ['RESEND_API_KEY'] },
+  { name: 'turnstile', required: ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'] }
 ]
 
 export function logStartupConfigSummary() {

@@ -8,7 +8,8 @@ const ENV_VARS = [
   'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET',
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID',
   'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY',
-  'RESEND_API_KEY'
+  'RESEND_API_KEY',
+  'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'
 ]
 
 afterEach(() => {
@@ -22,7 +23,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email']
+      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email', 'turnstile']
     })
     expect(logWarn).not.toHaveBeenCalled()
   })
@@ -33,7 +34,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: ['email'],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push']
+      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'turnstile']
     })
   })
 
@@ -49,7 +50,7 @@ describe('logStartupConfigSummary', () => {
     })
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email']
+      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email', 'turnstile']
     })
   })
 })

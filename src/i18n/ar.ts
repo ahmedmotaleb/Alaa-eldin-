@@ -528,7 +528,9 @@ export const ar = {
       below_minimum_redeem_points: 'عدد النقاط أقل من الحد الأدنى المسموح باستخدامه',
       order_below_minimum_for_redemption: 'قيمة الطلب أقل من الحد الأدنى المطلوب لاستخدام النقاط',
       redemption_exceeds_limit: 'عدد النقاط أكبر من الحد الأقصى المسموح لهذا الطلب',
-      loyalty_balance_changed: 'رصيد النقاط تغيّر. يرجى مراجعة النقاط المستخدمة والمحاولة مرة أخرى.'
+      loyalty_balance_changed: 'رصيد النقاط تغيّر. يرجى مراجعة النقاط المستخدمة والمحاولة مرة أخرى.',
+      captcha_required: 'تعذر التحقق الأمني. حاول مرة أخرى.',
+      captcha_failed: 'تعذر التحقق الأمني. حاول مرة أخرى.'
     } as Record<string, string>,
     forCode(code: string) {
       return this.codes[code] ?? this.generic

@@ -122,7 +122,7 @@ describe('sendAbandonedCartReminders', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('respects the promotions notification preference — skips a customer who opted out', async () => {
+  it('respects the promotions notification preference — skips a customer who opted out, leaving the row re-checkable later', async () => {
     const spy = vi.spyOn(pushService, 'sendPushToUser').mockResolvedValue(undefined)
     await pool.query('UPDATE notification_preferences SET promotions = 0 WHERE user_id = $1', [USER_C])
     await upsertCartSnapshot(USER_C, [{ productId: 'p1', quantity: 1 }])
@@ -132,7 +132,30 @@ describe('sendAbandonedCartReminders', () => {
 
     expect(stats).toEqual({ reminded: 0, skippedConverted: 0, skippedPreference: 1 })
     expect(spy).not.toHaveBeenCalled()
-    const { rows } = await pool.query('SELECT 1 FROM cart_snapshots WHERE user_id = $1', [USER_C])
+    const { rows } = await pool.query('SELECT reminder_sent_at as "reminderSentAt" FROM cart_snapshots WHERE user_id = $1', [USER_C])
     expect(rows).toHaveLength(1)
+    // مهم: reminder_sent_at لازم يفضل NULL — التفضيل ممكن يتغيّر لاحقاً، فمينفعش الصف
+    // ده يتقفل بشكل دائم من إعادة الفحص في تشغيلة قادمة لمجرد إنه اتفحص مرة واحدة.
+    expect(rows[0].reminderSentAt).toBeNull()
+
+    await pool.query('UPDATE notification_preferences SET promotions = 1 WHERE user_id = $1', [USER_C])
+    const secondRunStats = await sendAbandonedCartReminders()
+    expect(secondRunStats).toEqual({ reminded: 1, skippedConverted: 0, skippedPreference: 0 })
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  // متطلّب "أمان تحت التداخل" (راجع docs/ABANDONED_CART_CRON.md): لو تشغيلتين اشتغلوا في
+  // نفس الوقت بالخطأ على نفس المرشّح، لازم واحدة بس ترسل الإشعار — مش اتنين.
+  it('sends the reminder exactly once even when two runs process the same candidate concurrently', async () => {
+    const spy = vi.spyOn(pushService, 'sendPushToUser').mockResolvedValue(undefined)
+    await upsertCartSnapshot(USER_A, [{ productId: 'p1', quantity: 1 }])
+    await ageSnapshot(USER_A, 30)
+
+    const [statsA, statsB] = await Promise.all([sendAbandonedCartReminders(), sendAbandonedCartReminders()])
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(statsA.reminded + statsB.reminded).toBe(1)
+    const { rows } = await pool.query('SELECT reminder_sent_at as "reminderSentAt" FROM cart_snapshots WHERE user_id = $1', [USER_A])
+    expect(rows[0].reminderSentAt).not.toBeNull()
   })
 })
