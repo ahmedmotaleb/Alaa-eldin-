@@ -5,15 +5,19 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import {
   listWhatsAppTemplates, createWhatsAppTemplate, updateWhatsAppTemplate,
   renderWhatsAppTemplate, sendWhatsAppMessage, listWhatsAppMessagesForOrder,
-  sendOrderConfirmationWhatsApp, whatsappConfigured, type WhatsAppTemplateInput
+  sendOrderConfirmationWhatsApp, whatsappConfigured, whatsappOrderConfirmationReady,
+  getOrderConfirmationConfigStatus, type WhatsAppTemplateInput
 } from '../services/whatsappService.js'
+import { getAutomaticNotificationStatus } from '../services/whatsappNotificationDeliveryService.js'
 
 export const adminWhatsappRouter = Router()
 adminWhatsappRouter.use(requireAdmin)
 
-// حالة الاتصال بالـ API الحقيقي فقط (متصل أو لأ) — التوكن نفسه أبداً ما بيترجعش هنا.
+// حالة الاتصال بالـ API الحقيقي (متصل أو لأ) + حالة قالب تأكيد الطلب المعتمد من Meta تحديداً
+// (ممكن يكون الـ API شغال للإرسال اليدوي الحر، لكن قالب التأكيد التلقائي لسه ناقص اسمه في
+// بيئة السيرفر) — التوكن نفسه أبداً ما بيترجعش هنا في أي الحالتين.
 adminWhatsappRouter.get('/status', requirePermission('marketing.manage'), async (_req, res) => {
-  res.json({ configured: whatsappConfigured })
+  res.json({ configured: whatsappConfigured, orderConfirmation: getOrderConfirmationConfigStatus() })
 })
 
 adminWhatsappRouter.get('/templates', requirePermission('marketing.manage'), async (_req, res) => {
@@ -144,8 +148,12 @@ adminWhatsappRouter.post('/orders/:orderId/resend-confirmation', requirePermissi
   )
   const order = rows[0]
   if (!order) { res.status(404).json({ error: 'order_not_found' }); return }
-  if (!whatsappConfigured) { res.status(409).json({ error: 'whatsapp_not_configured' }); return }
+  if (!whatsappOrderConfirmationReady) { res.status(409).json({ error: 'whatsapp_order_confirmation_not_ready' }); return }
 
+  // manualActorUserId = هوية الأدمن الفاعل الحقيقية — بيخلي الإرسال ده مُسجّل بوضوح كإعادة
+  // إرسال يدوية (مش تلقائية) في whatsapp_messages.created_by_user_id، وبيتخطى نظام ملكية
+  // الإشعار التلقائي بالكامل عمداً (راجع تعليق sendOrderConfirmationWhatsApp في whatsappService.ts)
+  // — فمينفعش يكتب فوق صف الملكية الأصلي حتى لو كان أصلاً 'sent'.
   await sendOrderConfirmationWhatsApp({
     orderId: order.id,
     orderNumber: order.orderNumber,
@@ -157,7 +165,7 @@ adminWhatsappRouter.post('/orders/:orderId/resend-confirmation', requirePermissi
     deliveryDate: order.deliveryDate,
     deliverySlotId: order.deliverySlot,
     guestTrackingToken: order.guestTrackingToken
-  }, true)
+  }, { manualActorUserId: req.user!.id })
 
   await recordAuditLog({
     adminUserId: req.user!.id, action: 'whatsapp_confirmation_resent', entityType: 'order', entityId: order.id
@@ -165,4 +173,12 @@ adminWhatsappRouter.post('/orders/:orderId/resend-confirmation', requirePermissi
 
   const [latest] = await listWhatsAppMessagesForOrder(order.id)
   res.status(202).json({ message: latest ?? null })
+})
+
+// حالة الإشعار التلقائي المنطقي الحالية لهذا الطلب تحديداً (pending/sent/failed + عدد
+// المحاولات) — منفصلة عمداً عن /messages فوق (اللي بيرجّع كل محاولات الإرسال الفعلية، تلقائية
+// ويدوية مع بعض)؛ ده بس عن صف الملكية الواحد في whatsapp_notification_deliveries.
+adminWhatsappRouter.get('/orders/:orderId/confirmation-status', requirePermission('marketing.manage'), async (req, res) => {
+  const status = await getAutomaticNotificationStatus(String(req.params.orderId), 'order_confirmation')
+  res.json({ status })
 })

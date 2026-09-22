@@ -6,7 +6,7 @@ vi.mock('./logger.js', () => ({ logEvent: (...args: unknown[]) => logEvent(...ar
 
 const ENV_VARS = [
   'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET',
-  'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ORDER_CONFIRMATION_TEMPLATE',
   'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY',
   'RESEND_API_KEY',
   'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'
@@ -23,7 +23,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'web_push', 'email', 'turnstile']
     })
     expect(logWarn).not.toHaveBeenCalled()
   })
@@ -34,7 +34,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: ['email'],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'web_push', 'turnstile']
     })
   })
 
@@ -50,7 +50,38 @@ describe('logStartupConfigSummary', () => {
     })
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'web_push', 'email', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'web_push', 'email', 'turnstile']
     })
+  })
+
+  // مثال دقيق على متطلبات المهمة: التوكن ورقم الهاتف متضبطين (واتساب نفسه شغال للإرسال
+  // اليدوي) لكن اسم قالب تأكيد الطلب المعتمد من Meta لسه ناقص — لازم يترجع "غير مكتمل"
+  // (whatsapp_order_confirmation في notConfigured) مع تحذير واضح، مش "مكتمل بالكامل".
+  it('reports whatsapp_order_confirmation as partial when the template name is missing', async () => {
+    process.env.WHATSAPP_ACCESS_TOKEN = 'test-token'
+    process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id'
+    const { logStartupConfigSummary } = await import('./config.js')
+    logStartupConfigSummary()
+    expect(logWarn).toHaveBeenCalledWith('startup_config_partial_warning', {
+      integration: 'whatsapp_order_confirmation',
+      missingVars: ['WHATSAPP_ORDER_CONFIRMATION_TEMPLATE']
+    })
+    expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
+      configured: ['whatsapp'],
+      notConfigured: ['cloudinary', 'whatsapp_order_confirmation', 'web_push', 'email', 'turnstile']
+    })
+  })
+
+  it('reports whatsapp_order_confirmation as configured once all three variables are set', async () => {
+    process.env.WHATSAPP_ACCESS_TOKEN = 'test-token'
+    process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id'
+    process.env.WHATSAPP_ORDER_CONFIRMATION_TEMPLATE = 'order_confirmation_ar'
+    const { logStartupConfigSummary } = await import('./config.js')
+    logStartupConfigSummary()
+    expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
+      configured: ['whatsapp', 'whatsapp_order_confirmation'],
+      notConfigured: ['cloudinary', 'web_push', 'email', 'turnstile']
+    })
+    expect(logWarn).not.toHaveBeenCalled()
   })
 })

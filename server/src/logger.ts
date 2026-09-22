@@ -60,6 +60,10 @@ type BusinessEvent =
   | 'price_schedule_applied' | 'price_schedule_conflict'
   | 'whatsapp_order_confirmation_sent' | 'whatsapp_order_confirmation_failed'
   | 'whatsapp_order_confirmation_error' | 'whatsapp_order_confirmation_template_missing'
+  | 'whatsapp_notification_claimed' | 'whatsapp_notification_claim_conflict'
+  | 'whatsapp_notification_lease_reclaimed' | 'whatsapp_notification_ownership_lost'
+  | 'whatsapp_notification_sent' | 'whatsapp_notification_failed'
+  | 'whatsapp_notification_provider_result_unknown' | 'whatsapp_notification_retry_skipped'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

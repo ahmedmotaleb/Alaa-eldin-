@@ -141,6 +141,22 @@ export interface WhatsAppMessage {
   createdAt: string
 }
 
+export interface WhatsAppOrderConfirmationConfigStatus {
+  apiConfigured: boolean
+  templateConfigured: boolean
+  templateName: string | null
+  language: string
+}
+
+export interface WhatsAppNotificationDeliveryStatus {
+  status: 'pending' | 'sent' | 'failed'
+  attemptCount: number
+  providerMessageId: string | null
+  lastError: string | null
+  sentAt: string | null
+  updatedAt: string
+}
+
 export interface PageInfo {
   page: number
   limit: number
@@ -1704,7 +1720,9 @@ export const api = {
     request<{ suggestions: ReplenishmentSuggestion[], targetDays: number }>(`/admin/replenishment?targetDays=${targetDays}`),
   getInventoryValuation: (costBasis: CostBasis = 'latest_cost') =>
     request<InventoryValuationSummary>(`/admin/inventory-valuation${buildQuery({ costBasis })}`),
-  getWhatsAppStatus: () => request<{ configured: boolean }>('/admin/whatsapp/status'),
+  getWhatsAppStatus: () => request<{ configured: boolean, orderConfirmation: WhatsAppOrderConfirmationConfigStatus }>('/admin/whatsapp/status'),
+  getWhatsAppConfirmationStatus: (orderId: string) =>
+    request<{ status: WhatsAppNotificationDeliveryStatus | null }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/confirmation-status`),
   listWhatsAppTemplates: () => request<{ templates: WhatsAppTemplate[] }>('/admin/whatsapp/templates'),
   createWhatsAppTemplate: (body: WhatsAppTemplateInput) =>
     request<{ template: WhatsAppTemplate }>('/admin/whatsapp/templates', { method: 'POST', body: JSON.stringify(body) }),

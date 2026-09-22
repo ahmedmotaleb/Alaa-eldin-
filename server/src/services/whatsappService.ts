@@ -7,12 +7,37 @@ import { pool } from '../db.js'
 import { toWhatsAppInternational, isValidEgyptianMobile } from '../phone.js'
 import { publicOrigin } from '../publicUrl.js'
 import { logEvent, logWarn } from '../logger.js'
+import {
+  claimAutomaticNotification, markNotificationSent, markNotificationFailed,
+  listRetryableFailedNotifications, getAutomaticNotificationStatus,
+  type NotificationDeliveryStatusRow
+} from './whatsappNotificationDeliveryService.js'
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID
 const API_VERSION = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 
 export const whatsappConfigured = !!(ACCESS_TOKEN && PHONE_NUMBER_ID)
+
+// اسم/لغة قالب تأكيد الطلب المعتمد من Meta — مُهيّأ من متغيرات بيئة السيرفر، مش قيمة
+// مُختلقة أو ثابتة في الكود (راجع server/docs/WHATSAPP_ORDER_CONFIRMATION_TEMPLATE.md
+// للمحتوى المطلوب اعتماده فعلياً في Meta Business Manager قبل ما الميزة دي تشتغل حقيقةً).
+const ORDER_CONFIRMATION_TEMPLATE_NAME = process.env.WHATSAPP_ORDER_CONFIRMATION_TEMPLATE
+const ORDER_CONFIRMATION_LANGUAGE = process.env.WHATSAPP_ORDER_CONFIRMATION_LANGUAGE ?? 'ar'
+
+// "جاهز" هنا تحديداً معناها: نقدر نبني ونرسل رسالة قالب Meta فعلية لتأكيد الطلب. ده غير
+// whatsappConfigured اللي بس معناها "نقدر نتصل بـ API أصلاً" (كافي للإرسال اليدوي بنص حر من
+// لوحة التحكم، لكن مش كافي للتأكيد التلقائي من غير اسم قالب معتمد فعلياً).
+export const whatsappOrderConfirmationReady = whatsappConfigured && !!ORDER_CONFIRMATION_TEMPLATE_NAME
+
+export function getOrderConfirmationConfigStatus(): { apiConfigured: boolean; templateConfigured: boolean; templateName: string | null; language: string } {
+  return {
+    apiConfigured: whatsappConfigured,
+    templateConfigured: !!ORDER_CONFIRMATION_TEMPLATE_NAME,
+    templateName: ORDER_CONFIRMATION_TEMPLATE_NAME ?? null,
+    language: ORDER_CONFIRMATION_LANGUAGE
+  }
+}
 
 export interface WhatsAppTemplateRow {
   id: string
@@ -75,13 +100,39 @@ export function renderWhatsAppTemplate(content: string, variables: Record<string
   return content.replace(/\{\{(\w+)\}\}/g, (match, key) => variables[key] ?? match)
 }
 
+// المهلة لازم تفضل أقصر بكتير من إيجار ملكية الإشعار التلقائي (90 ثانية، راجع
+// whatsappNotificationDeliveryService.ts) عشان الإيجار ميخلصش أثناء ما الطلب لسه بيتنفّذ فعلياً
+// في الحالة الطبيعية — فشل هنا أبداً ما بيأثر على نجاح الطلب نفسه (راجع sendOrderConfirmationWhatsApp).
+const PROVIDER_TIMEOUT_MS = 10_000
+
 type SendResult =
   | { success: true; providerMessageId: string }
   | { success: false; error: string }
 
+// class مسؤول بس عن قرار "هل الفشل ده يستاهل إعادة محاولة تلقائية لاحقاً؟":
+// retryable: تايم آوت/429/5xx (مشكلة مؤقتة في المزوّد نفسه)
+// permanent: أي رد HTTP آخر من Meta (توكن غلط، قالب غير موجود/غير معتمد، لغة/بارامترات غلط...)
+// unknown: الطلب فشل قبل ما نستلم أي رد فعلي من Meta خالص (تايم آوت محلي أو خطأ شبكة) —
+//   مينفعش نعرف هل الرسالة وصلت لـ Meta فعلاً ولا لأ، فمش فشل مؤكد ومش نجاح مؤكد.
+type ProviderErrorClass = 'retryable' | 'permanent' | 'unknown'
+
+interface TemplateSendResult {
+  success: boolean
+  providerMessageId?: string
+  errorClass?: ProviderErrorClass
+  error?: string
+}
+
+function classifyHttpStatus(status: number): ProviderErrorClass {
+  if (status === 429 || status >= 500) return 'retryable'
+  return 'permanent'
+}
+
 async function callWhatsAppCloudApi(toNumber: string, body: string): Promise<SendResult> {
   if (!whatsappConfigured) return { success: false, error: 'whatsapp_not_configured' }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
   try {
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
@@ -94,7 +145,8 @@ async function callWhatsAppCloudApi(toNumber: string, body: string): Promise<Sen
         to: toNumber,
         type: 'text',
         text: { body }
-      })
+      }),
+      signal: controller.signal
     })
     const data = await res.json().catch(() => null) as { messages?: { id: string }[]; error?: { message?: string } } | null
     if (!res.ok || !data?.messages?.[0]?.id) {
@@ -103,6 +155,55 @@ async function callWhatsAppCloudApi(toNumber: string, body: string): Promise<Sen
     return { success: true, providerMessageId: data.messages[0].id }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'network_error' }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// شكل مكوّنات قالب Meta الرسمي (WhatsApp Cloud API) — body بارامترات نصية بالترتيب المطابق
+// تماماً لترتيب {{1}}..{{n}} في القالب المعتمد، وbutton لبارامتر واحد ديناميكي (الجزء المتغيّر
+// بس من رابط زرار URL ديناميكي مُسجَّل في Meta Business Manager — راجع توثيق القالب المطلوب
+// في server/docs/WHATSAPP_ORDER_CONFIRMATION_TEMPLATE.md). لا نخترع أي حقل غير موثّق هنا.
+export interface WhatsAppTemplateComponent {
+  type: 'body' | 'button' | 'header'
+  sub_type?: 'url' | 'quick_reply'
+  index?: string
+  parameters: { type: 'text'; text: string }[]
+}
+
+async function callWhatsAppCloudApiTemplate(
+  toNumber: string, templateName: string, languageCode: string, components: WhatsAppTemplateComponent[]
+): Promise<TemplateSendResult> {
+  if (!whatsappConfigured) return { success: false, errorClass: 'permanent', error: 'whatsapp_not_configured' }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: toNumber,
+        type: 'template',
+        template: { name: templateName, language: { code: languageCode }, components }
+      }),
+      signal: controller.signal
+    })
+    const data = await res.json().catch(() => null) as { messages?: { id: string }[]; error?: { message?: string } } | null
+    if (!res.ok || !data?.messages?.[0]?.id) {
+      return { success: false, errorClass: classifyHttpStatus(res.status), error: data?.error?.message ?? `http_${res.status}` }
+    }
+    return { success: true, providerMessageId: data.messages[0].id }
+  } catch (err) {
+    // فشل قبل استلام أي رد فعلي من Meta (تايم آوت أو خطأ شبكة) — نتيجة غير مؤكدة عمداً
+    // (راجع تعليق ProviderErrorClass فوق)، مش فشل ولا نجاح قاطع.
+    return { success: false, errorClass: 'unknown', error: err instanceof Error ? err.message : 'network_error' }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -152,6 +253,54 @@ export async function sendWhatsAppMessage(input: SendWhatsAppMessageInput): Prom
   return { ok: true, sent: false, messageId: id, error: result.error }
 }
 
+export interface SendWhatsAppTemplateInput {
+  toNumber: string
+  templateName: string
+  languageCode: string
+  components: WhatsAppTemplateComponent[]
+  // نص قابل للقراءة للعرض في لوحة التحكم/سجل whatsapp_messages فقط — مش المُرسل فعلياً
+  // لـ Meta (اللي بيتبني حصراً من templateName/languageCode/components فوق). راجع تعليق
+  // التمييز بين القالب الداخلي (Admin UX) وقالب Meta المعتمد في sendOrderConfirmationWhatsApp.
+  previewBody: string
+  orderId?: string | null
+  createdByUserId: string | null
+  notificationType?: string | null
+}
+
+export type SendWhatsAppTemplateResult =
+  | { ok: false; reason: 'invalid_number' | 'whatsapp_not_configured' }
+  | { ok: true; sent: true; messageId: string; providerMessageId: string }
+  | { ok: true; sent: false; messageId: string; error: string; errorClass: ProviderErrorClass }
+
+// النسخة المخصّصة لرسائل قالب Meta المعتمدة (type: "template") — مش نص حر. بتُستخدم حصراً
+// من تأكيد الطلب التلقائي وإعادة الإرسال اليدوي لنفس التأكيد؛ باقي الإرسال اليدوي الحر
+// (اختيار أي قالب داخلي/نص حر من صفحة الطلب في لوحة التحكم) يفضل يستخدم sendWhatsAppMessage
+// فوق زي ما كان دايماً — مفيش داعي نجبر كل استخدامات واتساب الحالية على القوالب المعتمدة.
+export async function sendWhatsAppTemplateMessage(input: SendWhatsAppTemplateInput): Promise<SendWhatsAppTemplateResult> {
+  if (!isValidEgyptianMobile(input.toNumber)) return { ok: false, reason: 'invalid_number' }
+  if (!whatsappConfigured) return { ok: false, reason: 'whatsapp_not_configured' }
+
+  const toInternational = toWhatsAppInternational(input.toNumber)
+  const result = await callWhatsAppCloudApiTemplate(toInternational, input.templateName, input.languageCode, input.components)
+  const id = crypto.randomUUID()
+
+  if (result.success) {
+    await pool.query(
+      `INSERT INTO whatsapp_messages (id, order_id, template_id, to_number, body, status, provider_message_id, created_by_user_id, notification_type)
+       VALUES ($1, $2, NULL, $3, $4, 'sent', $5, $6, $7)`,
+      [id, input.orderId ?? null, input.toNumber, input.previewBody, result.providerMessageId, input.createdByUserId, input.notificationType ?? null]
+    )
+    return { ok: true, sent: true, messageId: id, providerMessageId: result.providerMessageId! }
+  }
+
+  await pool.query(
+    `INSERT INTO whatsapp_messages (id, order_id, template_id, to_number, body, status, error, created_by_user_id, notification_type)
+     VALUES ($1, $2, NULL, $3, $4, 'failed', $5, $6, $7)`,
+    [id, input.orderId ?? null, input.toNumber, input.previewBody, result.error, input.createdByUserId, input.notificationType ?? null]
+  )
+  return { ok: true, sent: false, messageId: id, error: result.error!, errorClass: result.errorClass! }
+}
+
 export interface WhatsAppMessageLogRow {
   id: string
   orderId: string | null
@@ -173,17 +322,6 @@ export async function listWhatsAppMessagesForOrder(orderId: string): Promise<Wha
     [orderId]
   )
   return rows
-}
-
-// هل الطلب ده اتبعتله تأكيد آلي ناجح من قبل بالفعل؟ بتُستخدم قبل أي محاولة إرسال تلقائي
-// (مش الإرسال اليدوي من الأدمن، اللي بيتخطى الفحص ده عمداً — راجع resend في adminWhatsapp.ts)
-// عشان إعادة محاولة الـ checkout أو استرجاع مفتاح idempotency ما يبعتوش نفس التأكيد مرتين.
-export async function hasSentNotification(orderId: string, notificationType: string): Promise<boolean> {
-  const { rows } = await pool.query(
-    `SELECT 1 FROM whatsapp_messages WHERE order_id = $1 AND notification_type = $2 AND status = 'sent' LIMIT 1`,
-    [orderId, notificationType]
-  )
-  return !!rows[0]
 }
 
 const ORDER_CONFIRMATION_CATEGORY = 'order_confirmation'
@@ -223,53 +361,189 @@ function buildTrackingUrl(orderNumber: string, guestTrackingToken: string | null
   return guestTrackingToken ? `${base}?t=${encodeURIComponent(guestTrackingToken)}` : base
 }
 
+// الجزء المتغيّر بس من رابط زرار URL الديناميكي (راجع تعليق WhatsAppTemplateComponent فوق) —
+// Meta بتلحقه تلقائياً بآخر الرابط الأساسي الثابت المُسجَّل وقت اعتماد القالب في Business
+// Manager (مثال: https://.../track/)، فناتج الرابط النهائي للعميل بيبقى مطابق لـ buildTrackingUrl
+// فوق تماماً من غير ما نبعت رابط كامل كبارامتر (Meta ما بتقبلش كده أصلاً لأزرار URL الديناميكية).
+function buildTrackingUrlSuffix(orderNumber: string, guestTrackingToken: string | null): string {
+  const suffix = encodeURIComponent(orderNumber)
+  return guestTrackingToken ? `${suffix}?t=${encodeURIComponent(guestTrackingToken)}` : suffix
+}
+
+export interface SendOrderConfirmationOptions {
+  // موجودة فقط للإرسال اليدوي المتعمّد من الأدمن (زر "إعادة الإرسال" في لوحة التحكم) —
+  // بديل عن force:boolean القديم، وبتحمل هوية الأدمن الفاعل الحقيقية بدل NULL (عشان سجل
+  // whatsapp_messages يقدر يفرّق بوضوح بين إشعار تلقائي بحت وإعادة إرسال يدوية). تمريرها
+  // بيخلي الإرسال يتخطى نظام ملكية الإشعار التلقائي بالكامل عمداً — فعل بشري صريح ومقصود
+  // مش "محاولة تلقائية مكررة"، ومسموح يتكرر براحة الأدمن من غير ما يلمس صف الملكية الأصلي.
+  manualActorUserId?: string
+}
+
 // نقطة الدمج مع إنشاء الطلب — بتتنفّذ بعد الـ commit الفعلي (راجع استدعاءها في
 // orderService.createOrder)، ومصمّمة عمداً عشان أبداً ما ترمي استثناء لفوق: أي فشل (عدم
 // إعداد، قالب مفقود، خطأ مزوّد، خطأ شبكة) بيتسجّل ويترجع بهدوء، الطلب نفسه فضل ناجح فعلاً
-// قبل ما الدالة دي حتى تتنادى. force=true (اللي بيستخدمها إعادة الإرسال اليدوي من الأدمن)
-// بتتخطى فحص "اتبعت قبل كده" — إعادة إرسال متعمّدة من الأدمن مش "تكرار غير مقصود".
-export async function sendOrderConfirmationWhatsApp(order: OrderConfirmationInput, force = false): Promise<void> {
+// قبل ما الدالة دي حتى تتنادى.
+//
+// المسار التلقائي (من غير manualActorUserId) بيعتمد حصرياً على claimAutomaticNotification
+// (راجع whatsappNotificationDeliveryService.ts) لضمان إرسال Meta واحد بالظبط تحت أي تزامن
+// حقيقي — مفيش أي فحص SELECT-then-send هنا، القرار كله من نتيجة الـ claim الذرّي.
+export async function sendOrderConfirmationWhatsApp(order: OrderConfirmationInput, options: SendOrderConfirmationOptions = {}): Promise<void> {
   try {
     if (!whatsappConfigured) return
-    if (!force && await hasSentNotification(order.orderId, ORDER_CONFIRMATION_CATEGORY)) return
-
-    const { rows: templateRows } = await pool.query<{ id: string; content: string }>(
-      `SELECT id, content FROM whatsapp_templates WHERE category = $1 AND active = 1 ORDER BY created_at ASC LIMIT 1`,
-      [ORDER_CONFIRMATION_CATEGORY]
-    )
-    const template = templateRows[0]
-    if (!template) {
+    if (!ORDER_CONFIRMATION_TEMPLATE_NAME) {
       logWarn('whatsapp_order_confirmation_template_missing', { orderId: order.orderId })
       return
     }
 
+    // القالب الداخلي القابل للتعديل من لوحة التحكم (category='order_confirmation') بيُستخدم
+    // هنا حصراً لبناء previewBody (نص وصفي يتخزن في whatsapp_messages.body للعرض/التدقيق في
+    // لوحة التحكم) — مش المُرسل فعلياً لـ Meta؛ المُرسل الفعلي حصراً هو ORDER_CONFIRMATION_TEMPLATE_NAME
+    // (قالب Meta المعتمد، راجع server/docs/WHATSAPP_ORDER_CONFIRMATION_TEMPLATE.md) عبر components تحت.
+    const { rows: templateRows } = await pool.query<{ content: string }>(
+      `SELECT content FROM whatsapp_templates WHERE category = $1 AND active = 1 ORDER BY created_at ASC LIMIT 1`,
+      [ORDER_CONFIRMATION_CATEGORY]
+    )
     const slotLabel = await resolveDeliverySlotLabel(order.deliverySlotId)
-    const body = renderWhatsAppTemplate(template.content, {
-      customerName: order.customerName,
-      orderNumber: order.orderNumber,
-      orderTotal: order.total.toFixed(2),
-      paymentMethod: order.paymentMethod === 'COD' ? 'الدفع عند الاستلام' : order.paymentMethod,
-      deliveryDate: order.deliveryDate ? formatArabicDateWesternDigits(order.deliveryDate) : 'أقرب موعد متاح',
-      deliverySlot: slotLabel,
-      customerAddress: order.customerAddress,
-      trackingUrl: buildTrackingUrl(order.orderNumber, order.guestTrackingToken)
-    })
+    const deliveryDateLabel = order.deliveryDate ? formatArabicDateWesternDigits(order.deliveryDate) : 'أقرب موعد متاح'
+    const paymentMethodLabel = order.paymentMethod === 'COD' ? 'الدفع عند الاستلام' : order.paymentMethod
+    const previewBody = templateRows[0]
+      ? renderWhatsAppTemplate(templateRows[0].content, {
+          customerName: order.customerName,
+          orderNumber: order.orderNumber,
+          orderTotal: order.total.toFixed(2),
+          paymentMethod: paymentMethodLabel,
+          deliveryDate: deliveryDateLabel,
+          deliverySlot: slotLabel,
+          customerAddress: order.customerAddress,
+          trackingUrl: buildTrackingUrl(order.orderNumber, order.guestTrackingToken)
+        })
+      : `تأكيد طلب رقم ${order.orderNumber} لـ ${order.customerName}`
 
-    const result = await sendWhatsAppMessage({
+    const components: WhatsAppTemplateComponent[] = [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: order.customerName },
+          { type: 'text', text: order.orderNumber },
+          { type: 'text', text: order.total.toFixed(2) },
+          { type: 'text', text: paymentMethodLabel },
+          { type: 'text', text: `${deliveryDateLabel} - ${slotLabel}` },
+          { type: 'text', text: order.customerAddress }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: buildTrackingUrlSuffix(order.orderNumber, order.guestTrackingToken) }]
+      }
+    ]
+
+    if (options.manualActorUserId) {
+      await sendWhatsAppTemplateMessage({
+        toNumber: order.customerMobile,
+        templateName: ORDER_CONFIRMATION_TEMPLATE_NAME,
+        languageCode: ORDER_CONFIRMATION_LANGUAGE,
+        components,
+        previewBody,
+        orderId: order.orderId,
+        createdByUserId: options.manualActorUserId,
+        notificationType: ORDER_CONFIRMATION_CATEGORY
+      })
+      return
+    }
+
+    const claim = await claimAutomaticNotification(order.orderId, ORDER_CONFIRMATION_CATEGORY)
+    if (!claim.claimed) return // already_sent / active_owner / max_attempts_reached — عملية تانية صاحبة الحق أو خلصت المهمة فعلاً
+
+    const result = await sendWhatsAppTemplateMessage({
       toNumber: order.customerMobile,
-      body,
+      templateName: ORDER_CONFIRMATION_TEMPLATE_NAME,
+      languageCode: ORDER_CONFIRMATION_LANGUAGE,
+      components,
+      previewBody,
       orderId: order.orderId,
-      templateId: template.id,
       createdByUserId: null,
       notificationType: ORDER_CONFIRMATION_CATEGORY
     })
 
-    if (result.ok && result.sent) {
-      logEvent('whatsapp_order_confirmation_sent', { orderId: order.orderId, orderNumber: order.orderNumber })
-    } else if (result.ok && !result.sent) {
-      logWarn('whatsapp_order_confirmation_failed', { orderId: order.orderId, error: result.error })
+    if (!result.ok) {
+      // رقم موبايل غير صالح فعلياً محفوظ بالخطأ في بيانات الطلب — إعادة المحاولة لاحقاً
+      // مش هتحل المشكلة، فبنسجّلها كخطأ دائم عشان سكربت إعادة المحاولة الدوري يتجاهلها.
+      await markNotificationFailed(claim.deliveryId, claim.ownerToken, `permanent: ${result.reason}`)
+      logWarn('whatsapp_order_confirmation_failed', { orderId: order.orderId, error: result.reason })
+      return
     }
+
+    if (result.sent) {
+      await markNotificationSent(claim.deliveryId, claim.ownerToken, result.providerMessageId)
+      logEvent('whatsapp_order_confirmation_sent', { orderId: order.orderId, orderNumber: order.orderNumber })
+      return
+    }
+
+    if (result.errorClass === 'unknown') {
+      logWarn('whatsapp_notification_provider_result_unknown', {
+        orderId: order.orderId, notificationType: ORDER_CONFIRMATION_CATEGORY, attemptCount: claim.attemptCount
+      })
+    }
+    const errorPrefix = result.errorClass === 'unknown' ? 'unknown: ' : result.errorClass === 'permanent' ? 'permanent: ' : ''
+    await markNotificationFailed(claim.deliveryId, claim.ownerToken, `${errorPrefix}${result.error}`)
+    logWarn('whatsapp_order_confirmation_failed', { orderId: order.orderId, error: result.error })
   } catch (err) {
     logWarn('whatsapp_order_confirmation_error', { orderId: order.orderId, error: err instanceof Error ? err.message : 'unknown_error' })
   }
+}
+
+// دفعة محدودة من إعادة محاولة الإشعارات التلقائية الفاشلة القابلة لإعادة المحاولة — تُستدعى
+// حصرياً من سكربت دوري منفصل (راجع src/whatsappRetryFailedConfirmations.ts وتوثيق الجدولة في
+// docs/WHATSAPP_ORDER_CONFIRMATION_RETRY_CRON.md)، أبداً مش من أي مسار HTTP مباشر. كل عنصر
+// بيعيد بناء بيانات الطلب من قاعدة البيانات ثم ينادي نفس مسار claimAutomaticNotification فوق
+// (نفس الذرّية بالظبط، مفيش أي فرق منطقي عن أول محاولة).
+export interface RetryBatchResult {
+  attempted: number
+  sent: number
+  failed: number
+}
+
+export async function retryFailedOrderConfirmations(batchSize = 20): Promise<RetryBatchResult> {
+  const candidates = await listRetryableFailedNotifications(ORDER_CONFIRMATION_CATEGORY, batchSize)
+  let sent = 0
+  let failed = 0
+
+  for (const candidate of candidates) {
+    const { rows } = await pool.query<OrderConfirmationSourceRow>(
+      `SELECT id, order_number as "orderNumber", customer_full_name as "customerName", customer_mobile as "customerMobile",
+              customer_governorate as "customerGovernorate", customer_address as "customerAddress", payment_method as "paymentMethod",
+              total, delivery_date as "deliveryDate", delivery_slot as "deliverySlotId", guest_tracking_token as "guestTrackingToken"
+       FROM orders WHERE id = $1`,
+      [candidate.orderId]
+    )
+    const order = rows[0]
+    if (!order) { failed++; continue }
+
+    const before = await getAutomaticNotificationStatus(candidate.orderId, ORDER_CONFIRMATION_CATEGORY)
+    await sendOrderConfirmationWhatsApp({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      customerMobile: order.customerMobile,
+      customerAddress: `${order.customerGovernorate} - ${order.customerAddress}`,
+      paymentMethod: order.paymentMethod,
+      total: order.total,
+      deliveryDate: order.deliveryDate,
+      deliverySlotId: order.deliverySlotId,
+      guestTrackingToken: order.guestTrackingToken
+    })
+    const after = await getAutomaticNotificationStatus(candidate.orderId, ORDER_CONFIRMATION_CATEGORY)
+    if (after?.status === 'sent' && after.updatedAt !== before?.updatedAt) sent++
+    else failed++
+  }
+
+  return { attempted: candidates.length, sent, failed }
+}
+
+interface OrderConfirmationSourceRow {
+  id: string; orderNumber: string; customerName: string; customerMobile: string
+  customerGovernorate: string; customerAddress: string; paymentMethod: string; total: number
+  deliveryDate: string | null; deliverySlotId: string; guestTrackingToken: string | null
 }

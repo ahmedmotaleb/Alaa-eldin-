@@ -26,6 +26,8 @@
     "loyalty:expire:dev": "tsx src/loyaltyExpire.ts",
     "pricing:apply-scheduled": "node dist/pricingApplyScheduled.js",
     "pricing:apply-scheduled:dev": "tsx src/pricingApplyScheduled.ts",
+    "whatsapp:retry-confirmations": "node dist/whatsappRetryFailedConfirmations.js",
+    "whatsapp:retry-confirmations:dev": "tsx src/whatsappRetryFailedConfirmations.ts",
     "db:backup": "bash scripts/backup.sh",
     "db:restore": "bash scripts/restore.sh",
     "smoke-test": "tsx src/scripts/smokeTest.ts",

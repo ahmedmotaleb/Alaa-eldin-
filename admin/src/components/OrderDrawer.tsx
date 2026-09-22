@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminOrderLoyaltyLedgerRow, type AdminRider, type PickedStatus, type WhatsAppTemplate, type WhatsAppMessage } from '../utils/api'
+import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminOrderLoyaltyLedgerRow, type AdminRider, type PickedStatus, type WhatsAppTemplate, type WhatsAppMessage, type WhatsAppOrderConfirmationConfigStatus, type WhatsAppNotificationDeliveryStatus } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
 import { toWhatsAppInternational } from '../utils/phone'
@@ -32,6 +32,8 @@ export function OrderDrawer({
   const navigate = useNavigate()
   const [bg, fg] = ORDER_STATUS_COLOR[order.status]
   const [waConfigured, setWaConfigured] = useState(false)
+  const [waOrderConfirmation, setWaOrderConfirmation] = useState<WhatsAppOrderConfirmationConfigStatus | null>(null)
+  const [confirmationStatus, setConfirmationStatus] = useState<WhatsAppNotificationDeliveryStatus | null>(null)
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [sending, setSending] = useState(false)
@@ -44,7 +46,10 @@ export function OrderDrawer({
   const [loyaltyLedgerForOrder, setLoyaltyLedgerForOrder] = useState<AdminOrderLoyaltyLedgerRow[]>([])
 
   useEffect(() => {
-    api.getWhatsAppStatus().then(({ configured }) => setWaConfigured(configured)).catch(() => setWaConfigured(false))
+    api.getWhatsAppStatus().then(({ configured, orderConfirmation }) => {
+      setWaConfigured(configured)
+      setWaOrderConfirmation(orderConfirmation)
+    }).catch(() => { setWaConfigured(false); setWaOrderConfirmation(null) })
     api.listWhatsAppTemplates().then(({ templates }) => setTemplates(templates.filter(t => t.active))).catch(() => {})
   }, [])
 
@@ -52,16 +57,26 @@ export function OrderDrawer({
     api.listWhatsAppMessages(order.id).then(({ messages }) => setWaMessages(messages)).catch(() => {})
   }
 
-  useEffect(loadWaMessages, [order.id])
+  function loadConfirmationStatus() {
+    api.getWhatsAppConfirmationStatus(order.id).then(({ status }) => setConfirmationStatus(status)).catch(() => setConfirmationStatus(null))
+  }
 
-  const confirmationMessage = waMessages.find(m => m.notificationType === 'order_confirmation')
+  useEffect(loadWaMessages, [order.id])
+  useEffect(loadConfirmationStatus, [order.id])
+
+  // آخر رسالة قالب فعلية اتبعتت لتأكيد الطلب (تلقائية أو يدوية) — للعرض في سجل الرسائل بس؛
+  // حالة "الملكية" المعتمدة (pending/sent/failed + عدد المحاولات) بتيجي من confirmationStatus
+  // فوق (نظام الملكية الذرّي)، مش من قراءة أحدث صف في السجل ده.
+  const lastConfirmationMessage = waMessages.find(m => m.notificationType === 'order_confirmation')
+  const confirmationReady = !!(waOrderConfirmation?.apiConfigured && waOrderConfirmation?.templateConfigured)
 
   async function resendConfirmation() {
-    if (!window.confirm('إعادة إرسال تأكيد الطلب عبر واتساب للعميل؟')) return
+    if (!window.confirm('إعادة إرسال تأكيد الطلب عبر واتساب للعميل؟ (ده هيبعت رسالة جديدة فعلياً حتى لو اتبعت تأكيد قبل كده)')) return
     setResending(true)
     try {
       await api.resendWhatsAppConfirmation(order.id)
       loadWaMessages()
+      loadConfirmationStatus()
     } catch {
       window.alert('تعذرت إعادة الإرسال')
     } finally {
@@ -152,19 +167,39 @@ export function OrderDrawer({
 
         <div className="admin-drawer-card">
           <div className="admin-drawer-card-title">تأكيد واتساب</div>
-          {!waConfigured && <div style={{ fontSize: 12.5, color: '#8A948C' }}>غير مفعّل</div>}
-          {waConfigured && !confirmationMessage && <div style={{ fontSize: 12.5, color: '#8A948C' }}>في الانتظار</div>}
-          {waConfigured && confirmationMessage?.status === 'sent' && (
+          {!waConfigured && <div style={{ fontSize: 12.5, color: '#8A948C' }}>غير مفعّل — لازم تضبط اتصال واتساب أولاً</div>}
+          {waConfigured && !waOrderConfirmation?.templateConfigured && (
+            <div style={{ fontSize: 12.5, color: '#B4740E', fontWeight: 600 }}>
+              غير جاهز — قالب تأكيد الطلب المعتمد من Meta لسه مش مضبوط في إعدادات السيرفر
+              (راجع WHATSAPP_ORDER_CONFIRMATION_TEMPLATE.md)
+            </div>
+          )}
+          {confirmationReady && !confirmationStatus && <div style={{ fontSize: 12.5, color: '#8A948C' }}>في الانتظار</div>}
+          {confirmationReady && confirmationStatus?.status === 'pending' && (
+            <div style={{ fontSize: 12.5, color: '#B4740E', fontWeight: 600 }}>
+              قيد الإرسال... (محاولة {confirmationStatus.attemptCount})
+            </div>
+          )}
+          {confirmationReady && confirmationStatus?.status === 'sent' && (
             <div style={{ fontSize: 12.5, color: '#12813C', fontWeight: 600 }}>
-              تم الإرسال — {formatDateTime(confirmationMessage.createdAt)}
+              تم قبول الرسالة من واتساب — {formatDateTime(confirmationStatus.sentAt ?? confirmationStatus.updatedAt)}
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#8A948C', marginTop: 2 }}>
+                (ده تأكيد إرسال من مزوّد واتساب، مش تأكيد استلام فعلي على هاتف العميل)
+              </div>
             </div>
           )}
-          {waConfigured && confirmationMessage?.status === 'failed' && (
+          {confirmationReady && confirmationStatus?.status === 'failed' && (
             <div style={{ fontSize: 12.5, color: '#B42318', fontWeight: 600 }}>
-              فشل الإرسال — {confirmationMessage.error ?? 'خطأ غير معروف'}
+              فشل الإرسال (بعد {confirmationStatus.attemptCount} محاولة) — {confirmationStatus.lastError ?? 'خطأ غير معروف'}
             </div>
           )}
-          {waConfigured && (
+          {lastConfirmationMessage && (
+            <div style={{ fontSize: 11, color: '#8A948C', marginTop: 6 }}>
+              آخر محاولة فعلية: {formatDateTime(lastConfirmationMessage.createdAt)}
+              {lastConfirmationMessage.status === 'failed' ? ' (فشلت)' : ' (اتقبلت)'}
+            </div>
+          )}
+          {confirmationReady && (
             <button className="admin-category-card-btn" disabled={resending} onClick={resendConfirmation} style={{ marginTop: 8 }}>
               {resending ? 'جارٍ الإرسال...' : '🔁 إعادة إرسال تأكيد واتساب'}
             </button>

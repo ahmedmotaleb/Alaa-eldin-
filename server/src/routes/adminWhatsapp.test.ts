@@ -58,16 +58,42 @@ describe('POST /api/admin/whatsapp/orders/:orderId/resend-confirmation', () => {
     expect(res.body).toEqual({ error: 'order_not_found' })
   })
 
-  // بيئة الاختبار مالهاش بيانات اعتماد واتساب حقيقية (whatsappConfigured=false) — فده
-  // بيتأكد إن المسار بيرفض بأمان (409) من غير ما يحاول يتصل بأي API، ومفيش أي صف
-  // بيتسجّل في whatsapp_messages.
-  it('reports whatsapp_not_configured (409) without recording any message', async () => {
+  // بيئة الاختبار مالهاش بيانات اعتماد واتساب حقيقية ولا اسم قالب معتمد
+  // (whatsappOrderConfirmationReady=false) — فده بيتأكد إن المسار بيرفض بأمان (409) من
+  // غير ما يحاول يتصل بأي API، ومفيش أي صف بيتسجّل في whatsapp_messages.
+  it('reports whatsapp_order_confirmation_not_ready (409) without recording any message', async () => {
     const { agent } = await adminAgent()
     const res = await agent.post(`/api/admin/whatsapp/orders/${ORDER_ID}/resend-confirmation`)
     expect(res.status).toBe(409)
-    expect(res.body).toEqual({ error: 'whatsapp_not_configured' })
+    expect(res.body).toEqual({ error: 'whatsapp_order_confirmation_not_ready' })
 
     const { rows } = await pool.query('SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1', [ORDER_ID])
     expect(Number(rows[0].n)).toBe(0)
+  })
+})
+
+describe('GET /api/admin/whatsapp/status', () => {
+  it('includes an orderConfirmation config breakdown alongside the base configured flag', async () => {
+    const { agent } = await adminAgent()
+    const res = await agent.get('/api/admin/whatsapp/status')
+    expect(res.status).toBe(200)
+    expect(res.body.configured).toBe(false)
+    expect(res.body.orderConfirmation).toEqual({
+      apiConfigured: false, templateConfigured: false, templateName: null, language: 'ar'
+    })
+  })
+})
+
+describe('GET /api/admin/whatsapp/orders/:orderId/confirmation-status', () => {
+  it('rejects an unauthenticated request', async () => {
+    const res = await request(app).get(`/api/admin/whatsapp/orders/${ORDER_ID}/confirmation-status`)
+    expect(res.status).toBe(401)
+  })
+
+  it('returns null status when no automatic notification was ever claimed for this order', async () => {
+    const { agent } = await adminAgent()
+    const res = await agent.get(`/api/admin/whatsapp/orders/${ORDER_ID}/confirmation-status`)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ status: null })
   })
 })

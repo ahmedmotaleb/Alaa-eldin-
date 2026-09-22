@@ -3,7 +3,7 @@ import { pool } from '../db.js'
 import {
   listWhatsAppTemplates, createWhatsAppTemplate, updateWhatsAppTemplate,
   renderWhatsAppTemplate, sendWhatsAppMessage, listWhatsAppMessagesForOrder,
-  sendOrderConfirmationWhatsApp, hasSentNotification, whatsappConfigured
+  sendOrderConfirmationWhatsApp, whatsappConfigured
 } from './whatsappService.js'
 
 const TEMPLATE_NAME = 'test-template-whatsapp'
@@ -72,10 +72,6 @@ describe('whatsappService', () => {
   it('returns an empty message log for an order with no whatsapp activity', async () => {
     const messages = await listWhatsAppMessagesForOrder('non-existent-order-id')
     expect(messages).toEqual([])
-  })
-
-  it('hasSentNotification reports false when nothing was ever sent for this order/type', async () => {
-    expect(await hasSentNotification('non-existent-order-id', 'order_confirmation')).toBe(false)
   })
 
   // بيئة الاختبار دي whatsappConfigured=false، فده بيتأكد إن الدالة دي (اللي بتتنادى من
