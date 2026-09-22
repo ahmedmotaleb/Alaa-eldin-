@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { pool } from '../db.js'
 import { getVariantSellableStock, consumeBatchesFefo, restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
+import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export interface ProductVariant {
   id: string
@@ -200,4 +201,6 @@ export async function restoreVariantStock(client: PoolClient, variantId: string,
     [orderId, variantId]
   )
   if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
+
+  await notifyBackInStockIfNeeded(client, row.productId, variantId)
 }

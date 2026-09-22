@@ -49,25 +49,30 @@ export function ProductPage() {
   }, [product?.id])
 
   // زرار "أعلمني عند التوفر" بيتاح بس للعميل المسجّل دخول (نفس مبدأ عدم طلب أي إذن/تسجيل
-  // بيانات من زائر ما عندناش وسيلة نوصله بيها لاحقاً أصلاً) ولو المنتج فعلاً نافد المخزون.
+  // بيانات من زائر ما عندناش وسيلة نوصله بيها لاحقاً أصلاً)، ولو المنتج (أو المتغيّر المختار
+  // لو المنتج له متغيرات) فعلاً نافد المخزون — الاشتراك دايماً سكوب على نفس الاختيار الحالي.
   useEffect(() => {
-    if (!user || !product || product.stockState !== 'out_of_stock') { setNotifySubscribed(false); return }
+    if (!user || !product) { setNotifySubscribed(false); return }
+    const hasVariantsHere = product.variants.length > 0
+    const activeVariant = hasVariantsHere ? (product.variants.find(v => v.id === selectedVariantId) ?? product.variants[0]) : undefined
+    const outOfStock = hasVariantsHere ? (activeVariant !== undefined && activeVariant.stock <= 0) : product.stockState === 'out_of_stock'
+    if (!outOfStock) { setNotifySubscribed(false); return }
     let cancelled = false
-    api.getBackInStockStatus(product.id)
+    api.getBackInStockStatus(product.id, activeVariant?.id)
       .then(({ subscribed }) => { if (!cancelled) setNotifySubscribed(subscribed) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [user, product?.id, product?.stockState])
+  }, [user, product, selectedVariantId])
 
-  async function toggleNotifyWhenAvailable() {
+  async function toggleNotifyWhenAvailable(variantId?: string) {
     if (!product || notifyBusy) return
     setNotifyBusy(true)
     try {
       if (notifySubscribed) {
-        await api.unsubscribeFromBackInStock(product.id)
+        await api.unsubscribeFromBackInStock(product.id, variantId)
         setNotifySubscribed(false)
       } else {
-        await api.subscribeToBackInStock(product.id)
+        await api.subscribeToBackInStock(product.id, variantId)
         setNotifySubscribed(true)
         flash(ar.product.notifyWhenAvailableConfirmed)
       }
@@ -171,7 +176,7 @@ export function ProductPage() {
         </div>
 
         {!hasVariants && product.stockState === 'out_of_stock' && user && (
-          <button type="button" className="notify-when-available-btn" disabled={notifyBusy} onClick={toggleNotifyWhenAvailable}>
+          <button type="button" className="notify-when-available-btn" disabled={notifyBusy} onClick={() => toggleNotifyWhenAvailable()}>
             {notifySubscribed ? ar.product.notifyWhenAvailableSubscribed : ar.product.notifyWhenAvailable}
           </button>
         )}
@@ -192,6 +197,12 @@ export function ProductPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {hasVariants && variantOutOfStock && user && (
+          <button type="button" className="notify-when-available-btn" disabled={notifyBusy} onClick={() => toggleNotifyWhenAvailable(activeVariantId)}>
+            {notifySubscribed ? ar.product.notifyWhenAvailableSubscribed : ar.product.notifyWhenAvailable}
+          </button>
         )}
 
         <div className="product-detail-description">{product.description}</div>

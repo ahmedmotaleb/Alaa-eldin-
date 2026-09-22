@@ -494,12 +494,12 @@ export const api = {
   syncCartSnapshot: (items: { productId: string, variantId?: string, quantity: number }[]) =>
     request<void>('/account/cart-snapshot', { method: 'PUT', body: JSON.stringify({ items }) }),
   clearCartSnapshot: () => request<void>('/account/cart-snapshot', { method: 'DELETE' }),
-  getBackInStockStatus: (productId: string) =>
-    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}`),
-  subscribeToBackInStock: (productId: string) =>
-    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}`, { method: 'POST' }),
-  unsubscribeFromBackInStock: (productId: string) =>
-    request<void>(`/products/notify-when-available/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
+  getBackInStockStatus: (productId: string, variantId?: string) =>
+    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}${variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''}`),
+  subscribeToBackInStock: (productId: string, variantId?: string) =>
+    request<{ subscribed: boolean }>(`/products/notify-when-available/${encodeURIComponent(productId)}${variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''}`, { method: 'POST' }),
+  unsubscribeFromBackInStock: (productId: string, variantId?: string) =>
+    request<void>(`/products/notify-when-available/${encodeURIComponent(productId)}${variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''}`, { method: 'DELETE' }),
   autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings, captcha: { turnstileSiteKey: string | null } }>('/settings'),

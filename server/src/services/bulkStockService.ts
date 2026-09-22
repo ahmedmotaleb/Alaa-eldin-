@@ -391,6 +391,7 @@ async function applyOneStockRow(client: PoolClient, row: StockPreviewRow, adminU
        VALUES ($1, $2, $3, $4, $5, $6, 'تحديث مخزون بالجملة', $7, $8, now())`,
       [row.productId, row.variantId, reason, quantityChange, cur.stock, row.newStock, adminUserId, batchId]
     )
+    if (quantityChange > 0) await notifyBackInStockIfNeeded(client, row.productId, row.variantId)
   } else {
     const { rows: current } = await client.query<{ stock: number }>('SELECT stock FROM products WHERE id = $1 FOR UPDATE', [row.productId])
     const cur = current[0]

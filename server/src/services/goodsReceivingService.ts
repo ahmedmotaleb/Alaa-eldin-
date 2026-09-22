@@ -158,7 +158,7 @@ export async function receiveGoodsForPurchaseOrder(
            VALUES ($1, $2, 'restock', $3, $4, $5, $6, $7)`,
           [item.productId, item.variantId ?? null, item.quantity, `استلام بضاعة — إيصال ${receiptNumber} (أمر شراء ${po.poNumber})`, new Date().toISOString(), newStock - item.quantity, newStock]
         )
-        await notifyBackInStockIfNeeded(client, item.productId)
+        await notifyBackInStockIfNeeded(client, item.productId, item.variantId ?? null)
 
         await client.query(
           `INSERT INTO product_cost_history (id, product_id, variant_id, supplier_id, unit_cost, source_type, source_id)

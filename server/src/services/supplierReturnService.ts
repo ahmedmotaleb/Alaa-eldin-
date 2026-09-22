@@ -186,7 +186,7 @@ export async function updateSupplierReturnStatus(
           await client.query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.quantity, item.productId])
         }
         await restoreBatchConsumptionsForMovement(client, item.stockMovementId)
-        if (!item.variantId) await notifyBackInStockIfNeeded(client, item.productId)
+        await notifyBackInStockIfNeeded(client, item.productId, item.variantId)
       }
     }
 

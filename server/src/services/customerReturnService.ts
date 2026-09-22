@@ -214,6 +214,7 @@ export async function updateCustomerReturnStatus(
              VALUES ($1, $2, 'return', $3, $4, $5, $6, $7)`,
             [item.productId, item.variantId, item.quantity, `مرتجع عميل ${id}`, new Date().toISOString(), stockRows[0].stock - item.quantity, stockRows[0].stock]
           )
+          await notifyBackInStockIfNeeded(client, item.productId, item.variantId)
         } else {
           const { rows: stockRows } = await client.query<{ stock: number }>(
             'UPDATE products SET stock = stock + $1 WHERE id = $2 RETURNING stock',
