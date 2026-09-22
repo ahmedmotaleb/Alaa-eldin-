@@ -8,6 +8,9 @@ import {
 const CATEGORY_ID = 'test-cat-po'
 const PRODUCT_ID = 'test-prod-po-1'
 const PRODUCT_ID_2 = 'test-prod-po-2'
+const PRODUCT_WITH_VARIANT_ID = 'test-prod-po-variants'
+const VARIANT_ID = 'test-variant-po-1'
+const OTHER_PRODUCT_ID = 'test-prod-po-other'
 const SUPPLIER_ID = 'test-supplier-po'
 const SUPPLIER_ID_2 = 'test-supplier-po-2'
 const USER_ID = 'test-user-po'
@@ -16,7 +19,8 @@ async function resetFixtures() {
   await pool.query('DELETE FROM purchase_order_items')
   await pool.query('DELETE FROM purchase_orders')
   await pool.query('DELETE FROM suppliers WHERE id = ANY($1::text[])', [[SUPPLIER_ID, SUPPLIER_ID_2]])
-  await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [PRODUCT_ID, PRODUCT_ID_2])
+  await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+  await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3, $4)', [PRODUCT_ID, PRODUCT_ID_2, PRODUCT_WITH_VARIANT_ID, OTHER_PRODUCT_ID])
   await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
   await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
 
@@ -35,6 +39,21 @@ async function resetFixtures() {
     [PRODUCT_ID_2, CATEGORY_ID]
   )
   await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+     VALUES ($1, 'po-prod-variants', $2, 'منتج بمتغيرات', 'وصف', 30, 12, 'وحدة', '🧪', 1, 20, now())`,
+    [PRODUCT_WITH_VARIANT_ID, CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+     VALUES ($1, 'po-prod-other', $2, 'منتج تالت', 'وصف', 15, 6, 'وحدة', '🧪', 1, 30, now())`,
+    [OTHER_PRODUCT_ID, CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, sort_order, created_at)
+     VALUES ($1, $2, 'أحمر - كبير', 32, 13, 4, 1, 0, now())`,
+    [VARIANT_ID, PRODUCT_WITH_VARIANT_ID]
+  )
+  await pool.query(
     `INSERT INTO suppliers (id, name) VALUES ($1, 'مورد اختبار أوامر الشراء'), ($2, 'مورد اختبار تاني')`,
     [SUPPLIER_ID, SUPPLIER_ID_2]
   )
@@ -51,7 +70,8 @@ describe('purchaseOrderService', () => {
     await pool.query('DELETE FROM purchase_order_items')
     await pool.query('DELETE FROM purchase_orders')
     await pool.query('DELETE FROM suppliers WHERE id = ANY($1::text[])', [[SUPPLIER_ID, SUPPLIER_ID_2]])
-    await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [PRODUCT_ID, PRODUCT_ID_2])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3, $4)', [PRODUCT_ID, PRODUCT_ID_2, PRODUCT_WITH_VARIANT_ID, OTHER_PRODUCT_ID])
     await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
     await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
   })
@@ -271,5 +291,73 @@ describe('purchaseOrderService', () => {
       const result = await mergeRecommendationsIntoDraftPurchaseOrder(order.id, SUPPLIER_ID, [])
       expect(result).toEqual({ error: 'no_items' })
     })
+  })
+})
+
+describe('purchaseOrderService — variant purchasing', () => {
+  beforeEach(resetFixtures)
+  afterAll(async () => {
+    await pool.query('DELETE FROM purchase_order_items')
+    await pool.query('DELETE FROM purchase_orders')
+    await pool.query('DELETE FROM suppliers WHERE id = ANY($1::text[])', [[SUPPLIER_ID, SUPPLIER_ID_2]])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3, $4)', [PRODUCT_ID, PRODUCT_ID_2, PRODUCT_WITH_VARIANT_ID, OTHER_PRODUCT_ID])
+    await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+    await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
+    await pool.end()
+  })
+
+  it('creates a PO line for a specific variant, separate from the parent product', async () => {
+    const order = await createPurchaseOrder(
+      { supplierId: SUPPLIER_ID, items: [{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 10, unitCost: 13 }] },
+      USER_ID
+    )
+    const detail = await getPurchaseOrderById(order.id)
+    expect(detail?.items).toHaveLength(1)
+    expect(detail?.items[0].variantId).toBe(VARIANT_ID)
+    expect(detail?.items[0].variantName).toBe('أحمر - كبير')
+  })
+
+  it('allows a base-product line and a variant line for the same product in one PO, as two independent rows', async () => {
+    const order = await createPurchaseOrder(
+      {
+        supplierId: SUPPLIER_ID,
+        items: [
+          { productId: PRODUCT_WITH_VARIANT_ID, orderedQty: 5, unitCost: 12 },
+          { productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 8, unitCost: 13 }
+        ]
+      },
+      USER_ID
+    )
+    const detail = await getPurchaseOrderById(order.id)
+    expect(detail?.items).toHaveLength(2)
+    const baseLine = detail?.items.find(i => i.variantId === null)
+    const variantLine = detail?.items.find(i => i.variantId === VARIANT_ID)
+    expect(baseLine?.orderedQty).toBe(5)
+    expect(variantLine?.orderedQty).toBe(8)
+  })
+
+  it('rejects a variant that does not actually belong to the given product', async () => {
+    await expect(createPurchaseOrder(
+      { supplierId: SUPPLIER_ID, items: [{ productId: OTHER_PRODUCT_ID, variantId: VARIANT_ID, orderedQty: 5, unitCost: 10 }] },
+      USER_ID
+    )).rejects.toThrow('invalid_item')
+  })
+
+  it('never collapses a variant-scoped update into the parent product line', async () => {
+    const order = await createPurchaseOrder(
+      { supplierId: SUPPLIER_ID, items: [{ productId: PRODUCT_WITH_VARIANT_ID, orderedQty: 5, unitCost: 12 }] },
+      USER_ID
+    )
+    const updated = await updateDraftPurchaseOrder(order.id, {
+      supplierId: SUPPLIER_ID,
+      items: [
+        { productId: PRODUCT_WITH_VARIANT_ID, orderedQty: 5, unitCost: 12 },
+        { productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 3, unitCost: 13 }
+      ]
+    })
+    expect('error' in updated).toBe(false)
+    const detail = await getPurchaseOrderById(order.id)
+    expect(detail?.items).toHaveLength(2)
   })
 })

@@ -19,6 +19,7 @@ function parseInput(body: unknown): PurchaseOrderInput | null {
     const item = raw as Record<string, unknown>
     return {
       productId: typeof item?.productId === 'string' ? item.productId : '',
+      variantId: typeof item?.variantId === 'string' && item.variantId.trim() ? item.variantId : null,
       orderedQty: typeof item?.orderedQty === 'number' ? item.orderedQty : NaN,
       unitCost: typeof item?.unitCost === 'number' ? item.unitCost : NaN
     }

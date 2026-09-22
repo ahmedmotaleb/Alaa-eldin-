@@ -6,6 +6,8 @@ import { receiveGoodsForPurchaseOrder, getGoodsReceiptById } from './goodsReceiv
 const CATEGORY_ID = 'test-cat-gr'
 const PRODUCT_ID = 'test-prod-gr-1'
 const PRODUCT_EXPIRY_ID = 'test-prod-gr-expiry'
+const PRODUCT_WITH_VARIANT_ID = 'test-prod-gr-variants'
+const VARIANT_ID = 'test-variant-gr-1'
 const SUPPLIER_ID = 'test-supplier-gr'
 const USER_ID = 'test-user-gr'
 
@@ -16,9 +18,10 @@ async function resetFixtures() {
   await pool.query('DELETE FROM goods_receipts')
   await pool.query('DELETE FROM purchase_order_items')
   await pool.query('DELETE FROM purchase_orders')
-  await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2)', [PRODUCT_ID, PRODUCT_EXPIRY_ID])
+  await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
   await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
-  await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [PRODUCT_ID, PRODUCT_EXPIRY_ID])
+  await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+  await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
   await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
   await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
 
@@ -36,6 +39,16 @@ async function resetFixtures() {
      VALUES ($1, 'gr-prod-expiry', $2, 'منتج متابَع الصلاحية', 'وصف', 15, 6, 'وحدة', '🧪', 1, 0, now(), 1)`,
     [PRODUCT_EXPIRY_ID, CATEGORY_ID]
   )
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at, tracks_expiry)
+     VALUES ($1, 'gr-prod-variants', $2, 'منتج بمتغيرات', 'وصف', 30, 12, 'وحدة', '🧪', 1, 20, now(), 0)`,
+    [PRODUCT_WITH_VARIANT_ID, CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, sort_order, created_at)
+     VALUES ($1, $2, 'أحمر - كبير', 32, 13, 4, 1, 0, now())`,
+    [VARIANT_ID, PRODUCT_WITH_VARIANT_ID]
+  )
   await pool.query(`INSERT INTO suppliers (id, name) VALUES ($1, 'مورد اختبار الاستلام')`, [SUPPLIER_ID])
   await pool.query(
     `INSERT INTO users (id, email, password_hash, full_name, created_at, is_admin, role)
@@ -44,7 +57,7 @@ async function resetFixtures() {
   )
 }
 
-async function makeSubmittedPO(items: Array<{ productId: string, orderedQty: number, unitCost: number }>) {
+async function makeSubmittedPO(items: Array<{ productId: string, variantId?: string | null, orderedQty: number, unitCost: number }>) {
   const order = await createPurchaseOrder({ supplierId: SUPPLIER_ID, items }, USER_ID)
   await updatePurchaseOrderStatus(order.id, 'submitted')
   return order
@@ -59,9 +72,10 @@ describe('goodsReceivingService', () => {
     await pool.query('DELETE FROM goods_receipts')
     await pool.query('DELETE FROM purchase_order_items')
     await pool.query('DELETE FROM purchase_orders')
-    await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2)', [PRODUCT_ID, PRODUCT_EXPIRY_ID])
+    await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
     await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
-    await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [PRODUCT_ID, PRODUCT_EXPIRY_ID])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
     await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
     await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
   })
@@ -252,5 +266,92 @@ describe('goodsReceivingService', () => {
     const fetched = await getGoodsReceiptById(result.receipt.id)
     expect(fetched?.items).toHaveLength(1)
     expect(fetched?.items[0].productName).toBe('منتج 1')
+  })
+})
+
+describe('goodsReceivingService — variant receiving', () => {
+  beforeEach(resetFixtures)
+  afterAll(async () => {
+    await pool.query('DELETE FROM product_cost_history')
+    await pool.query('DELETE FROM inventory_batches')
+    await pool.query('DELETE FROM goods_receipt_items')
+    await pool.query('DELETE FROM goods_receipts')
+    await pool.query('DELETE FROM purchase_order_items')
+    await pool.query('DELETE FROM purchase_orders')
+    await pool.query('DELETE FROM stock_movements WHERE product_id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
+    await pool.query('DELETE FROM suppliers WHERE id = $1', [SUPPLIER_ID])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await pool.query('DELETE FROM products WHERE id IN ($1, $2, $3)', [PRODUCT_ID, PRODUCT_EXPIRY_ID, PRODUCT_WITH_VARIANT_ID])
+    await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+    await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
+    await pool.end()
+  })
+
+  it('receiving a variant line updates the variant stock/cost, never the parent product', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 6, unitCost: 14 }])
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, quantity: 6, unitCost: 14 }] },
+      USER_ID
+    )
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+
+    const { rows: variantRows } = await pool.query<{ stock: number, cost: number }>('SELECT stock, cost FROM product_variants WHERE id = $1', [VARIANT_ID])
+    expect(variantRows[0].stock).toBe(10) // 4 + 6
+    expect(variantRows[0].cost).toBe(14)
+
+    const { rows: productRows } = await pool.query<{ stock: number, cost: number }>('SELECT stock, cost FROM products WHERE id = $1', [PRODUCT_WITH_VARIANT_ID])
+    expect(productRows[0].stock).toBe(20) // المنتج الأب متأثرش خالص
+    expect(productRows[0].cost).toBe(12)
+  })
+
+  it('records the variant on the inventory batch, stock movement, and cost history', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 4, unitCost: 15 }])
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, quantity: 4, unitCost: 15 }] },
+      USER_ID
+    )
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+
+    const { rows: batches } = await pool.query('SELECT variant_id as "variantId", quantity_remaining as "quantityRemaining" FROM inventory_batches WHERE product_id = $1', [PRODUCT_WITH_VARIANT_ID])
+    expect(batches).toHaveLength(1)
+    expect(batches[0].variantId).toBe(VARIANT_ID)
+    expect(batches[0].quantityRemaining).toBe(4)
+
+    const { rows: movements } = await pool.query('SELECT variant_id as "variantId" FROM stock_movements WHERE product_id = $1 AND type = \'restock\'', [PRODUCT_WITH_VARIANT_ID])
+    expect(movements[0].variantId).toBe(VARIANT_ID)
+
+    const { rows: costHistory } = await pool.query('SELECT variant_id as "variantId" FROM product_cost_history WHERE product_id = $1', [PRODUCT_WITH_VARIANT_ID])
+    expect(costHistory[0].variantId).toBe(VARIANT_ID)
+  })
+
+  it('treats a base-product line and a variant line of the same product as fully independent during receiving', async () => {
+    const order = await makeSubmittedPO([
+      { productId: PRODUCT_WITH_VARIANT_ID, orderedQty: 5, unitCost: 12 },
+      { productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 3, unitCost: 13 }
+    ])
+    // استلام بند المتغيّر بس، من غير ما يمسّ بند المنتج الأساسي المتبقي في نفس الأمر.
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, quantity: 3, unitCost: 13 }] },
+      USER_ID
+    )
+    expect('error' in result).toBe(false)
+
+    const poResult = await getPurchaseOrderById(order.id)
+    expect(poResult?.order.status).toBe('partially_received')
+    const baseLine = poResult?.items.find(i => i.variantId === null)
+    const variantLine = poResult?.items.find(i => i.variantId === VARIANT_ID)
+    expect(baseLine?.receivedQty).toBe(0)
+    expect(variantLine?.receivedQty).toBe(3)
+  })
+
+  it('rejects receiving more than the remaining quantity for a specific variant line', async () => {
+    const order = await makeSubmittedPO([{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, orderedQty: 2, unitCost: 13 }])
+    const result = await receiveGoodsForPurchaseOrder(
+      { purchaseOrderId: order.id, items: [{ productId: PRODUCT_WITH_VARIANT_ID, variantId: VARIANT_ID, quantity: 5, unitCost: 13 }] },
+      USER_ID
+    )
+    expect(result).toMatchObject({ error: 'exceeds_remaining_quantity', productId: PRODUCT_WITH_VARIANT_ID })
   })
 })

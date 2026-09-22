@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import { api, ApiError, type AdminProduct, type AdminSupplier, type PurchaseOrderItemInput, type PurchaseOrderStatus } from '../../utils/api'
+import { api, ApiError, type AdminProduct, type AdminSupplier, type AdminVariant, type PurchaseOrderItemInput, type PurchaseOrderStatus } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
 import type { LayoutContext } from '../../components/AdminLayout'
 
@@ -24,6 +24,7 @@ export function PurchaseOrderFormPage() {
 
   const [suppliers, setSuppliers] = useState<AdminSupplier[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
+  const [variantsByProduct, setVariantsByProduct] = useState<Record<string, AdminVariant[]>>({})
   const [supplierId, setSupplierId] = useState('')
   const [expectedDate, setExpectedDate] = useState('')
   const [notes, setNotes] = useState('')
@@ -60,20 +61,44 @@ export function PurchaseOrderFormPage() {
         setShippingCost(order.shippingCost)
         setStatus(order.status)
         setPoNumber(order.poNumber)
-        setLines(items.map(item => ({ key: item.id, productId: item.productId, orderedQty: item.orderedQty, unitCost: item.unitCost })))
+        setLines(items.map(item => ({ key: item.id, productId: item.productId, variantId: item.variantId, orderedQty: item.orderedQty, unitCost: item.unitCost })))
+        for (const item of items) ensureVariantsLoaded(item.productId)
       })
       .catch(() => setError('تعذر تحميل أمر الشراء'))
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  function addLine() {
-    const firstAvailable = products.find(p => !lines.some(l => l.productId === p.id))
-    if (!firstAvailable) return
-    setLines(current => [...current, { key: crypto.randomUUID(), productId: firstAvailable.id, orderedQty: 1, unitCost: firstAvailable.cost }])
+  function ensureVariantsLoaded(productId: string) {
+    if (variantsByProduct[productId]) return
+    api.listProductVariants(productId).then(({ variants }) => setVariantsByProduct(current => ({ ...current, [productId]: variants }))).catch(() => {})
   }
 
-  function updateLine(key: string, patch: Partial<PurchaseOrderItemInput>) {
+  function addLine() {
+    const firstProduct = products[0]
+    if (!firstProduct) return
+    ensureVariantsLoaded(firstProduct.id)
+    setLines(current => [...current, { key: crypto.randomUUID(), productId: firstProduct.id, variantId: null, orderedQty: 1, unitCost: firstProduct.cost }])
+  }
+
+  function updateLine(key: string, patch: Partial<LineRow>) {
     setLines(current => current.map(l => l.key === key ? { ...l, ...patch } : l))
+  }
+
+  function pickProductForLine(key: string, productId: string) {
+    ensureVariantsLoaded(productId)
+    const product = products.find(p => p.id === productId)
+    updateLine(key, { productId, variantId: null, unitCost: product?.cost ?? 0 })
+  }
+
+  function pickVariantForLine(key: string, productId: string, variantId: string) {
+    if (!variantId) {
+      const product = products.find(p => p.id === productId)
+      updateLine(key, { variantId: null, unitCost: product?.cost ?? 0 })
+      return
+    }
+    const variant = variantsByProduct[productId]?.find(v => v.id === variantId)
+    updateLine(key, { variantId, unitCost: variant?.cost ?? 0 })
   }
 
   function removeLine(key: string) {
@@ -96,7 +121,7 @@ export function PurchaseOrderFormPage() {
         notes,
         discount,
         shippingCost,
-        items: lines.map(l => ({ productId: l.productId, orderedQty: l.orderedQty, unitCost: l.unitCost }))
+        items: lines.map(l => ({ productId: l.productId, variantId: l.variantId ?? null, orderedQty: l.orderedQty, unitCost: l.unitCost }))
       }
       if (isEdit && id) {
         const { order } = await api.updatePurchaseOrder(id, body)
@@ -162,32 +187,48 @@ export function PurchaseOrderFormPage() {
       <div className="admin-form-card">
         <div>
           <div className="admin-form-card-title">الأصناف</div>
-          <div className="admin-form-card-sub">الكميات والتكلفة لكل صنف</div>
+          <div className="admin-form-card-sub">لكل متغيّر سطر مستقل — الكميات والتكلفة لكل صنف/متغيّر</div>
         </div>
-        {lines.map(line => (
-          <div key={line.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              value={line.productId}
-              disabled={!editable}
-              onChange={e => updateLine(line.key, { productId: e.target.value })}
-              style={{ flex: '1 1 200px' }}
-            >
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <input
-              type="number" min={1} value={line.orderedQty} disabled={!editable}
-              onChange={e => updateLine(line.key, { orderedQty: Number(e.target.value) })}
-              style={{ width: 80 }} placeholder="الكمية"
-            />
-            <input
-              type="number" min={0} step="0.01" value={line.unitCost} disabled={!editable}
-              onChange={e => updateLine(line.key, { unitCost: Number(e.target.value) })}
-              style={{ width: 100 }} placeholder="تكلفة الوحدة"
-            />
-            <span style={{ minWidth: 80, fontWeight: 700 }}>{formatMoney(line.orderedQty * line.unitCost)}</span>
-            {editable && <button type="button" className="admin-form-chip" onClick={() => removeLine(line.key)}>حذف</button>}
-          </div>
-        ))}
+        {lines.map(line => {
+          const variants = variantsByProduct[line.productId] ?? []
+          const selectedVariant = variants.find(v => v.id === line.variantId)
+          return (
+            <div key={line.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={line.productId}
+                disabled={!editable}
+                onChange={e => pickProductForLine(line.key, e.target.value)}
+                style={{ flex: '1 1 180px' }}
+              >
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {variants.length > 0 && (
+                <select
+                  value={line.variantId ?? ''}
+                  disabled={!editable}
+                  onChange={e => pickVariantForLine(line.key, line.productId, e.target.value)}
+                  style={{ flex: '1 1 160px' }}
+                >
+                  <option value="">المنتج الأساسي (بدون متغيّر)</option>
+                  {variants.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              )}
+              <span style={{ minWidth: 90, color: '#68746B', fontSize: 12 }}>{selectedVariant?.sku || products.find(p => p.id === line.productId)?.sku || '—'}</span>
+              <input
+                type="number" min={1} value={line.orderedQty} disabled={!editable}
+                onChange={e => updateLine(line.key, { orderedQty: Number(e.target.value) })}
+                style={{ width: 80 }} placeholder="الكمية"
+              />
+              <input
+                type="number" min={0} step="0.01" value={line.unitCost} disabled={!editable}
+                onChange={e => updateLine(line.key, { unitCost: Number(e.target.value) })}
+                style={{ width: 100 }} placeholder="تكلفة الوحدة"
+              />
+              <span style={{ minWidth: 80, fontWeight: 700 }}>{formatMoney(line.orderedQty * line.unitCost)}</span>
+              {editable && <button type="button" className="admin-form-chip" onClick={() => removeLine(line.key)}>حذف</button>}
+            </div>
+          )
+        })}
         {editable && <button type="button" className="admin-form-chip" onClick={addLine}>+ إضافة صنف</button>}
         {lines.length === 0 && <div className="admin-form-help">أضف صنف واحد على الأقل</div>}
 

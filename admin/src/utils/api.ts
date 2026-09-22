@@ -928,6 +928,8 @@ export interface AdminPurchaseOrderItem {
   purchaseOrderId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   orderedQty: number
   receivedQty: number
   unitCost: number
@@ -936,6 +938,7 @@ export interface AdminPurchaseOrderItem {
 
 export interface PurchaseOrderItemInput {
   productId: string
+  variantId?: string | null
   orderedQty: number
   unitCost: number
 }
@@ -966,6 +969,8 @@ export interface AdminGoodsReceiptItem {
   goodsReceiptId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   quantity: number
   unitCost: number
   batchNumber: string | null
@@ -975,6 +980,7 @@ export interface AdminGoodsReceiptItem {
 
 export interface ReceiveItemInput {
   productId: string
+  variantId?: string | null
   quantity: number
   unitCost: number
   batchNumber?: string | null

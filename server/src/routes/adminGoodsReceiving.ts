@@ -29,6 +29,7 @@ adminGoodsReceivingRouter.post('/', requirePermission('purchases.receive'), asyn
     const item = raw as Record<string, unknown>
     return {
       productId: typeof item?.productId === 'string' ? item.productId : '',
+      variantId: typeof item?.variantId === 'string' && item.variantId.trim() ? item.variantId : null,
       quantity: typeof item?.quantity === 'number' ? item.quantity : NaN,
       unitCost: typeof item?.unitCost === 'number' ? item.unitCost : NaN,
       batchNumber: typeof item?.batchNumber === 'string' ? item.batchNumber : null,

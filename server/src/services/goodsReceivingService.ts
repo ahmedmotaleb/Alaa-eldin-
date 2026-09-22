@@ -5,6 +5,7 @@ import { notifyBackInStockIfNeeded } from './backInStockService.js'
 
 export interface ReceiveItemInput {
   productId: string
+  variantId?: string | null
   quantity: number
   unitCost: number
   batchNumber?: string | null
@@ -35,6 +36,8 @@ export interface GoodsReceiptItemRow {
   goodsReceiptId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   quantity: number
   unitCost: number
   batchNumber: string | null
@@ -62,6 +65,10 @@ export async function receiveGoodsForPurchaseOrder(
     if (!Number.isFinite(item.unitCost) || item.unitCost < 0) return { error: 'invalid_cost' }
   }
 
+  // مفتاح مطابقة بند أمر الشراء مركّب (منتج + متغيّر) — أمر شراء فيه بند للمنتج الأساسي
+  // وبند تاني لمتغيّر منه لازم يتعاملوا كصفين مستقلين تماماً وقت الاستلام.
+  const keyOf = (productId: string, variantId: string | null | undefined) => `${productId}|${variantId ?? ''}`
+
   try {
     return await withTransaction(async client => {
       const { rows: poRows } = await client.query<{ id: string; status: PurchaseOrderStatus; poNumber: string; supplierId: string }>(
@@ -72,17 +79,19 @@ export async function receiveGoodsForPurchaseOrder(
       if (!po) throw new ReceivingError('purchase_order_not_found')
       if (po.status !== 'submitted' && po.status !== 'partially_received') throw new ReceivingError('purchase_order_not_receivable')
 
-      const { rows: poItemRows } = await client.query<{ id: string; productId: string; orderedQty: number; receivedQty: number }>(
-        `SELECT id, product_id as "productId", ordered_qty as "orderedQty", received_qty as "receivedQty"
+      const { rows: poItemRows } = await client.query<{ id: string; productId: string; variantId: string | null; orderedQty: number; receivedQty: number }>(
+        `SELECT id, product_id as "productId", variant_id as "variantId", ordered_qty as "orderedQty", received_qty as "receivedQty"
          FROM purchase_order_items WHERE purchase_order_id = $1 FOR UPDATE`,
         [po.id]
       )
-      const poItemByProduct = new Map(poItemRows.map(r => [r.productId, r]))
+      const poItemByKey = new Map(poItemRows.map(r => [keyOf(r.productId, r.variantId), r]))
 
       // نتحقق من كل البنود الأول قبل ما نغيّر أي حاجة — استلام جزئي غير صالح لبند واحد
-      // يوقف الإيصال كله (كله أو ولا حاجة)، بدل ما يسيب استلام نصفه متسجل.
+      // يوقف الإيصال كله (كله أو ولا حاجة)، بدل ما يسيب استلام نصفه متسجل. تتبّع الصلاحية
+      // خاصية فيزيائية للمنتج الأب دايماً (المتغيرات مالهاش عمود tracks_expiry خاص بيها)،
+      // فبيتفحص من المنتج الأساسي حتى لو البند لمتغيّر محدد.
       for (const item of input.items) {
-        const poItem = poItemByProduct.get(item.productId)
+        const poItem = poItemByKey.get(keyOf(item.productId, item.variantId))
         if (!poItem) throw new ReceivingError('product_not_in_order', item.productId)
         const remaining = poItem.orderedQty - poItem.receivedQty
         if (item.quantity > remaining) throw new ReceivingError('exceeds_remaining_quantity', item.productId)
@@ -93,6 +102,11 @@ export async function receiveGoodsForPurchaseOrder(
         )
         if (!productRows[0]) throw new ReceivingError('product_not_found', item.productId)
         if (productRows[0].tracksExpiry && !item.expiryDate) throw new ReceivingError('expiry_date_required', item.productId)
+
+        if (item.variantId) {
+          const { rows: variantRows } = await client.query<{ productId: string }>('SELECT product_id as "productId" FROM product_variants WHERE id = $1', [item.variantId])
+          if (!variantRows[0] || variantRows[0].productId !== item.productId) throw new ReceivingError('invalid_item', item.productId)
+        }
       }
 
       const { rows: seqRows } = await client.query<{ n: number }>("SELECT nextval('goods_receipt_number_seq') as n")
@@ -109,45 +123,52 @@ export async function receiveGoodsForPurchaseOrder(
       for (const item of input.items) {
         const receiptItemId = crypto.randomUUID()
         const { rows: productNameRows } = await client.query<{ name: string }>('SELECT name FROM products WHERE id = $1', [item.productId])
+        const variantName = item.variantId
+          ? (await client.query<{ name: string }>('SELECT name FROM product_variants WHERE id = $1', [item.variantId])).rows[0]?.name ?? null
+          : null
 
         await client.query(
-          `INSERT INTO goods_receipt_items (id, goods_receipt_id, product_id, quantity, unit_cost, batch_number, expiry_date, manufactured_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [receiptItemId, receiptId, item.productId, item.quantity, item.unitCost, item.batchNumber ?? null, item.expiryDate ?? null, item.manufacturedDate ?? null]
+          `INSERT INTO goods_receipt_items (id, goods_receipt_id, product_id, variant_id, quantity, unit_cost, batch_number, expiry_date, manufactured_date)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [receiptItemId, receiptId, item.productId, item.variantId ?? null, item.quantity, item.unitCost, item.batchNumber ?? null, item.expiryDate ?? null, item.manufacturedDate ?? null]
         )
 
-        const poItem = poItemByProduct.get(item.productId)!
+        const poItem = poItemByKey.get(keyOf(item.productId, item.variantId))!
         await client.query('UPDATE purchase_order_items SET received_qty = received_qty + $1 WHERE id = $2', [item.quantity, poItem.id])
 
         await client.query(
-          `INSERT INTO inventory_batches (id, product_id, supplier_id, goods_receipt_item_id, batch_number, expiry_date, manufactured_date, quantity_received, quantity_remaining, unit_cost)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)`,
-          [crypto.randomUUID(), item.productId, po.supplierId, receiptItemId, item.batchNumber ?? null, item.expiryDate ?? null, item.manufacturedDate ?? null, item.quantity, item.unitCost]
+          `INSERT INTO inventory_batches (id, product_id, variant_id, supplier_id, goods_receipt_item_id, batch_number, expiry_date, manufactured_date, quantity_received, quantity_remaining, unit_cost)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10)`,
+          [crypto.randomUUID(), item.productId, item.variantId ?? null, po.supplierId, receiptItemId, item.batchNumber ?? null, item.expiryDate ?? null, item.manufacturedDate ?? null, item.quantity, item.unitCost]
         )
 
-        // آخر تكلفة استلام بتبقى تكلفة المنتج الحالية (latest cost) — راجع توثيق قيمة
-        // المخزون (تقرير قيمة المخزون) لتفاصيل ليه latest_cost اتّخد بدل المتوسط المرجّح.
+        // آخر تكلفة استلام بتبقى تكلفة المنتج/المتغيّر الحالية (latest cost) — راجع توثيق
+        // قيمة المخزون لتفاصيل ليه latest_cost اتّخد بدل المتوسط المرجّح. لبند متغيّر، المخزون
+        // والتكلفة بيتحدّثوا على المتغيّر نفسه، مش المنتج الأب (اللي مخزونه منفصل تماماً).
+        const stockTable = item.variantId ? 'product_variants' : 'products'
+        const stockTargetId = item.variantId ?? item.productId
         const { rows: stockRows } = await client.query<{ stock: number }>(
-          'UPDATE products SET stock = stock + $1, cost = $2 WHERE id = $3 RETURNING stock',
-          [item.quantity, item.unitCost, item.productId]
+          `UPDATE ${stockTable} SET stock = stock + $1, cost = $2 WHERE id = $3 RETURNING stock`,
+          [item.quantity, item.unitCost, stockTargetId]
         )
         const newStock = stockRows[0].stock
 
         await client.query(
-          `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, quantity_before, quantity_after)
-           VALUES ($1, 'restock', $2, $3, $4, $5, $6)`,
-          [item.productId, item.quantity, `استلام بضاعة — إيصال ${receiptNumber} (أمر شراء ${po.poNumber})`, new Date().toISOString(), newStock - item.quantity, newStock]
+          `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, note, created_at, quantity_before, quantity_after)
+           VALUES ($1, $2, 'restock', $3, $4, $5, $6, $7)`,
+          [item.productId, item.variantId ?? null, item.quantity, `استلام بضاعة — إيصال ${receiptNumber} (أمر شراء ${po.poNumber})`, new Date().toISOString(), newStock - item.quantity, newStock]
         )
         await notifyBackInStockIfNeeded(client, item.productId)
 
         await client.query(
-          `INSERT INTO product_cost_history (id, product_id, supplier_id, unit_cost, source_type, source_id)
-           VALUES ($1, $2, $3, $4, 'purchase_receipt', $5)`,
-          [crypto.randomUUID(), item.productId, po.supplierId, item.unitCost, receiptId]
+          `INSERT INTO product_cost_history (id, product_id, variant_id, supplier_id, unit_cost, source_type, source_id)
+           VALUES ($1, $2, $3, $4, $5, 'purchase_receipt', $6)`,
+          [crypto.randomUUID(), item.productId, item.variantId ?? null, po.supplierId, item.unitCost, receiptId]
         )
 
         items.push({
           id: receiptItemId, goodsReceiptId: receiptId, productId: item.productId, productName: productNameRows[0]?.name ?? '',
+          variantId: item.variantId ?? null, variantName,
           quantity: item.quantity, unitCost: item.unitCost, batchNumber: item.batchNumber ?? null,
           expiryDate: item.expiryDate ?? null, manufacturedDate: item.manufacturedDate ?? null
         })
@@ -199,10 +220,12 @@ export async function getGoodsReceiptById(id: string): Promise<{ receipt: GoodsR
   if (!rows[0]) return null
   const { rows: items } = await pool.query<GoodsReceiptItemRow>(
     `SELECT gri.id, gri.goods_receipt_id as "goodsReceiptId", gri.product_id as "productId", p.name as "productName",
+            gri.variant_id as "variantId", v.name as "variantName",
             gri.quantity, gri.unit_cost as "unitCost", gri.batch_number as "batchNumber",
             gri.expiry_date as "expiryDate", gri.manufactured_date as "manufacturedDate"
      FROM goods_receipt_items gri
      JOIN products p ON p.id = gri.product_id
+     LEFT JOIN product_variants v ON v.id = gri.variant_id
      WHERE gri.goods_receipt_id = $1
      ORDER BY gri.id`,
     [id]

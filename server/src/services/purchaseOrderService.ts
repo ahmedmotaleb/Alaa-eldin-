@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import type { PoolClient } from 'pg'
 import { pool, withTransaction } from '../db.js'
 
 export type PurchaseOrderStatus = 'draft' | 'submitted' | 'partially_received' | 'received' | 'cancelled'
@@ -21,6 +22,7 @@ export function canTransitionPurchaseOrderStatus(from: PurchaseOrderStatus, to: 
 
 export interface PurchaseOrderItemInput {
   productId: string
+  variantId?: string | null
   orderedQty: number
   unitCost: number
 }
@@ -39,6 +41,8 @@ export interface PurchaseOrderItemRow {
   purchaseOrderId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   orderedQty: number
   receivedQty: number
   unitCost: number
@@ -81,6 +85,23 @@ function validateItems(items: PurchaseOrderItemInput[]): string | null {
   return null
 }
 
+// كل بند فيه variantId لازم يتحقق فعلاً إن المتغير ده تابع لنفس المنتج المُرسَل (منع
+// تلاعب/خطأ بربط متغير بمنتج مش بتاعه) — نفس مبدأ التحقق في orderService.createOrder.
+async function validateVariantOwnership(client: PoolClient, items: PurchaseOrderItemInput[]): Promise<string | null> {
+  const withVariant = items.filter((i): i is PurchaseOrderItemInput & { variantId: string } => !!i.variantId)
+  if (withVariant.length === 0) return null
+  const { rows } = await client.query<{ id: string; productId: string }>(
+    'SELECT id, product_id as "productId" FROM product_variants WHERE id = ANY($1)',
+    [withVariant.map(i => i.variantId)]
+  )
+  const byId = new Map(rows.map(r => [r.id, r.productId]))
+  for (const item of withVariant) {
+    const productId = byId.get(item.variantId)
+    if (!productId || productId !== item.productId) return 'invalid_item'
+  }
+  return null
+}
+
 // السيرفر هو اللي بيحسب كل الإجماليات — مفيش أي رقم متبعت من الواجهة بيتصدّق زي ما هو،
 // نفس مبدأ حساب إجمالي الطلبات العادية.
 function computeTotals(items: PurchaseOrderItemInput[], discount: number, shippingCost: number) {
@@ -99,6 +120,9 @@ export async function createPurchaseOrder(input: PurchaseOrderInput, createdByUs
   const { lineTotals, subtotal, total } = computeTotals(input.items, discount, shippingCost)
 
   return withTransaction(async client => {
+    const ownershipError = await validateVariantOwnership(client, input.items)
+    if (ownershipError) throw new Error(ownershipError)
+
     const { rows: seqRows } = await client.query<{ n: number }>("SELECT nextval('purchase_order_number_seq') as n")
     const poNumber = `PO-${seqRows[0].n}`
     const id = crypto.randomUUID()
@@ -112,9 +136,9 @@ export async function createPurchaseOrder(input: PurchaseOrderInput, createdByUs
     for (let i = 0; i < input.items.length; i++) {
       const item = input.items[i]
       await client.query(
-        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, unit_cost, line_total)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [crypto.randomUUID(), id, item.productId, item.orderedQty, item.unitCost, lineTotals[i]]
+        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, ordered_qty, unit_cost, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), id, item.productId, item.variantId ?? null, item.orderedQty, item.unitCost, lineTotals[i]]
       )
     }
 
@@ -140,9 +164,11 @@ export async function getPurchaseOrderById(id: string): Promise<{ order: Purchas
 
   const { rows: items } = await pool.query<PurchaseOrderItemRow>(
     `SELECT poi.id, poi.purchase_order_id as "purchaseOrderId", poi.product_id as "productId", p.name as "productName",
+            poi.variant_id as "variantId", v.name as "variantName",
             poi.ordered_qty as "orderedQty", poi.received_qty as "receivedQty", poi.unit_cost as "unitCost", poi.line_total as "lineTotal"
      FROM purchase_order_items poi
      JOIN products p ON p.id = poi.product_id
+     LEFT JOIN product_variants v ON v.id = poi.variant_id
      WHERE poi.purchase_order_id = $1
      ORDER BY poi.id`,
     [id]
@@ -168,6 +194,9 @@ export async function updateDraftPurchaseOrder(id: string, input: PurchaseOrderI
     if (!existing[0]) return { error: 'not_found' }
     if (existing[0].status !== 'draft') return { error: 'not_editable' }
 
+    const ownershipError = await validateVariantOwnership(client, input.items)
+    if (ownershipError) return { error: ownershipError }
+
     await client.query(
       `UPDATE purchase_orders SET supplier_id = $2, expected_date = $3, notes = $4,
          subtotal = $5, discount = $6, shipping_cost = $7, total = $8, updated_at = now()
@@ -178,9 +207,9 @@ export async function updateDraftPurchaseOrder(id: string, input: PurchaseOrderI
     for (let i = 0; i < input.items.length; i++) {
       const item = input.items[i]
       await client.query(
-        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, unit_cost, line_total)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [crypto.randomUUID(), id, item.productId, item.orderedQty, item.unitCost, lineTotals[i]]
+        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, ordered_qty, unit_cost, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), id, item.productId, item.variantId ?? null, item.orderedQty, item.unitCost, lineTotals[i]]
       )
     }
 
@@ -221,34 +250,40 @@ export async function mergeRecommendationsIntoDraftPurchaseOrder(
     if (existing[0].status !== 'draft') return { error: 'not_editable' }
     if (existing[0].supplierId !== supplierId) return { error: 'supplier_mismatch' }
 
-    const { rows: existingItems } = await client.query<{ productId: string; orderedQty: number; unitCost: number }>(
-      'SELECT product_id as "productId", ordered_qty as "orderedQty", unit_cost as "unitCost" FROM purchase_order_items WHERE purchase_order_id = $1',
+    // مفتاح الدمج مركّب (منتج + متغيّر) — منتج له متغيرات ممكن يبقى فيه أكتر من صف منفصل
+    // في نفس المسودة (كل متغيّر بند مستقل)، فمينفعش الدمج يعتمد على product_id لوحده وإلا
+    // هيدمج كميات متغيرات مختلفة في صف واحد غلط. اقتراحات إعادة الطلب حالياً مستوى المنتج
+    // بس (variantId = null دايماً هنا)، فبتنضم على أي صف موجود بنفس المنتج بدون متغيّر بس.
+    const { rows: existingItems } = await client.query<{ productId: string; variantId: string | null; orderedQty: number; unitCost: number }>(
+      'SELECT product_id as "productId", variant_id as "variantId", ordered_qty as "orderedQty", unit_cost as "unitCost" FROM purchase_order_items WHERE purchase_order_id = $1',
       [draftId]
     )
-    const merged = new Map(existingItems.map(i => [i.productId, { orderedQty: i.orderedQty, unitCost: i.unitCost }]))
+    const keyOf = (productId: string, variantId: string | null) => `${productId}|${variantId ?? ''}`
+    const merged = new Map(existingItems.map(i => [keyOf(i.productId, i.variantId), { productId: i.productId, variantId: i.variantId, orderedQty: i.orderedQty, unitCost: i.unitCost }]))
 
     for (const item of items) {
-      const current = merged.get(item.productId)
+      const key = keyOf(item.productId, null)
+      const current = merged.get(key)
       if (current) {
         const totalQty = current.orderedQty + item.additionalQty
         const weightedCost = Math.round(((current.orderedQty * current.unitCost) + (item.additionalQty * item.unitCost)) / totalQty * 100) / 100
-        merged.set(item.productId, { orderedQty: totalQty, unitCost: weightedCost })
+        merged.set(key, { ...current, orderedQty: totalQty, unitCost: weightedCost })
       } else {
-        merged.set(item.productId, { orderedQty: item.additionalQty, unitCost: item.unitCost })
+        merged.set(key, { productId: item.productId, variantId: null, orderedQty: item.additionalQty, unitCost: item.unitCost })
       }
     }
 
-    const finalItems: PurchaseOrderItemInput[] = Array.from(merged.entries())
-      .map(([productId, v]) => ({ productId, orderedQty: v.orderedQty, unitCost: v.unitCost }))
+    const finalItems: PurchaseOrderItemInput[] = Array.from(merged.values())
+      .map(v => ({ productId: v.productId, variantId: v.variantId, orderedQty: v.orderedQty, unitCost: v.unitCost }))
     const { lineTotals, subtotal, total } = computeTotals(finalItems, existing[0].discount, existing[0].shippingCost)
 
     await client.query('DELETE FROM purchase_order_items WHERE purchase_order_id = $1', [draftId])
     for (let i = 0; i < finalItems.length; i++) {
       const item = finalItems[i]
       await client.query(
-        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, ordered_qty, unit_cost, line_total)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [crypto.randomUUID(), draftId, item.productId, item.orderedQty, item.unitCost, lineTotals[i]]
+        `INSERT INTO purchase_order_items (id, purchase_order_id, product_id, variant_id, ordered_qty, unit_cost, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), draftId, item.productId, item.variantId ?? null, item.orderedQty, item.unitCost, lineTotals[i]]
       )
     }
     await client.query('UPDATE purchase_orders SET subtotal = $2, total = $3, updated_at = now() WHERE id = $1', [draftId, subtotal, total])

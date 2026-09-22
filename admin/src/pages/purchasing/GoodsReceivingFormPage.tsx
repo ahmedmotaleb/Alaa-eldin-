@@ -5,8 +5,11 @@ import { formatMoney } from '../../utils/money'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 interface ReceiveLine {
+  key: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   remaining: number
   quantity: number
   unitCost: number
@@ -43,8 +46,11 @@ export function GoodsReceivingFormPage() {
             const remaining = item.orderedQty - item.receivedQty
             const product = productById.get(item.productId)
             return {
+              key: `${item.productId}|${item.variantId ?? ''}`,
               productId: item.productId,
               productName: item.productName,
+              variantId: item.variantId,
+              variantName: item.variantName,
               remaining,
               quantity: remaining,
               unitCost: item.unitCost,
@@ -60,8 +66,8 @@ export function GoodsReceivingFormPage() {
       .finally(() => setLoading(false))
   }, [poId])
 
-  function updateLine(productId: string, patch: Partial<ReceiveLine>) {
-    setLines(current => current.map(l => l.productId === productId ? { ...l, ...patch } : l))
+  function updateLine(key: string, patch: Partial<ReceiveLine>) {
+    setLines(current => current.map(l => l.key === key ? { ...l, ...patch } : l))
   }
 
   async function submit() {
@@ -69,8 +75,9 @@ export function GoodsReceivingFormPage() {
     const toReceive = lines.filter(l => l.quantity > 0)
     if (toReceive.length === 0) { setError('أدخل كمية استلام لصنف واحد على الأقل'); return }
     for (const l of toReceive) {
-      if (l.tracksExpiry && !l.expiryDate) { setError(`تاريخ الصلاحية مطلوب لـ "${l.productName}"`); return }
-      if (l.quantity > l.remaining) { setError(`الكمية المُدخلة لـ "${l.productName}" أكبر من المتبقي`); return }
+      const label = l.variantName ? `${l.productName} - ${l.variantName}` : l.productName
+      if (l.tracksExpiry && !l.expiryDate) { setError(`تاريخ الصلاحية مطلوب لـ "${label}"`); return }
+      if (l.quantity > l.remaining) { setError(`الكمية المُدخلة لـ "${label}" أكبر من المتبقي`); return }
     }
     setError('')
     setSaving(true)
@@ -80,6 +87,7 @@ export function GoodsReceivingFormPage() {
         notes,
         items: toReceive.map(l => ({
           productId: l.productId,
+          variantId: l.variantId,
           quantity: l.quantity,
           unitCost: l.unitCost,
           batchNumber: l.batchNumber || null,
@@ -102,30 +110,30 @@ export function GoodsReceivingFormPage() {
       <div className="admin-form-card" style={{ gridColumn: '1 / -1' }}>
         <div>
           <div className="admin-form-card-title">أصناف الاستلام</div>
-          <div className="admin-form-card-sub">الكمية المتبقية من أمر الشراء لكل صنف — عدّل الكمية المستلمة فعلياً لو أقل</div>
+          <div className="admin-form-card-sub">الكمية المتبقية من أمر الشراء لكل صنف/متغيّر — عدّل الكمية المستلمة فعلياً لو أقل</div>
         </div>
         {lines.map(line => (
-          <div key={line.productId} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #EEF1EF', paddingBottom: 8 }}>
-            <span style={{ minWidth: 160, fontWeight: 700 }}>{line.productName}</span>
+          <div key={line.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid #EEF1EF', paddingBottom: 8 }}>
+            <span style={{ minWidth: 160, fontWeight: 700 }}>{line.variantName ? `${line.productName} - ${line.variantName}` : line.productName}</span>
             <span style={{ color: '#8A948C', fontSize: 12 }}>متبقي: {line.remaining}</span>
             <input
               type="number" min={0} max={line.remaining} value={line.quantity}
-              onChange={e => updateLine(line.productId, { quantity: Number(e.target.value) })}
+              onChange={e => updateLine(line.key, { quantity: Number(e.target.value) })}
               style={{ width: 80 }} placeholder="الكمية المستلمة"
             />
             <input
               type="number" min={0} step="0.01" value={line.unitCost}
-              onChange={e => updateLine(line.productId, { unitCost: Number(e.target.value) })}
+              onChange={e => updateLine(line.key, { unitCost: Number(e.target.value) })}
               style={{ width: 100 }} placeholder="تكلفة الوحدة"
             />
             <input
               value={line.batchNumber}
-              onChange={e => updateLine(line.productId, { batchNumber: e.target.value })}
+              onChange={e => updateLine(line.key, { batchNumber: e.target.value })}
               style={{ width: 120 }} placeholder="رقم الدفعة (اختياري)"
             />
             <input
               type="date" value={line.expiryDate}
-              onChange={e => updateLine(line.productId, { expiryDate: e.target.value })}
+              onChange={e => updateLine(line.key, { expiryDate: e.target.value })}
               style={{ width: 150 }}
             />
             {line.tracksExpiry && <span style={{ color: '#B42318', fontSize: 12 }}>* تاريخ الصلاحية مطلوب</span>}
