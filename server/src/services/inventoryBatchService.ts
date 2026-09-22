@@ -64,8 +64,22 @@ export async function getSellableStock(client: Queryable, productId: string): Pr
   const { rows } = await client.query<{ hasBatches: boolean; sellable: string }>(
     `SELECT COUNT(*) > 0 as "hasBatches",
             COALESCE(SUM(quantity_remaining) FILTER (WHERE expiry_date IS NULL OR expiry_date >= CURRENT_DATE), 0) as sellable
-     FROM inventory_batches WHERE product_id = $1`,
+     FROM inventory_batches WHERE product_id = $1 AND variant_id IS NULL`,
     [productId]
+  )
+  if (!rows[0].hasBatches) return null
+  return Number(rows[0].sellable)
+}
+
+// نفس مبدأ getSellableStock بالظبط، بس لمتغيّر منتج محدّد — مجموعة دفعات المتغيّر منفصلة
+// تماماً عن دفعات المنتج الأساسي (حتى لو نفس المنتج الأب)، فمفيش أي تداخل بين مخزون متغيّر
+// ومخزون متغيّر تاني أو المنتج الأب نفسه.
+export async function getVariantSellableStock(client: Queryable, variantId: string): Promise<number | null> {
+  const { rows } = await client.query<{ hasBatches: boolean; sellable: string }>(
+    `SELECT COUNT(*) > 0 as "hasBatches",
+            COALESCE(SUM(quantity_remaining) FILTER (WHERE expiry_date IS NULL OR expiry_date >= CURRENT_DATE), 0) as sellable
+     FROM inventory_batches WHERE variant_id = $1`,
+    [variantId]
   )
   if (!rows[0].hasBatches) return null
   return Number(rows[0].sellable)
@@ -79,7 +93,7 @@ export async function getSellableStockMap(client: Queryable, productIds: string[
   const { rows } = await client.query<{ productId: string; sellable: string }>(
     `SELECT product_id as "productId",
             COALESCE(SUM(quantity_remaining) FILTER (WHERE expiry_date IS NULL OR expiry_date >= CURRENT_DATE), 0) as sellable
-     FROM inventory_batches WHERE product_id = ANY($1::text[]) GROUP BY product_id`,
+     FROM inventory_batches WHERE product_id = ANY($1::text[]) AND variant_id IS NULL GROUP BY product_id`,
     [productIds]
   )
   return new Map(rows.map(r => [r.productId, Number(r.sellable)]))
@@ -89,13 +103,13 @@ export async function getSellableStockMap(client: Queryable, productIds: string[
 // فعلاً (مش قابلة للبيع أصلاً) والدفعات الفارغة. كل استهلاك بيتسجّل في batch_consumptions
 // مربوط بحركة المخزون نفسها، عشان لو الطلب اتلغى بعدين نقدر نرجّع بالظبط لنفس الدفعات
 // (مش نضيف كمية لدفعة عشوائية) ومنع أي انحراف بين إجمالي الدفعات وproducts.stock.
-export async function consumeBatchesFefo(client: PoolClient, productId: string, quantity: number, stockMovementId: number): Promise<void> {
+export async function consumeBatchesFefo(client: PoolClient, productId: string, quantity: number, stockMovementId: number, variantId: string | null = null): Promise<void> {
   const { rows: batches } = await client.query<{ id: string; quantityRemaining: number }>(
     `SELECT id, quantity_remaining as "quantityRemaining" FROM inventory_batches
-     WHERE product_id = $1 AND quantity_remaining > 0 AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+     WHERE product_id = $1 AND variant_id IS NOT DISTINCT FROM $2 AND quantity_remaining > 0 AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
      ORDER BY expiry_date ASC NULLS LAST, created_at ASC
      FOR UPDATE`,
-    [productId]
+    [productId, variantId]
   )
   let remaining = quantity
   for (const batch of batches) {
@@ -125,17 +139,17 @@ export async function restoreBatchConsumptionsForMovement(client: PoolClient, or
 // استهلاك للشطب (write-off) — لو السبب "منتهي الصلاحية" بنستهلك من الدفعات المنتهية فعلاً
 // أولاً (عكس البيع اللي بيستثنيها خالص)، وإلا FEFO عادي من أي دفعة فيها كمية.
 export async function consumeBatchesForWriteOff(
-  client: PoolClient, productId: string, quantity: number, stockMovementId: number, preferExpired: boolean
+  client: PoolClient, productId: string, quantity: number, stockMovementId: number, preferExpired: boolean, variantId: string | null = null
 ): Promise<void> {
   const orderClause = preferExpired
     ? `(expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE) DESC, expiry_date ASC NULLS LAST`
     : `expiry_date ASC NULLS LAST`
   const { rows: batches } = await client.query<{ id: string; quantityRemaining: number }>(
     `SELECT id, quantity_remaining as "quantityRemaining" FROM inventory_batches
-     WHERE product_id = $1 AND quantity_remaining > 0
+     WHERE product_id = $1 AND variant_id IS NOT DISTINCT FROM $2 AND quantity_remaining > 0
      ORDER BY ${orderClause}, created_at ASC
      FOR UPDATE`,
-    [productId]
+    [productId, variantId]
   )
   let remaining = quantity
   for (const batch of batches) {

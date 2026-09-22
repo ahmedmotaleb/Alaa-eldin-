@@ -21,6 +21,7 @@ adminStockWriteOffsRouter.post('/', requirePermission('inventory.adjust'), async
 
   const result = await writeOffStock(req.user!.id, {
     productId: b.productId,
+    variantId: typeof b.variantId === 'string' ? b.variantId : null,
     quantity: b.quantity,
     reason: b.reason as WriteOffReason,
     note: typeof b.note === 'string' ? b.note : '',

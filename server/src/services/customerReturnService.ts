@@ -27,6 +27,7 @@ export function canTransitionCustomerReturnStatus(from: CustomerReturnStatus, to
 export interface CustomerReturnItemInput {
   orderItemId: number
   productId: string
+  variantId?: string | null
   quantity: number
   condition?: ReturnItemCondition
 }
@@ -58,6 +59,8 @@ export interface CustomerReturnItemRow {
   customerReturnId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   orderItemId: number
   quantity: number
   condition: ReturnItemCondition
@@ -107,12 +110,13 @@ export async function createCustomerReturn(input: CustomerReturnInput, userId: s
 
     let refundAmount = 0
     for (const item of input.items) {
-      const { rows: orderItemRows } = await client.query<{ productId: string; quantity: number; unitPrice: number }>(
-        'SELECT product_id as "productId", quantity, unit_price as "unitPrice" FROM order_items WHERE id = $1 AND order_id = $2',
+      const { rows: orderItemRows } = await client.query<{ productId: string; variantId: string | null; quantity: number; unitPrice: number }>(
+        'SELECT product_id as "productId", variant_id as "variantId", quantity, unit_price as "unitPrice" FROM order_items WHERE id = $1 AND order_id = $2',
         [item.orderItemId, input.orderId]
       )
       const orderItem = orderItemRows[0]
       if (!orderItem || orderItem.productId !== item.productId) return { error: 'order_item_mismatch', orderItemId: item.orderItemId }
+      if ((orderItem.variantId ?? null) !== (item.variantId ?? null)) return { error: 'order_item_mismatch', orderItemId: item.orderItemId }
 
       const alreadyReturned = await getAlreadyReturnedQty(item.orderItemId)
       if (alreadyReturned + item.quantity > orderItem.quantity) return { error: 'exceeds_sold_quantity', orderItemId: item.orderItemId }
@@ -136,10 +140,10 @@ export async function createCustomerReturn(input: CustomerReturnInput, userId: s
         'SELECT unit_price as "unitPrice" FROM order_items WHERE id = $1', [item.orderItemId]
       )
       await client.query(
-        `INSERT INTO customer_return_items (id, customer_return_id, product_id, order_item_id, quantity, condition, refund_amount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO customer_return_items (id, customer_return_id, product_id, variant_id, order_item_id, quantity, condition, refund_amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
-          crypto.randomUUID(), id, item.productId, item.orderItemId, item.quantity,
+          crypto.randomUUID(), id, item.productId, item.variantId ?? null, item.orderItemId, item.quantity,
           item.condition ?? 'return_to_stock', Math.round(orderItemRows[0].unitPrice * item.quantity * 100) / 100
         ]
       )
@@ -165,9 +169,11 @@ export async function getCustomerReturnById(id: string): Promise<{ customerRetur
   if (!rows[0]) return null
   const { rows: items } = await pool.query<CustomerReturnItemRow>(
     `SELECT cri.id, cri.customer_return_id as "customerReturnId", cri.product_id as "productId", p.name as "productName",
+            cri.variant_id as "variantId", v.name as "variantName",
             cri.order_item_id as "orderItemId", cri.quantity, cri.condition, cri.refund_amount as "refundAmount"
      FROM customer_return_items cri
      JOIN products p ON p.id = cri.product_id
+     LEFT JOIN product_variants v ON v.id = cri.variant_id
      WHERE cri.customer_return_id = $1
      ORDER BY cri.id`,
     [id]
@@ -191,23 +197,36 @@ export async function updateCustomerReturnStatus(
     // "received" هي اللحظة الوحيدة اللي المخزون بيتأثر فيها — وبس للأصناف اللي قرارها
     // "return_to_stock"؛ التالف/منتهي الصلاحية/المرفوض ما بيرجعش للمخزون خالص.
     if (toStatus === 'received') {
-      const { rows: items } = await client.query<{ productId: string; quantity: number; condition: ReturnItemCondition }>(
-        'SELECT product_id as "productId", quantity, condition FROM customer_return_items WHERE customer_return_id = $1',
+      const { rows: items } = await client.query<{ productId: string; variantId: string | null; quantity: number; condition: ReturnItemCondition }>(
+        'SELECT product_id as "productId", variant_id as "variantId", quantity, condition FROM customer_return_items WHERE customer_return_id = $1',
         [id]
       )
       for (const item of items) {
         if (item.condition !== 'return_to_stock') continue
-        const { rows: stockRows } = await client.query<{ stock: number }>(
-          'UPDATE products SET stock = stock + $1 WHERE id = $2 RETURNING stock',
-          [item.quantity, item.productId]
-        )
-        if (!stockRows[0]) continue
-        await client.query(
-          `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, quantity_before, quantity_after)
-           VALUES ($1, 'return', $2, $3, $4, $5, $6)`,
-          [item.productId, item.quantity, `مرتجع عميل ${id}`, new Date().toISOString(), stockRows[0].stock - item.quantity, stockRows[0].stock]
-        )
-        await notifyBackInStockIfNeeded(client, item.productId)
+        if (item.variantId) {
+          const { rows: stockRows } = await client.query<{ stock: number }>(
+            'UPDATE product_variants SET stock = stock + $1 WHERE id = $2 RETURNING stock',
+            [item.quantity, item.variantId]
+          )
+          if (!stockRows[0]) continue
+          await client.query(
+            `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, note, created_at, quantity_before, quantity_after)
+             VALUES ($1, $2, 'return', $3, $4, $5, $6, $7)`,
+            [item.productId, item.variantId, item.quantity, `مرتجع عميل ${id}`, new Date().toISOString(), stockRows[0].stock - item.quantity, stockRows[0].stock]
+          )
+        } else {
+          const { rows: stockRows } = await client.query<{ stock: number }>(
+            'UPDATE products SET stock = stock + $1 WHERE id = $2 RETURNING stock',
+            [item.quantity, item.productId]
+          )
+          if (!stockRows[0]) continue
+          await client.query(
+            `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, quantity_before, quantity_after)
+             VALUES ($1, 'return', $2, $3, $4, $5, $6)`,
+            [item.productId, item.quantity, `مرتجع عميل ${id}`, new Date().toISOString(), stockRows[0].stock - item.quantity, stockRows[0].stock]
+          )
+          await notifyBackInStockIfNeeded(client, item.productId)
+        }
       }
     }
 

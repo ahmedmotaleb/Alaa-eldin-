@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import crypto from 'node:crypto'
 import { pool } from '../db.js'
 import {
   createCustomerReturn, getCustomerReturnById, updateCustomerReturnStatus, canTransitionCustomerReturnStatus
@@ -179,5 +180,105 @@ describe('customerReturnService', () => {
     expect(canTransitionCustomerReturnStatus('requested', 'approved')).toBe(true)
     expect(canTransitionCustomerReturnStatus('requested', 'refunded')).toBe(false)
     expect(canTransitionCustomerReturnStatus('rejected', 'approved')).toBe(false)
+  })
+})
+
+const VARIANT_PRODUCT_ID = 'test-prod-cr-variant'
+const VARIANT_ORDER_ID = 'test-order-cr-variant'
+let variantId = ''
+let variantOrderItemId = 0
+
+async function resetVariantFixtures() {
+  await pool.query('DELETE FROM customer_return_items')
+  await pool.query('DELETE FROM customer_returns')
+  await pool.query('DELETE FROM stock_movements')
+  await pool.query('DELETE FROM order_items WHERE order_id = $1', [VARIANT_ORDER_ID])
+  await pool.query('DELETE FROM orders WHERE id = $1', [VARIANT_ORDER_ID])
+  await pool.query('DELETE FROM product_variants WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+  await pool.query('DELETE FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+  await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+
+  await pool.query(
+    `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'فئة اختبار', '🧪', '#fff', 1)`,
+    [CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+     VALUES ($1, 'cr-variant-prod', $2, 'منتج له متغيرات', 'وصف', 20, 10, 'وحدة', '🧪', 1, 0, now())`,
+    [VARIANT_PRODUCT_ID, CATEGORY_ID]
+  )
+  variantId = `var-${crypto.randomUUID()}`
+  await pool.query(
+    `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, old_price, cost, stock, available, sort_order, created_at)
+     VALUES ($1, $2, 'أحمر', null, '', 20, null, 10, 5, 1, 0, now())`,
+    [variantId, VARIANT_PRODUCT_ID]
+  )
+  await pool.query(
+    `INSERT INTO orders (id, order_number, customer_full_name, customer_mobile, customer_governorate, customer_address,
+                          delivery_slot, payment_method, subtotal, delivery_fee, total, status, created_at)
+     VALUES ($1, 'TEST-CR-VAR-1', 'عميل', '01012345678', 'القاهرة', 'عنوان', 'morning', 'cod', 100, 0, 100, 'delivered', now())`,
+    [VARIANT_ORDER_ID]
+  )
+  const { rows } = await pool.query<{ id: number }>(
+    `INSERT INTO order_items (order_id, product_id, variant_id, name, unit, unit_price, quantity, line_total)
+     VALUES ($1, $2, $3, 'منتج له متغيرات - أحمر', 'وحدة', 20, 3, 60) RETURNING id`,
+    [VARIANT_ORDER_ID, VARIANT_PRODUCT_ID, variantId]
+  )
+  variantOrderItemId = rows[0].id
+}
+
+describe('customerReturnService — variant returns', () => {
+  beforeEach(resetVariantFixtures)
+  afterAll(async () => {
+    await pool.query('DELETE FROM customer_return_items')
+    await pool.query('DELETE FROM customer_returns')
+    await pool.query('DELETE FROM stock_movements')
+    await pool.query('DELETE FROM order_items WHERE order_id = $1', [VARIANT_ORDER_ID])
+    await pool.query('DELETE FROM orders WHERE id = $1', [VARIANT_ORDER_ID])
+    await pool.query('DELETE FROM product_variants WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+    await pool.query('DELETE FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+    await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+    await pool.end()
+  })
+
+  it('rejects a variant return whose variantId does not match the order item variant', async () => {
+    const result = await createCustomerReturn(
+      { orderId: VARIANT_ORDER_ID, items: [{ orderItemId: variantOrderItemId, productId: VARIANT_PRODUCT_ID, variantId: null, quantity: 1 }] },
+      null
+    )
+    expect(result).toEqual({ error: 'order_item_mismatch', orderItemId: variantOrderItemId })
+  })
+
+  it('restocks the variant (not the base product) at "received" for a variant return', async () => {
+    const result = await createCustomerReturn(
+      {
+        orderId: VARIANT_ORDER_ID,
+        items: [{ orderItemId: variantOrderItemId, productId: VARIANT_PRODUCT_ID, variantId, quantity: 2, condition: 'return_to_stock' }]
+      },
+      null
+    )
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+
+    await updateCustomerReturnStatus(result.id, 'approved')
+    await updateCustomerReturnStatus(result.id, 'received')
+
+    const { rows: variantRows } = await pool.query('SELECT stock FROM product_variants WHERE id = $1', [variantId])
+    expect(variantRows[0].stock).toBe(7) // 5 + 2
+
+    const { rows: productRows } = await pool.query('SELECT stock FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+    expect(productRows[0].stock).toBe(0) // base product untouched
+  })
+
+  it('fetches a variant return with its variant name attached to the item', async () => {
+    const result = await createCustomerReturn(
+      { orderId: VARIANT_ORDER_ID, items: [{ orderItemId: variantOrderItemId, productId: VARIANT_PRODUCT_ID, variantId, quantity: 1 }] },
+      null
+    )
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    const fetched = await getCustomerReturnById(result.id)
+    expect(fetched?.items[0].variantId).toBe(variantId)
+    expect(fetched?.items[0].variantName).toBe('أحمر')
   })
 })

@@ -23,6 +23,7 @@ export function canTransitionSupplierReturnStatus(from: SupplierReturnStatus, to
 
 export interface SupplierReturnItemInput {
   productId: string
+  variantId?: string | null
   batchId?: string | null
   quantity: number
   unitCost?: number
@@ -53,6 +54,8 @@ export interface SupplierReturnItemRow {
   supplierReturnId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   batchId: string | null
   quantity: number
   unitCost: number
@@ -75,11 +78,22 @@ function validateItems(items: SupplierReturnItemInput[]): string | null {
   return null
 }
 
-export async function createSupplierReturn(input: SupplierReturnInput, userId: string): Promise<SupplierReturnRow> {
+export async function createSupplierReturn(input: SupplierReturnInput, userId: string): Promise<SupplierReturnRow | { error: string }> {
   const itemsError = validateItems(input.items)
-  if (itemsError) throw new Error(itemsError)
+  if (itemsError) return { error: itemsError }
 
   return withTransaction(async client => {
+    // نفس مبدأ validateVariantOwnership في purchaseOrderService — أي متغير مُدّعى لازم يتبع
+    // فعلاً المنتج المُرسل معاه، مش أي منتج تاني (يمنع IDOR على مستوى الصنف).
+    for (const item of input.items) {
+      if (!item.variantId) continue
+      const { rows } = await client.query<{ productId: string }>(
+        'SELECT product_id as "productId" FROM product_variants WHERE id = $1',
+        [item.variantId]
+      )
+      if (!rows[0] || rows[0].productId !== item.productId) return { error: 'variant_mismatch' }
+    }
+
     const { rows: seqRows } = await client.query<{ n: number }>("SELECT nextval('supplier_return_number_seq') as n")
     const returnNumber = `SR-${seqRows[0].n}`
     const id = crypto.randomUUID()
@@ -92,9 +106,9 @@ export async function createSupplierReturn(input: SupplierReturnInput, userId: s
 
     for (const item of input.items) {
       await client.query(
-        `INSERT INTO supplier_return_items (id, supplier_return_id, product_id, batch_id, quantity, unit_cost)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [crypto.randomUUID(), id, item.productId, item.batchId ?? null, item.quantity, item.unitCost ?? 0]
+        `INSERT INTO supplier_return_items (id, supplier_return_id, product_id, variant_id, batch_id, quantity, unit_cost)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), id, item.productId, item.variantId ?? null, item.batchId ?? null, item.quantity, item.unitCost ?? 0]
       )
     }
 
@@ -118,9 +132,11 @@ export async function getSupplierReturnById(id: string): Promise<{ supplierRetur
   if (!rows[0]) return null
   const { rows: items } = await pool.query<SupplierReturnItemRow>(
     `SELECT sri.id, sri.supplier_return_id as "supplierReturnId", sri.product_id as "productId", p.name as "productName",
+            sri.variant_id as "variantId", v.name as "variantName",
             sri.batch_id as "batchId", sri.quantity, sri.unit_cost as "unitCost"
      FROM supplier_return_items sri
      JOIN products p ON p.id = sri.product_id
+     LEFT JOIN product_variants v ON v.id = sri.variant_id
      WHERE sri.supplier_return_id = $1
      ORDER BY sri.id`,
     [id]
@@ -142,8 +158,8 @@ export async function updateSupplierReturnStatus(
     const fromStatus = existing[0].status
     if (!canTransitionSupplierReturnStatus(fromStatus, toStatus)) return { error: 'invalid_transition' }
 
-    const { rows: items } = await client.query<{ id: string; productId: string; batchId: string | null; quantity: number; stockMovementId: number | null }>(
-      `SELECT id, product_id as "productId", batch_id as "batchId", quantity, stock_movement_id as "stockMovementId"
+    const { rows: items } = await client.query<{ id: string; productId: string; variantId: string | null; batchId: string | null; quantity: number; stockMovementId: number | null }>(
+      `SELECT id, product_id as "productId", variant_id as "variantId", batch_id as "batchId", quantity, stock_movement_id as "stockMovementId"
        FROM supplier_return_items WHERE supplier_return_id = $1`,
       [id]
     )
@@ -152,7 +168,7 @@ export async function updateSupplierReturnStatus(
     if (fromStatus === 'draft' && toStatus === 'approved') {
       for (const item of items) {
         const result = await writeOffStockWithClient(client, userId, {
-          productId: item.productId, quantity: item.quantity, reason: 'supplier_return',
+          productId: item.productId, variantId: item.variantId, quantity: item.quantity, reason: 'supplier_return',
           note: `مرتجع مورد ${id}`, batchId: item.batchId ?? undefined
         })
         if ('error' in result) return { error: result.error }
@@ -164,9 +180,13 @@ export async function updateSupplierReturnStatus(
     if (fromStatus === 'approved' && toStatus === 'cancelled') {
       for (const item of items) {
         if (!item.stockMovementId) continue
-        await client.query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.quantity, item.productId])
+        if (item.variantId) {
+          await client.query('UPDATE product_variants SET stock = stock + $1 WHERE id = $2', [item.quantity, item.variantId])
+        } else {
+          await client.query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.quantity, item.productId])
+        }
         await restoreBatchConsumptionsForMovement(client, item.stockMovementId)
-        await notifyBackInStockIfNeeded(client, item.productId)
+        if (!item.variantId) await notifyBackInStockIfNeeded(client, item.productId)
       }
     }
 

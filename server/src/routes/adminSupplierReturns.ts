@@ -18,6 +18,7 @@ function parseInput(body: unknown): SupplierReturnInput | null {
     const item = raw as Record<string, unknown>
     return {
       productId: typeof item?.productId === 'string' ? item.productId : '',
+      variantId: typeof item?.variantId === 'string' ? item.variantId : null,
       batchId: typeof item?.batchId === 'string' ? item.batchId : null,
       quantity: typeof item?.quantity === 'number' ? item.quantity : NaN,
       unitCost: typeof item?.unitCost === 'number' ? item.unitCost : 0
@@ -49,16 +50,14 @@ adminSupplierReturnsRouter.post('/', requirePermission('returns.manage'), async 
   const input = parseInput(req.body)
   if (!input) { res.status(400).json({ error: 'missing_fields' }); return }
 
-  try {
-    const supplierReturn = await createSupplierReturn(input, req.user!.id)
-    await recordAuditLog({
-      adminUserId: req.user!.id, action: 'supplier_return_created', entityType: 'supplier_return',
-      entityId: supplierReturn.id, newValues: { returnNumber: supplierReturn.returnNumber, supplierId: supplierReturn.supplierId }
-    })
-    res.status(201).json({ supplierReturn })
-  } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : 'invalid_input' })
-  }
+  const supplierReturn = await createSupplierReturn(input, req.user!.id)
+  if ('error' in supplierReturn) { res.status(400).json({ error: supplierReturn.error }); return }
+
+  await recordAuditLog({
+    adminUserId: req.user!.id, action: 'supplier_return_created', entityType: 'supplier_return',
+    entityId: supplierReturn.id, newValues: { returnNumber: supplierReturn.returnNumber, supplierId: supplierReturn.supplierId }
+  })
+  res.status(201).json({ supplierReturn })
 })
 
 adminSupplierReturnsRouter.patch('/:id/status', requirePermission('returns.manage'), async (req, res) => {

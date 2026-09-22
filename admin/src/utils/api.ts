@@ -162,6 +162,8 @@ export type SubstitutionStatus = 'none' | 'proposed' | 'approved' | 'rejected'
 export interface AdminOrderItem {
   id: number
   productId: string
+  variantId: string | null
+  variantName: string | null
   name: string
   unit: string
   unitPrice: number
@@ -1063,6 +1065,8 @@ export interface AdminSupplierReturnItem {
   supplierReturnId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   batchId: string | null
   quantity: number
   unitCost: number
@@ -1070,6 +1074,7 @@ export interface AdminSupplierReturnItem {
 
 export interface SupplierReturnItemInput {
   productId: string
+  variantId?: string | null
   batchId?: string | null
   quantity: number
   unitCost?: number
@@ -1105,6 +1110,8 @@ export interface AdminCustomerReturnItem {
   customerReturnId: string
   productId: string
   productName: string
+  variantId: string | null
+  variantName: string | null
   orderItemId: number
   quantity: number
   condition: ReturnItemCondition
@@ -1114,6 +1121,7 @@ export interface AdminCustomerReturnItem {
 export interface CustomerReturnItemInput {
   orderItemId: number
   productId: string
+  variantId?: string | null
   quantity: number
   condition?: ReturnItemCondition
 }

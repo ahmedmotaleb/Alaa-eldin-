@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
-import { getExpiryDashboard } from './inventoryBatchService.js'
+import { getExpiryDashboard, getSellableStock, getVariantSellableStock } from './inventoryBatchService.js'
 
 const CATEGORY_ID = 'test-cat-expiry-dash'
 const PRODUCT_ID = 'test-prod-expiry-dash'
@@ -72,5 +72,57 @@ describe('inventoryBatchService.getExpiryDashboard', () => {
     const dashboard = await getExpiryDashboard()
     expect(dashboard.expired).toHaveLength(0)
     expect(dashboard.within60Days).toHaveLength(0)
+  })
+})
+
+const VARIANT_ID = 'test-variant-sellable'
+
+async function insertVariantBatch(expiryDate: string | null, quantityRemaining: number) {
+  await pool.query(
+    `INSERT INTO inventory_batches (id, product_id, variant_id, quantity_received, quantity_remaining, unit_cost, expiry_date)
+     VALUES ($1, $2, $3, $4, $5, 2, $6)`,
+    [crypto.randomUUID(), PRODUCT_ID, VARIANT_ID, Math.max(quantityRemaining, 1), quantityRemaining, expiryDate]
+  )
+}
+
+describe('inventoryBatchService — variant sellable stock', () => {
+  beforeEach(async () => {
+    await pool.query('DELETE FROM inventory_batches WHERE product_id = $1', [PRODUCT_ID])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await resetFixtures()
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, old_price, cost, stock, available, sort_order, created_at)
+       VALUES ($1, $2, 'متغيّر اختبار', null, '', 10, null, 5, 7, 1, 0, now())`,
+      [VARIANT_ID, PRODUCT_ID]
+    )
+  })
+  afterAll(async () => {
+    await pool.query('DELETE FROM inventory_batches WHERE product_id = $1', [PRODUCT_ID])
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [VARIANT_ID])
+    await pool.query('DELETE FROM products WHERE id = $1', [PRODUCT_ID])
+    await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+    await pool.end()
+  })
+
+  it('getSellableStock (base product) returns null when only variant-scoped batches exist', async () => {
+    await insertVariantBatch(daysFromNow(30), 5)
+    expect(await getSellableStock(pool, PRODUCT_ID)).toBeNull()
+  })
+
+  it('getVariantSellableStock returns null when the variant has no batches at all', async () => {
+    expect(await getVariantSellableStock(pool, VARIANT_ID)).toBeNull()
+  })
+
+  it('getVariantSellableStock sums non-expired batches and excludes expired ones', async () => {
+    await insertVariantBatch(daysFromNow(30), 4)
+    await insertVariantBatch(daysFromNow(-2), 6) // expired — excluded
+    expect(await getVariantSellableStock(pool, VARIANT_ID)).toBe(4)
+  })
+
+  it('getVariantSellableStock and getSellableStock are independent for the same product', async () => {
+    await insertVariantBatch(daysFromNow(30), 3)
+    await insertBatch(daysFromNow(30), 9, 2) // base-product batch (variant_id NULL)
+    expect(await getVariantSellableStock(pool, VARIANT_ID)).toBe(3)
+    expect(await getSellableStock(pool, PRODUCT_ID)).toBe(9)
   })
 })

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { pool } from '../db.js'
+import { getVariantSellableStock, consumeBatchesFefo, restoreBatchConsumptionsForMovement } from './inventoryBatchService.js'
 
 export interface ProductVariant {
   id: string
@@ -148,12 +149,20 @@ export async function lockVariantForOrder(client: PoolClient, variantId: string)
   )
   const row = rows[0]
   if (!row) return null
-  return { id: row.id, productId: row.productId, name: row.name, price: row.price, available: !!row.available, stock: row.stock }
+
+  // نفس مبدأ lockProductsForOrder بالظبط: لو المتغير ده استُلم قبل كده عن طريق نظام
+  // المشتريات وليه دفعات، الرصيد المستخدم في التحقق من التوفر بيبقى الرصيد "القابل للبيع"
+  // (بيستثني أي دفعة منتهية الصلاحية) مش product_variants.stock الخام.
+  const sellable = await getVariantSellableStock(client, variantId)
+  const stock = sellable === null ? row.stock : sellable
+
+  return { id: row.id, productId: row.productId, name: row.name, price: row.price, available: !!row.available, stock }
 }
 
 // خصم ذرّي لمخزون متغير — نفس مبدأ deductStockForOrder بالظبط (الشرط stock >= quantity
 // جوه نفس جملة الـ UPDATE)، بس على product_variants بدل products. الحركة المسجّلة في
-// stock_movements بتربط بالمنتج الأب (لتقارير المستوى الأعلى) وبالمتغير نفسه (variant_id).
+// stock_movements بتربط بالمنتج الأب (لتقارير المستوى الأعلى) وبالمتغير نفسه (variant_id)،
+// واستهلاك الدفعات (لو المتغير ده ليه دفعات) بيتم بترتيب FEFO زي المنتج الأساسي بالظبط.
 export async function deductVariantStock(client: PoolClient, variant: LockedVariant, quantity: number, orderId: string): Promise<void> {
   const { rows } = await client.query<{ stock: number }>(
     'UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING stock',
@@ -161,15 +170,17 @@ export async function deductVariantStock(client: PoolClient, variant: LockedVari
   )
   if (!rows[0]) throw new Error('insufficient_variant_stock')
 
-  await client.query(
+  const { rows: movementRows } = await client.query<{ id: number }>(
     `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, note, created_at, order_id, quantity_before, quantity_after)
-     VALUES ($1, $2, 'sale', $3, $4, $5, $6, $7, $8)`,
+     VALUES ($1, $2, 'sale', $3, $4, $5, $6, $7, $8) RETURNING id`,
     [variant.productId, variant.id, -quantity, `بيع متغير — طلب ${orderId}`, new Date().toISOString(), orderId, rows[0].stock + quantity, rows[0].stock]
   )
+  await consumeBatchesFefo(client, variant.productId, quantity, movementRows[0].id, variant.id)
 }
 
-// المخزون هنا عداد بسيط، مش متتبّع بدفعات (راجع تعليق المخطط) — استرجاعه بيبقى مجرد زيادة
-// الرصيد + حركة موثّقة، من غير أي استرجاع دفعات (مفيش دفعات أصلاً لمتغيرات المنتج حالياً).
+// استرجاع رصيد متغير — بيزوّد الرصيد + حركة موثّقة، وبيرجّع بالظبط لنفس الدفعات اللي
+// اتاخدت منها وقت البيع الأصلي (لو المتغير ده ليه دفعات أصلاً) عن طريق البحث عن حركة
+// 'sale' الأصلية بنفس الطلب والمتغير، بنفس مبدأ restoreProductStock في inventoryService.
 export async function restoreVariantStock(client: PoolClient, variantId: string, quantity: number, orderId: string, movementType: 'cancel_restore' | 'substitution_restore' = 'cancel_restore'): Promise<void> {
   const { rows } = await client.query<{ stock: number, productId: string }>(
     'UPDATE product_variants SET stock = stock + $1 WHERE id = $2 RETURNING stock, product_id as "productId"',
@@ -183,4 +194,10 @@ export async function restoreVariantStock(client: PoolClient, variantId: string,
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [row.productId, variantId, movementType, quantity, `إلغاء طلب ${orderId}`, new Date().toISOString(), orderId, row.stock - quantity, row.stock]
   )
+
+  const { rows: saleMovementRows } = await client.query<{ id: number }>(
+    `SELECT id FROM stock_movements WHERE order_id = $1 AND variant_id = $2 AND type = 'sale' ORDER BY id LIMIT 1`,
+    [orderId, variantId]
+  )
+  if (saleMovementRows[0]) await restoreBatchConsumptionsForMovement(client, saleMovementRows[0].id)
 }

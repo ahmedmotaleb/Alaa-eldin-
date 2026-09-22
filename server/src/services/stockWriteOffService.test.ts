@@ -120,3 +120,99 @@ describe('stockWriteOffService', () => {
     expect(result).toEqual({ error: 'invalid_quantity' })
   })
 })
+
+const VARIANT_PRODUCT_ID = 'test-prod-writeoff-variant'
+let variantId = ''
+
+async function insertVariantBatch(expiryDate: string | null, quantity: number) {
+  const id = crypto.randomUUID()
+  await pool.query(
+    `INSERT INTO inventory_batches (id, product_id, variant_id, quantity_received, quantity_remaining, unit_cost, expiry_date, created_at)
+     VALUES ($1, $2, $3, $4, $4, 5, $5, now())`,
+    [id, VARIANT_PRODUCT_ID, variantId, quantity, expiryDate]
+  )
+  return id
+}
+
+async function resetVariantFixtures() {
+  await pool.query('DELETE FROM batch_consumptions')
+  await pool.query('DELETE FROM stock_movements')
+  await pool.query('DELETE FROM inventory_batches WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+  await pool.query('DELETE FROM product_variants WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+  await pool.query('DELETE FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+  await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+  await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
+
+  await pool.query(
+    `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'فئة اختبار', '🧪', '#fff', 1)`,
+    [CATEGORY_ID]
+  )
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+     VALUES ($1, 'writeoff-variant-prod', $2, 'منتج له متغيرات', 'وصف', 10, 5, 'وحدة', '🧪', 1, 0, now())`,
+    [VARIANT_PRODUCT_ID, CATEGORY_ID]
+  )
+  variantId = `var-${crypto.randomUUID()}`
+  await pool.query(
+    `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, old_price, cost, stock, available, sort_order, created_at)
+     VALUES ($1, $2, 'أخضر', null, '', 10, null, 5, 12, 1, 0, now())`,
+    [variantId, VARIANT_PRODUCT_ID]
+  )
+  await pool.query(
+    `INSERT INTO users (id, email, password_hash, full_name, created_at, is_admin, role)
+     VALUES ($1, 'writeoff-var-tester@test.local', 'x', 'مختبر', now(), 1, 'admin')`,
+    [USER_ID]
+  )
+}
+
+describe('stockWriteOffService — variant write-offs', () => {
+  beforeEach(resetVariantFixtures)
+  afterAll(async () => {
+    await pool.query('DELETE FROM batch_consumptions')
+    await pool.query('DELETE FROM stock_movements')
+    await pool.query('DELETE FROM inventory_batches WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+    await pool.query('DELETE FROM product_variants WHERE product_id = $1', [VARIANT_PRODUCT_ID])
+    await pool.query('DELETE FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+    await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
+    await pool.query('DELETE FROM users WHERE id = $1', [USER_ID])
+    await pool.end()
+  })
+
+  it('reduces variant stock (not the base product) and records a variant-scoped movement', async () => {
+    const result = await writeOffStock(USER_ID, { productId: VARIANT_PRODUCT_ID, variantId, quantity: 4, reason: 'damaged' })
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.newStock).toBe(8) // 12 - 4
+
+    const { rows: productRows } = await pool.query('SELECT stock FROM products WHERE id = $1', [VARIANT_PRODUCT_ID])
+    expect(productRows[0].stock).toBe(0)
+
+    const { rows: movementRows } = await pool.query(
+      'SELECT variant_id as "variantId" FROM stock_movements WHERE id = $1', [result.stockMovementId]
+    )
+    expect(movementRows[0].variantId).toBe(variantId)
+  })
+
+  it('rejects a variant write-off larger than the variant stock', async () => {
+    const result = await writeOffStock(USER_ID, { productId: VARIANT_PRODUCT_ID, variantId, quantity: 999, reason: 'lost' })
+    expect(result).toEqual({ error: 'insufficient_stock' })
+  })
+
+  it('consumes only the variant batches (not base-product batches) for the same product', async () => {
+    const baseBatch = crypto.randomUUID()
+    await pool.query(
+      `INSERT INTO inventory_batches (id, product_id, variant_id, quantity_received, quantity_remaining, unit_cost, expiry_date, created_at)
+       VALUES ($1, $2, NULL, 20, 20, 5, NULL, now())`,
+      [baseBatch, VARIANT_PRODUCT_ID]
+    )
+    const variantBatch = await insertVariantBatch(null, 10)
+
+    await writeOffStock(USER_ID, { productId: VARIANT_PRODUCT_ID, variantId, quantity: 4, reason: 'damaged' })
+
+    const { rows } = await pool.query<{ id: string, quantity_remaining: number }>(
+      'SELECT id, quantity_remaining FROM inventory_batches WHERE id = ANY($1::text[])', [[baseBatch, variantBatch]]
+    )
+    expect(rows.find(r => r.id === baseBatch)?.quantity_remaining).toBe(20)
+    expect(rows.find(r => r.id === variantBatch)?.quantity_remaining).toBe(6)
+  })
+})

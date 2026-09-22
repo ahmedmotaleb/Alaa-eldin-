@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import { api, ApiError, type AdminSupplier, type AdminProduct, type AdminSupplierReturnItem, type SupplierReturnStatus } from '../../utils/api'
+import { api, ApiError, type AdminSupplier, type AdminProduct, type AdminVariant, type AdminSupplierReturnItem, type SupplierReturnStatus } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
 import type { LayoutContext } from '../../components/AdminLayout'
 
@@ -11,6 +11,7 @@ const STATUS_LABEL: Record<SupplierReturnStatus, string> = {
 interface NewLine {
   key: string
   productId: string
+  variantId: string | null
   quantity: number
   unitCost: number
 }
@@ -23,6 +24,7 @@ export function SupplierReturnDetailPage() {
 
   const [suppliers, setSuppliers] = useState<AdminSupplier[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
+  const [variantsByProduct, setVariantsByProduct] = useState<Record<string, AdminVariant[]>>({})
   const [supplierId, setSupplierId] = useState('')
   const [reason, setReason] = useState('')
   const [lines, setLines] = useState<NewLine[]>([])
@@ -57,14 +59,36 @@ export function SupplierReturnDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  function ensureVariantsLoaded(productId: string) {
+    if (variantsByProduct[productId]) return
+    api.listProductVariants(productId).then(({ variants }) => setVariantsByProduct(current => ({ ...current, [productId]: variants }))).catch(() => {})
+  }
+
   function addLine() {
     const firstAvailable = products.find(p => !lines.some(l => l.productId === p.id))
     if (!firstAvailable) return
-    setLines(current => [...current, { key: crypto.randomUUID(), productId: firstAvailable.id, quantity: 1, unitCost: firstAvailable.cost }])
+    ensureVariantsLoaded(firstAvailable.id)
+    setLines(current => [...current, { key: crypto.randomUUID(), productId: firstAvailable.id, variantId: null, quantity: 1, unitCost: firstAvailable.cost }])
   }
 
   function updateLine(key: string, patch: Partial<NewLine>) {
     setLines(current => current.map(l => l.key === key ? { ...l, ...patch } : l))
+  }
+
+  function pickProductForLine(key: string, productId: string) {
+    ensureVariantsLoaded(productId)
+    const product = products.find(p => p.id === productId)
+    updateLine(key, { productId, variantId: null, unitCost: product?.cost ?? 0 })
+  }
+
+  function pickVariantForLine(key: string, productId: string, variantId: string) {
+    if (!variantId) {
+      const product = products.find(p => p.id === productId)
+      updateLine(key, { variantId: null, unitCost: product?.cost ?? 0 })
+      return
+    }
+    const variant = variantsByProduct[productId]?.find(v => v.id === variantId)
+    updateLine(key, { variantId, unitCost: variant?.cost ?? 0 })
   }
 
   function removeLine(key: string) {
@@ -79,7 +103,7 @@ export function SupplierReturnDetailPage() {
     try {
       const { supplierReturn } = await api.createSupplierReturn({
         supplierId, reason,
-        items: lines.map(l => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost }))
+        items: lines.map(l => ({ productId: l.productId, variantId: l.variantId, quantity: l.quantity, unitCost: l.unitCost }))
       })
       navigate(`/purchasing/supplier-returns/${supplierReturn.id}`, { replace: true })
     } catch {
@@ -124,16 +148,25 @@ export function SupplierReturnDetailPage() {
           <div>
             <div className="admin-form-card-title">الأصناف</div>
           </div>
-          {lines.map(line => (
-            <div key={line.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <select value={line.productId} onChange={e => updateLine(line.key, { productId: e.target.value })} style={{ flex: '1 1 200px' }}>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <input type="number" min={1} value={line.quantity} onChange={e => updateLine(line.key, { quantity: Number(e.target.value) })} style={{ width: 80 }} />
-              <input type="number" min={0} step="0.01" value={line.unitCost} onChange={e => updateLine(line.key, { unitCost: Number(e.target.value) })} style={{ width: 100 }} />
-              <button type="button" className="admin-form-chip" onClick={() => removeLine(line.key)}>حذف</button>
-            </div>
-          ))}
+          {lines.map(line => {
+            const variants = variantsByProduct[line.productId] ?? []
+            return (
+              <div key={line.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={line.productId} onChange={e => pickProductForLine(line.key, e.target.value)} style={{ flex: '1 1 200px' }}>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                {variants.length > 0 && (
+                  <select value={line.variantId ?? ''} onChange={e => pickVariantForLine(line.key, line.productId, e.target.value)} style={{ flex: '1 1 160px' }}>
+                    <option value="">المنتج الأساسي (بدون متغيّر)</option>
+                    {variants.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                )}
+                <input type="number" min={1} value={line.quantity} onChange={e => updateLine(line.key, { quantity: Number(e.target.value) })} style={{ width: 80 }} />
+                <input type="number" min={0} step="0.01" value={line.unitCost} onChange={e => updateLine(line.key, { unitCost: Number(e.target.value) })} style={{ width: 100 }} />
+                <button type="button" className="admin-form-chip" onClick={() => removeLine(line.key)}>حذف</button>
+              </div>
+            )
+          })}
           <button type="button" className="admin-form-chip" onClick={addLine}>+ إضافة صنف</button>
 
           {error && <div className="admin-form-error">{error}</div>}
@@ -161,7 +194,7 @@ export function SupplierReturnDetailPage() {
         <div><div className="admin-form-card-title">الأصناف</div></div>
         {items.map(item => (
           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{item.productName} × {item.quantity}</span>
+            <span>{item.variantName ? `${item.productName} - ${item.variantName}` : item.productName} × {item.quantity}</span>
             <span style={{ fontWeight: 700 }}>{formatMoney(item.quantity * item.unitCost)}</span>
           </div>
         ))}

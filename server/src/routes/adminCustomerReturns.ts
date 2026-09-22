@@ -30,6 +30,7 @@ function parseInput(body: unknown): CustomerReturnInput | null {
     return {
       orderItemId: typeof item?.orderItemId === 'number' ? item.orderItemId : NaN,
       productId: typeof item?.productId === 'string' ? item.productId : '',
+      variantId: typeof item?.variantId === 'string' ? item.variantId : null,
       quantity: typeof item?.quantity === 'number' ? item.quantity : NaN,
       condition: VALID_CONDITIONS.includes(item?.condition as ReturnItemCondition) ? item.condition as ReturnItemCondition : 'return_to_stock'
     }

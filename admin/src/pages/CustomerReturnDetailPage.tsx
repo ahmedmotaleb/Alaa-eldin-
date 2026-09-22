@@ -15,6 +15,7 @@ interface NewLine {
   key: string
   orderItemId: number
   productId: string
+  variantId: string | null
   productName: string
   maxQuantity: number
   quantity: number
@@ -65,7 +66,8 @@ export function CustomerReturnDetailPage() {
       const { order } = await api.getOrder(orderIdInput.trim())
       setOrder(order)
       setLines(order.items.map(item => ({
-        key: crypto.randomUUID(), orderItemId: item.id, productId: item.productId, productName: item.name,
+        key: crypto.randomUUID(), orderItemId: item.id, productId: item.productId, variantId: item.variantId,
+        productName: item.variantName ? `${item.name} - ${item.variantName}` : item.name,
         maxQuantity: item.quantity, quantity: item.quantity, condition: 'return_to_stock'
       })))
     } catch {
@@ -84,7 +86,7 @@ export function CustomerReturnDetailPage() {
     try {
       const { customerReturn } = await api.createCustomerReturn({
         orderId: order.id, reason, notes,
-        items: lines.filter(l => l.quantity > 0).map(l => ({ orderItemId: l.orderItemId, productId: l.productId, quantity: l.quantity, condition: l.condition }))
+        items: lines.filter(l => l.quantity > 0).map(l => ({ orderItemId: l.orderItemId, productId: l.productId, variantId: l.variantId, quantity: l.quantity, condition: l.condition }))
       })
       navigate(`/orders/returns/${customerReturn.id}`, { replace: true })
     } catch (err) {
@@ -174,7 +176,7 @@ export function CustomerReturnDetailPage() {
         <div><div className="admin-form-card-title">الأصناف</div></div>
         {items.map(item => (
           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{item.productName} × {item.quantity} ({CONDITION_LABEL[item.condition]})</span>
+            <span>{item.variantName ? `${item.productName} - ${item.variantName}` : item.productName} × {item.quantity} ({CONDITION_LABEL[item.condition]})</span>
             <span style={{ fontWeight: 700 }}>{formatMoney(item.refundAmount)}</span>
           </div>
         ))}
