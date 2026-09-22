@@ -57,6 +57,7 @@ type BusinessEvent =
   | 'captcha_verification_success' | 'captcha_verification_failed' | 'captcha_provider_error' | 'captcha_required'
   | 'support_ticket_created' | 'support_ticket_customer_reply' | 'support_ticket_admin_reply'
   | 'support_ticket_status_changed' | 'support_ticket_priority_changed' | 'support_ticket_assigned'
+  | 'price_schedule_applied' | 'price_schedule_conflict'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

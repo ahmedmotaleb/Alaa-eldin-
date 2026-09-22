@@ -18,6 +18,7 @@ const ProductsListPage = lazy(() => import('./pages/products/ProductsListPage').
 const ProductFormPage = lazy(() => import('./pages/products/ProductFormPage').then(m => ({ default: m.ProductFormPage })))
 const ProductImportPage = lazy(() => import('./pages/products/ProductImportPage').then(m => ({ default: m.ProductImportPage })))
 const BulkPricingPage = lazy(() => import('./pages/products/BulkPricingPage').then(m => ({ default: m.BulkPricingPage })))
+const PricingSchedulesPage = lazy(() => import('./pages/products/PricingSchedulesPage').then(m => ({ default: m.PricingSchedulesPage })))
 const BulkStockPage = lazy(() => import('./pages/products/BulkStockPage').then(m => ({ default: m.BulkStockPage })))
 const BulkCostPage = lazy(() => import('./pages/products/BulkCostPage').then(m => ({ default: m.BulkCostPage })))
 const BulkOperationsPage = lazy(() => import('./pages/products/BulkOperationsPage').then(m => ({ default: m.BulkOperationsPage })))
@@ -96,6 +97,7 @@ export default function App() {
               <Route path="/products/add" element={<ProductFormPage />} />
               <Route path="/products/import" element={<ProductImportPage />} />
               <Route path="/products/bulk-pricing" element={<BulkPricingPage />} />
+              <Route path="/products/pricing-schedules" element={<PricingSchedulesPage />} />
               <Route path="/products/bulk-stock" element={<BulkStockPage />} />
               <Route path="/products/bulk-cost" element={<BulkCostPage />} />
               <Route path="/products/bulk-operations" element={<BulkOperationsPage />} />

@@ -21,6 +21,7 @@ import { adminOrdersRouter } from './routes/adminOrders.js'
 import { catalogRouter } from './routes/catalog.js'
 import { adminProductsRouter } from './routes/adminProducts.js'
 import { adminBulkPricingRouter } from './routes/adminBulkPricing.js'
+import { adminPricingSchedulesRouter } from './routes/adminPricingSchedules.js'
 import { adminBulkStockRouter } from './routes/adminBulkStock.js'
 import { adminBulkCostRouter } from './routes/adminBulkCost.js'
 import { adminProductImagesRouter } from './routes/adminProductImages.js'
@@ -215,6 +216,7 @@ app.use('/api/admin/pages', adminPagesRouter)
 app.use('/api/admin/orders', adminOrdersRouter)
 app.use('/api/admin/products', adminProductsRouter)
 app.use('/api/admin/products/bulk-pricing', adminBulkPricingRouter)
+app.use('/api/admin/pricing-schedules', adminPricingSchedulesRouter)
 app.use('/api/admin/products/bulk-stock', adminBulkStockRouter)
 app.use('/api/admin/products/bulk-cost', adminBulkCostRouter)
 app.use('/api/admin/products', adminProductImagesRouter)

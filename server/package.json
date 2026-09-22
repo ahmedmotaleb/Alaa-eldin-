@@ -24,6 +24,8 @@
     "notify:abandoned-cart:dev": "tsx src/sendAbandonedCartReminders.ts",
     "loyalty:expire": "node dist/loyaltyExpire.js",
     "loyalty:expire:dev": "tsx src/loyaltyExpire.ts",
+    "pricing:apply-scheduled": "node dist/pricingApplyScheduled.js",
+    "pricing:apply-scheduled:dev": "tsx src/pricingApplyScheduled.ts",
     "db:backup": "bash scripts/backup.sh",
     "db:restore": "bash scripts/restore.sh",
     "smoke-test": "tsx src/scripts/smokeTest.ts",

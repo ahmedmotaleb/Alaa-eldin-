@@ -860,6 +860,20 @@ export interface AdminPromotion {
 
 export type AdminPromotionInput = Omit<AdminPromotion, 'createdAt' | 'createdBy'>
 
+export interface AdminPriceSchedule {
+  id: string
+  productId: string | null
+  variantId: string | null
+  newPrice: number
+  newOldPrice: number | null
+  expectedCurrentPrice: number
+  startsAt: string
+  status: 'pending' | 'applied' | 'cancelled' | 'conflict'
+  appliedAt: string | null
+  createdBy: string | null
+  createdAt: string
+}
+
 export interface AdminSupplier {
   id: string
   name: string
@@ -1606,6 +1620,12 @@ export const api = {
     request<{ promotion: AdminPromotion }>(`/admin/promotions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deletePromotion: (id: string) =>
     request<void>(`/admin/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listPriceSchedules: (params: { productId?: string, status?: AdminPriceSchedule['status'] } = {}) =>
+    request<{ schedules: AdminPriceSchedule[] }>(`/admin/pricing-schedules${buildQuery(params)}`),
+  createPriceSchedule: (body: { productId: string | null, variantId: string | null, newPrice: number, newOldPrice: number | null, startsAt: string }) =>
+    request<{ schedule: AdminPriceSchedule }>('/admin/pricing-schedules', { method: 'POST', body: JSON.stringify(body) }),
+  cancelPriceSchedule: (id: string) =>
+    request<void>(`/admin/pricing-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   listSuppliers: (params: { search?: string, activeOnly?: boolean } = {}) =>
     request<{ suppliers: AdminSupplier[] }>(`/admin/suppliers${buildQuery({ search: params.search, activeOnly: params.activeOnly ? 'true' : undefined })}`),
   getSupplier: (id: string) =>

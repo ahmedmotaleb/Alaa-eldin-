@@ -38,7 +38,8 @@ export const NAV: NavGroup[] = [
       { id: 'barcode-labels', label: 'طباعة الباركود' },
       { id: 'valuation', label: 'قيمة المخزون' },
       { id: 'moves', label: 'تحويلات المخزون' },
-      { id: 'cyclecounts', label: 'الجرد الدوري' }
+      { id: 'cyclecounts', label: 'الجرد الدوري' },
+      { id: 'pricing-schedules', label: 'جدولة الأسعار' }
     ]
   },
   {
