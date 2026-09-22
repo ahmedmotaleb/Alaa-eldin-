@@ -137,6 +137,7 @@ export interface WhatsAppMessage {
   status: 'sent' | 'failed'
   providerMessageId: string | null
   error: string | null
+  notificationType: string | null
   createdAt: string
 }
 
@@ -1713,6 +1714,8 @@ export const api = {
     request<{ sent: boolean, messageId: string }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/send`, { method: 'POST', body: JSON.stringify(body) }),
   listWhatsAppMessages: (orderId: string) =>
     request<{ messages: WhatsAppMessage[] }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/messages`),
+  resendWhatsAppConfirmation: (orderId: string) =>
+    request<{ message: WhatsAppMessage | null }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/resend-confirmation`, { method: 'POST' }),
   listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
   createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>

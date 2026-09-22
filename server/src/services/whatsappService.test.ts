@@ -3,10 +3,11 @@ import { pool } from '../db.js'
 import {
   listWhatsAppTemplates, createWhatsAppTemplate, updateWhatsAppTemplate,
   renderWhatsAppTemplate, sendWhatsAppMessage, listWhatsAppMessagesForOrder,
-  whatsappConfigured
+  sendOrderConfirmationWhatsApp, hasSentNotification, whatsappConfigured
 } from './whatsappService.js'
 
 const TEMPLATE_NAME = 'test-template-whatsapp'
+const CONFIRMATION_ORDER_ID = 'test-order-wa-confirmation-unconfigured'
 
 async function resetFixtures() {
   await pool.query('DELETE FROM whatsapp_templates WHERE name = $1', [TEMPLATE_NAME])
@@ -70,6 +71,31 @@ describe('whatsappService', () => {
 
   it('returns an empty message log for an order with no whatsapp activity', async () => {
     const messages = await listWhatsAppMessagesForOrder('non-existent-order-id')
+    expect(messages).toEqual([])
+  })
+
+  it('hasSentNotification reports false when nothing was ever sent for this order/type', async () => {
+    expect(await hasSentNotification('non-existent-order-id', 'order_confirmation')).toBe(false)
+  })
+
+  // بيئة الاختبار دي whatsappConfigured=false، فده بيتأكد إن الدالة دي (اللي بتتنادى من
+  // orderService.createOrder بعد الـ commit مباشرة) أبداً ما بترمي استثناء ولا بتسجّل أي
+  // صف في whatsapp_messages لما التكامل مش مفعّل أصلاً — الطلب لازم يفضل ناجح تماماً.
+  it('does nothing and never throws when WhatsApp is not configured', async () => {
+    await expect(sendOrderConfirmationWhatsApp({
+      orderId: CONFIRMATION_ORDER_ID,
+      orderNumber: 'ALA-999999',
+      customerName: 'عميل اختبار',
+      customerMobile: '01012345678',
+      customerAddress: 'القاهرة - عنوان تجريبي',
+      paymentMethod: 'COD',
+      total: 150,
+      deliveryDate: '2026-01-15',
+      deliverySlotId: 'morning',
+      guestTrackingToken: null
+    })).resolves.toBeUndefined()
+
+    const messages = await listWhatsAppMessagesForOrder(CONFIRMATION_ORDER_ID)
     expect(messages).toEqual([])
   })
 })

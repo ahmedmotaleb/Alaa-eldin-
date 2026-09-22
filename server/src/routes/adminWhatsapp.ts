@@ -5,7 +5,7 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import {
   listWhatsAppTemplates, createWhatsAppTemplate, updateWhatsAppTemplate,
   renderWhatsAppTemplate, sendWhatsAppMessage, listWhatsAppMessagesForOrder,
-  whatsappConfigured, type WhatsAppTemplateInput
+  sendOrderConfirmationWhatsApp, whatsappConfigured, type WhatsAppTemplateInput
 } from '../services/whatsappService.js'
 
 export const adminWhatsappRouter = Router()
@@ -124,4 +124,45 @@ adminWhatsappRouter.post('/orders/:orderId/send', requirePermission('marketing.m
 adminWhatsappRouter.get('/orders/:orderId/messages', requirePermission('marketing.manage'), async (req, res) => {
   const messages = await listWhatsAppMessagesForOrder(String(req.params.orderId))
   res.json({ messages })
+})
+
+interface OrderConfirmationSourceRow {
+  id: string; orderNumber: string; customerFullName: string; customerMobile: string
+  customerGovernorate: string; customerAddress: string; paymentMethod: string; total: number
+  deliveryDate: string | null; deliverySlot: string; guestTrackingToken: string | null
+}
+
+// إعادة إرسال تأكيد الطلب الآلي يدوياً — مُتعمّد (فعل أدمن صريح)، فبيتخطى فحص "اتبعت
+// قبل كده" (force=true) عمداً؛ ده مختلف عن الإرسال التلقائي بعد إنشاء الطلب مباشرة.
+adminWhatsappRouter.post('/orders/:orderId/resend-confirmation', requirePermission('marketing.manage'), async (req, res) => {
+  const { rows } = await pool.query<OrderConfirmationSourceRow>(
+    `SELECT id, order_number as "orderNumber", customer_full_name as "customerFullName", customer_mobile as "customerMobile",
+            customer_governorate as "customerGovernorate", customer_address as "customerAddress", payment_method as "paymentMethod",
+            total, delivery_date as "deliveryDate", delivery_slot as "deliverySlot", guest_tracking_token as "guestTrackingToken"
+     FROM orders WHERE id = $1`,
+    [req.params.orderId]
+  )
+  const order = rows[0]
+  if (!order) { res.status(404).json({ error: 'order_not_found' }); return }
+  if (!whatsappConfigured) { res.status(409).json({ error: 'whatsapp_not_configured' }); return }
+
+  await sendOrderConfirmationWhatsApp({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerFullName,
+    customerMobile: order.customerMobile,
+    customerAddress: `${order.customerGovernorate} - ${order.customerAddress}`,
+    paymentMethod: order.paymentMethod,
+    total: order.total,
+    deliveryDate: order.deliveryDate,
+    deliverySlotId: order.deliverySlot,
+    guestTrackingToken: order.guestTrackingToken
+  }, true)
+
+  await recordAuditLog({
+    adminUserId: req.user!.id, action: 'whatsapp_confirmation_resent', entityType: 'order', entityId: order.id
+  })
+
+  const [latest] = await listWhatsAppMessagesForOrder(order.id)
+  res.status(202).json({ message: latest ?? null })
 })

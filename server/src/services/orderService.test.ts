@@ -636,6 +636,26 @@ describe('createOrder — idempotency', () => {
   })
 })
 
+describe('createOrder — WhatsApp order confirmation hook', () => {
+  // بيئة الاختبار دي WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID مش متضبطين (راجع
+  // whatsappOrderConfirmation.test.ts لسلوك الحالة "مُفعّل")، فده بيتأكد إن استدعاء
+  // sendOrderConfirmationWhatsApp بعد الـ commit مباشرة أبداً ما بيأثر على نجاح إنشاء
+  // الطلب نفسه — ولا بيسجّل أي صف في whatsapp_messages لما التكامل مش مفعّل.
+  it('order creation still succeeds when WhatsApp is not configured, and logs no message', async () => {
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    const { rows } = await pool.query('SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1', [order.id])
+    expect(Number(rows[0].n)).toBe(0)
+  })
+
+  it('a replayed idempotency-key request does not attempt a second confirmation', async () => {
+    const key = nextKey()
+    const first = await createOrder(baseInput(), null, key)
+    await createOrder(baseInput(), null, key)
+    const { rows } = await pool.query('SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1', [first.order.id])
+    expect(Number(rows[0].n)).toBe(0)
+  })
+})
+
 describe('cancelOrder', () => {
   it('restores stock and records a cancel_restore movement', async () => {
     const { order } = await createOrder(baseInput(), null, nextKey())

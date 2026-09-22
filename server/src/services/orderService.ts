@@ -19,6 +19,7 @@ import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapaci
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { lockAndValidateLoyaltyRedemption, commitLoyaltyRedemption, restoreRedeemedPointsForOrder, reverseEarnedPointsForOrder } from './loyaltyService.js'
 import { listActivePromotions, computePromotionApplications, recordPromotionApplications, listPromotionApplicationsForOrder, type PromotionApplicationResult } from './promotionService.js'
+import { sendOrderConfirmationWhatsApp } from './whatsappService.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
@@ -422,6 +423,22 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
     const { rows } = await pool.query<OrderRow>(`SELECT ${SELECT_ORDER_FIELDS} FROM orders WHERE id = $1`, [orderId])
     const order = await serializeOrderRow(rows[0])
     logEvent('order_created', { orderId: order.id, orderNumber: order.orderNumber, itemCount: order.items.length, total: order.total })
+
+    // بعد الـ commit الفعلي بس (الطلب اتقرأ تاني من قاعدة البيانات فوق) — فشل واتساب هنا
+    // (عدم إعداد، خطأ مزوّد، قالب مفقود) أبداً ما بيأثر على نجاح الطلب، لأن الدالة دي
+    // مصمّمة عمداً عشان ما ترميش استثناء (راجع تعليقها في whatsappService.ts).
+    await sendOrderConfirmationWhatsApp({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customer.fullName,
+      customerMobile: order.customer.mobile,
+      customerAddress: `${order.customer.governorate} - ${order.customer.address}`,
+      paymentMethod: order.paymentMethod,
+      total: order.total,
+      deliveryDate: order.deliveryDate ?? null,
+      deliverySlotId: order.deliverySlot,
+      guestTrackingToken: order.guestTrackingToken ?? null
+    })
     return { order, replay: false }
   } catch (err) {
     if (err instanceof IdempotencyRaceError && idempotencyKey) {

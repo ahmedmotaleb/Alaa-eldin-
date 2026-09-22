@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminOrderLoyaltyLedgerRow, type AdminRider, type PickedStatus, type WhatsAppTemplate } from '../utils/api'
+import { api, ApiError, type AdminOrder, type AdminOrderStatus, type AdminOrderNote, type AdminOrderLoyaltyLedgerRow, type AdminRider, type PickedStatus, type WhatsAppTemplate, type WhatsAppMessage } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDateTime } from '../utils/format'
 import { toWhatsAppInternational } from '../utils/phone'
@@ -36,6 +36,8 @@ export function OrderDrawer({
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState('')
+  const [waMessages, setWaMessages] = useState<WhatsAppMessage[]>([])
+  const [resending, setResending] = useState(false)
   const [notes, setNotes] = useState<AdminOrderNote[]>([])
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
@@ -45,6 +47,27 @@ export function OrderDrawer({
     api.getWhatsAppStatus().then(({ configured }) => setWaConfigured(configured)).catch(() => setWaConfigured(false))
     api.listWhatsAppTemplates().then(({ templates }) => setTemplates(templates.filter(t => t.active))).catch(() => {})
   }, [])
+
+  function loadWaMessages() {
+    api.listWhatsAppMessages(order.id).then(({ messages }) => setWaMessages(messages)).catch(() => {})
+  }
+
+  useEffect(loadWaMessages, [order.id])
+
+  const confirmationMessage = waMessages.find(m => m.notificationType === 'order_confirmation')
+
+  async function resendConfirmation() {
+    if (!window.confirm('إعادة إرسال تأكيد الطلب عبر واتساب للعميل؟')) return
+    setResending(true)
+    try {
+      await api.resendWhatsAppConfirmation(order.id)
+      loadWaMessages()
+    } catch {
+      window.alert('تعذرت إعادة الإرسال')
+    } finally {
+      setResending(false)
+    }
+  }
 
   function loadNotes() {
     api.listOrderNotes(order.id).then(({ notes }) => setNotes(notes)).catch(() => {})
@@ -86,6 +109,7 @@ export function OrderDrawer({
     try {
       await api.sendWhatsAppMessage(order.id, { templateId: selectedTemplateId })
       setSendResult('تم إرسال الرسالة بنجاح')
+      loadWaMessages()
     } catch (err) {
       setSendResult(err instanceof ApiError && err.code === 'whatsapp_not_configured'
         ? 'الإرسال الفعلي غير مفعّل — راجع إعدادات واتساب'
@@ -124,6 +148,27 @@ export function OrderDrawer({
           <button className="admin-category-card-btn" onClick={openWhatsApp}>💬 واتساب العميل</button>
           <button className="admin-category-card-btn" onClick={() => navigate(`/orders/${order.id}/picking`)}>📋 تجهيز الطلب</button>
           <button className="admin-category-card-btn" onClick={() => window.open(`/admin/orders/${order.id}/print`, '_blank')}>🖨️ طباعة</button>
+        </div>
+
+        <div className="admin-drawer-card">
+          <div className="admin-drawer-card-title">تأكيد واتساب</div>
+          {!waConfigured && <div style={{ fontSize: 12.5, color: '#8A948C' }}>غير مفعّل</div>}
+          {waConfigured && !confirmationMessage && <div style={{ fontSize: 12.5, color: '#8A948C' }}>في الانتظار</div>}
+          {waConfigured && confirmationMessage?.status === 'sent' && (
+            <div style={{ fontSize: 12.5, color: '#12813C', fontWeight: 600 }}>
+              تم الإرسال — {formatDateTime(confirmationMessage.createdAt)}
+            </div>
+          )}
+          {waConfigured && confirmationMessage?.status === 'failed' && (
+            <div style={{ fontSize: 12.5, color: '#B42318', fontWeight: 600 }}>
+              فشل الإرسال — {confirmationMessage.error ?? 'خطأ غير معروف'}
+            </div>
+          )}
+          {waConfigured && (
+            <button className="admin-category-card-btn" disabled={resending} onClick={resendConfirmation} style={{ marginTop: 8 }}>
+              {resending ? 'جارٍ الإرسال...' : '🔁 إعادة إرسال تأكيد واتساب'}
+            </button>
+          )}
         </div>
 
         {templates.length > 0 && (

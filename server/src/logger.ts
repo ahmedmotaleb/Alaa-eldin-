@@ -58,6 +58,8 @@ type BusinessEvent =
   | 'support_ticket_created' | 'support_ticket_customer_reply' | 'support_ticket_admin_reply'
   | 'support_ticket_status_changed' | 'support_ticket_priority_changed' | 'support_ticket_assigned'
   | 'price_schedule_applied' | 'price_schedule_conflict'
+  | 'whatsapp_order_confirmation_sent' | 'whatsapp_order_confirmation_failed'
+  | 'whatsapp_order_confirmation_error' | 'whatsapp_order_confirmation_template_missing'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })
