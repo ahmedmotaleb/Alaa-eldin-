@@ -13,7 +13,7 @@ import { ar } from '../i18n/ar'
 
 export function CartPage() {
   const navigate = useNavigate()
-  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, total, setQuantity, removeItem, applyDiscount, removeDiscount } = useCart()
+  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, promotions, total, setQuantity, removeItem, applyDiscount, removeDiscount } = useCart()
   const flash = useToast()
   const [discountInput, setDiscountInput] = useState('')
   const [discountApplying, setDiscountApplying] = useState(false)
@@ -130,6 +130,9 @@ export function CartPage() {
       <div className="summary-card">
         <div><span>{ar.cart.subtotal}</span><span>{formatMoney(subtotal)}</span></div>
         {discount && <div className="summary-discount"><span>{ar.cart.discount}</span><span>-{formatMoney(discount.amount)}</span></div>}
+        {promotions.map((promo, index) => (
+          <div className="summary-discount" key={`${promo.name}-${index}`}><span>{promo.name}</span><span>-{formatMoney(promo.discountAmount)}</span></div>
+        ))}
         <div><span>{ar.cart.delivery}</span><span>{deliveryFee ? formatMoney(deliveryFee) : ar.cart.free}</span></div>
         <div className="summary-total"><span>{ar.cart.total}</span><span>{formatMoney(total)}</span></div>
       </div>

@@ -12,6 +12,7 @@ import { setItemPickedStatus, isValidPickedStatus } from '../services/orderPicki
 import { proposeSubstitution } from '../services/substitutionService.js'
 import { listOrderNotes, addOrderNote } from '../services/orderNotesService.js'
 import type { LoyaltySourceType } from '../services/loyaltyService.js'
+import { listPromotionApplicationsForOrder } from '../services/promotionService.js'
 
 export const adminOrdersRouter = Router()
 adminOrdersRouter.use(requireAdmin)
@@ -34,6 +35,7 @@ interface OrderRow {
   accountEmail: string | null
   discountCode: string | null
   discountAmount: number
+  promotionDiscountAmount: number
   riderId: string | null
   riderName: string | null
   settlementId: number | null
@@ -43,7 +45,7 @@ interface OrderRow {
   loyaltyDiscountAmount: number
 }
 
-function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
+function serializeOrderRow(row: OrderRow, items: OrderItemDTO[], promotionApplications?: Awaited<ReturnType<typeof listPromotionApplicationsForOrder>>) {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -65,6 +67,8 @@ function serializeOrderRow(row: OrderRow, items: OrderItemDTO[]) {
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
+    promotionDiscountAmount: row.promotionDiscountAmount,
+    promotionApplications: promotionApplications ?? undefined,
     riderId: row.riderId,
     riderName: row.riderName,
     settlementId: row.settlementId,
@@ -80,6 +84,7 @@ const SELECT_ORDER = `
          o.customer_full_name as "customerFullName", o.customer_mobile as "customerMobile", o.customer_governorate as "customerGovernorate", o.customer_address as "customerAddress",
          o.subtotal as subtotal, o.delivery_fee as "deliveryFee", o.total as total, o.status as status,
          o.discount_code as "discountCode", o.discount_amount as "discountAmount",
+         o.promotion_discount_amount as "promotionDiscountAmount",
          o.rider_id as "riderId", r.name as "riderName", o.settlement_id as "settlementId",
          o.delivery_instructions as "deliveryInstructions", o.substitution_preference as "substitutionPreference", u.email as "accountEmail",
          o.loyalty_points_redeemed as "loyaltyPointsRedeemed", o.loyalty_discount_amount as "loyaltyDiscountAmount"
@@ -153,7 +158,8 @@ adminOrdersRouter.get('/:id', async (req, res) => {
     'SELECT source_type as "sourceType", points_change as "pointsChange" FROM loyalty_ledger WHERE source_order_id = $1 ORDER BY created_at ASC',
     [row.id]
   )
-  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? []), notes, loyaltyLedgerForOrder: loyaltyRows })
+  const promotionApplications = row.promotionDiscountAmount > 0 ? await listPromotionApplicationsForOrder(row.id) : []
+  res.json({ order: serializeOrderRow(row, itemsByOrder.get(row.id) ?? [], promotionApplications), notes, loyaltyLedgerForOrder: loyaltyRows })
 })
 
 adminOrdersRouter.patch('/:id/status', async (req, res) => {

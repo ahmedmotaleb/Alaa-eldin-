@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getSettings } from './settingsStore'
 import { useAuth } from './AuthContext'
-import { api, type ApiDiscount, type ApiProductVariant } from '../utils/api'
+import { api, type ApiDiscount, type ApiProductVariant, type ApiPromotionApplication } from '../utils/api'
 import type { CartItem, Product } from '../types/models'
 
 interface DetailedCartItem extends CartItem {
@@ -27,6 +27,8 @@ interface CartContextValue {
   subtotal: number
   deliveryFee: number
   discount: ApiDiscount | null
+  promotions: ApiPromotionApplication[]
+  promotionsDiscount: number
   total: number
   addItem: (productId: string, quantity?: number, variantId?: string) => void
   setQuantity: (productId: string, quantity: number, variantId?: string) => void
@@ -60,6 +62,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [resolved, setResolved] = useState<Record<string, Product>>({})
   const [resolvedVariants, setResolvedVariants] = useState<Record<string, ApiProductVariant>>({})
   const [discount, setDiscount] = useState<ApiDiscount | null>(null)
+  const [promotions, setPromotions] = useState<ApiPromotionApplication[]>([])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
@@ -154,11 +157,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
     })),
     [detailedItems]
   )
+  const promotionsDiscount = promotions.reduce((sum, p) => sum + p.discountAmount, 0)
   const deliveryFee = discount?.freeDelivery
     ? 0
     : (subtotal >= getSettings().freeShippingThreshold || subtotal === 0 ? 0 : getSettings().deliveryFee)
-  const total = Math.max(0, subtotal - (discount?.amount ?? 0)) + deliveryFee
+  const total = Math.max(0, subtotal - (discount?.amount ?? 0) - promotionsDiscount) + deliveryFee
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0)
+
+  // عروض BOGO/الباقات التلقائية — بتتفعّل من محتوى السلة نفسه من غير أي كود، فمحتاجة تتحسب
+  // دايماً (مش بس لما فيه كود خصم مطبّق زي useEffect الخصم اللي فوق)، وتُعاد كل ما يتغيّر
+  // محتوى السلة الفعلي المؤهّل. المبلغ النهائي الحقيقي دايماً بيتأكد من جديد جوه
+  // orderService.createOrder وقت الدفع — المعاينة هنا بس لعرض الخصم المتوقع للعميل.
+  useEffect(() => {
+    if (discountCartItems.length === 0) { setPromotions([]); return }
+    let cancelled = false
+    api.previewPromotions(discountCartItems)
+      .then(({ promotions: fresh }) => { if (!cancelled) setPromotions(fresh) })
+      .catch(() => { if (!cancelled) setPromotions([]) })
+    return () => { cancelled = true }
+  }, [discountCartItems])
 
   // إعادة التحقق من الخصم كلما تغير الإجمالي (تغيير كمية/حذف منتج) — قد يصبح الخصم غير صالح
   // (نسبة الخصم تتغير مع القيمة، أو الطلب لم يعد يحقق الحد الأدنى)، أو نلغيه بصمت لو صار غير صالح.
@@ -208,11 +225,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   function clearCart() {
     setItems([])
     setDiscount(null)
+    setPromotions([])
   }
 
   return (
     <CartContext.Provider value={{
-      items, detailedItems, hasBlockingIssues, totalQuantity, subtotal, deliveryFee, discount, total,
+      items, detailedItems, hasBlockingIssues, totalQuantity, subtotal, deliveryFee, discount, promotions, promotionsDiscount, total,
       addItem, setQuantity, removeItem, clearCart, applyDiscount, removeDiscount
     }}>
       {children}

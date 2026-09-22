@@ -21,6 +21,9 @@ const SECOND_PRODUCT_PRICE = 25
 
 async function resetFixtures() {
   await pool.query('DELETE FROM discount_usages')
+  await pool.query('DELETE FROM order_promotion_applications')
+  await pool.query('DELETE FROM promotion_bundle_items')
+  await pool.query('DELETE FROM promotions')
   await pool.query('DELETE FROM stock_movements')
   await pool.query('DELETE FROM order_items')
   await pool.query('DELETE FROM orders')
@@ -733,5 +736,74 @@ describe('order status history', () => {
     const resolved = await getOrderByNumberForGuestToken(order.orderNumber, order.guestTrackingToken!)
     expect(resolved?.statusHistory).toHaveLength(1)
     expect(resolved?.statusHistory?.[0]).toMatchObject({ fromStatus: null, toStatus: 'placed' })
+  })
+})
+
+describe('createOrder — auto-applied promotions (BOGO / bundles)', () => {
+  async function makeBuyXGetY(overrides: { buyQuantity?: number, getQuantity?: number, getDiscountPercent?: number } = {}) {
+    const { buyQuantity = 2, getQuantity = 1, getDiscountPercent = 100 } = overrides
+    await pool.query(
+      `INSERT INTO promotions (id, name, type, active, priority, trigger_product_id, buy_quantity, get_quantity, get_discount_percent)
+       VALUES ('test-promo-bogo', 'اشترِ واحصل', 'buy_x_get_y', 1, 0, $1, $2, $3, $4)`,
+      [PRODUCT_ID, buyQuantity, getQuantity, getDiscountPercent]
+    )
+  }
+
+  it('applies a matching BOGO promotion purely from cart contents, with no client field to request it', async () => {
+    // السلة الافتراضية (baseInput) بتحتوي على 5 وحدات من PRODUCT_ID (سعر 38) — كافية
+    // لتطبيق واحد لعرض "اشترِ 2 واحصل على 1 مجاناً" (يستهلك 3 من الـ5).
+    await makeBuyXGetY()
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(order.promotionDiscountAmount).toBe(38)
+    expect(order.promotionApplications).toHaveLength(1)
+    expect(order.promotionApplications![0].applicationsCount).toBe(1)
+    expect(order.total).toBe(190 - 38 + 30)
+  })
+
+  it('is completely server-computed — nothing in CheckoutInput can influence it', async () => {
+    // سقف أعلى (شراء5+هدية1=6) عشان نقدر نختبر سلة تحت السقف بس فوق الحد الأدنى للطلب (100).
+    await makeBuyXGetY({ buyQuantity: 5, getQuantity: 1 })
+    // مفيش أي حقل زي discountCode بيقدر يتحكم في العروض التلقائية — بس محتوى السلة الفعلي.
+    const withSmallerCart = await createOrder(baseInput({ items: [{ productId: PRODUCT_ID, quantity: 3 }] }), null, nextKey())
+    // كمية 3 (114 ج.م) فوق الحد الأدنى للطلب لكن تحت سقف العرض (6) فمفيش خصم عروض هنا.
+    expect(withSmallerCart.order.promotionDiscountAmount).toBe(0)
+  })
+
+  it('stacks additively with a discount code and with loyalty point redemption', async () => {
+    await makeBuyXGetY()
+    await pool.query(
+      `INSERT INTO discounts (code, type, value, min_order, used_count, active, created_at) VALUES ('STACK10', 'percentage', 10, 0, 0, 1, now())`
+    )
+    await adjustLoyaltyPointsManually(USER_ID, 100, 'دفعة اختبار', USER_ID)
+
+    const { order } = await createOrder(
+      baseInput({ discountCode: 'STACK10', loyaltyPointsRedeemed: 100 }),
+      USER_ID,
+      nextKey()
+    )
+    // subtotal=190, كوبون 10%=19, عروض=38 (وحدة مجانية), نقاط الولاء = 100 نقطة (حسب سعر
+    // الاسترداد الافتراضي) — المهم هنا إن الثلاثة اتخصموا مع بعض بالترتيب الصحيح، مش إن
+    // فيه أي واحد لغى التاني.
+    expect(order.discountAmount).toBe(19)
+    expect(order.promotionDiscountAmount).toBe(38)
+    expect(order.loyaltyDiscountAmount).toBeGreaterThan(0)
+    const expectedTotal = 190 - 19 - 38 - order.loyaltyDiscountAmount + 30
+    expect(order.total).toBe(Math.max(0, expectedTotal))
+  })
+
+  it('never lets the same cart unit fund two different promotions at once', async () => {
+    await makeBuyXGetY({ buyQuantity: 4, getQuantity: 1 }) // يستهلك 5 من أصل 5 المتاحة في baseInput
+    await pool.query(
+      `INSERT INTO promotions (id, name, type, active, priority, bundle_price) VALUES ('test-promo-bundle', 'باقة', 'bundle_fixed_price', 1, 0, 10)`
+    )
+    await pool.query(
+      `INSERT INTO promotion_bundle_items (promotion_id, product_id, required_quantity) VALUES ('test-promo-bundle', $1, 2)`,
+      [PRODUCT_ID]
+    )
+
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    // العرض الأول (أولوية 0 زي التاني، لكن created_at أسبق) بياخد كل الـ5 وحدات، فمفيش
+    // حاجة تفضل للباقة — تطبيق واحد بس، مش اتنين.
+    expect(order.promotionApplications).toHaveLength(1)
   })
 })

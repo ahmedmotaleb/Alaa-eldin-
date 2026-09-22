@@ -50,7 +50,7 @@ const initialCustomer: CustomerDetails = { fullName: '', mobile: '', governorate
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, clearCart } = useCart()
+  const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, promotions, promotionsDiscount, clearCart } = useCart()
   const { user } = useAuth()
   const { deliveryZones, deliverySlots } = useCatalog()
   const settings = getSettings()
@@ -121,11 +121,11 @@ export function CheckoutPage() {
     ? (subtotal === 0 || subtotal >= settings.freeShippingThreshold ? 0 : zoneFee)
     : deliveryFee
 
-  // معاينة الواجهة بس — نفس ترتيب الحساب الفعلي في السيرفر (فرعي -> خصم كوبون -> نقاط ولاء
-  // -> توصيل -> إجمالي)، لكن السيرفر هو المصدر الوحيد اللي بيتحقق فعلياً من الرصيد والحدود
-  // وبيحسب الرقم النهائي المعتمد وقت إرسال الطلب — أي فرق هنا (رصيد قديم مثلاً) بيترفض
+  // معاينة الواجهة بس — نفس ترتيب الحساب الفعلي في السيرفر (فرعي -> خصم كوبون -> عروض تلقائية
+  // -> نقاط ولاء -> توصيل -> إجمالي)، لكن السيرفر هو المصدر الوحيد اللي بيتحقق فعلياً من الرصيد
+  // والحدود وبيحسب الرقم النهائي المعتمد وقت إرسال الطلب — أي فرق هنا (رصيد قديم مثلاً) بيترفض
   // ويتوضّح للعميل برسالة "loyalty_balance_changed" بدل ما يتقبل بصمت برقم غلط.
-  const eligibleSubtotalForLoyalty = Math.max(0, subtotal - (discount?.amount ?? 0))
+  const eligibleSubtotalForLoyalty = Math.max(0, subtotal - (discount?.amount ?? 0) - promotionsDiscount)
   const loyaltyAvailable = settings.loyaltyEnabled && !!user
   const loyaltyMeetsMinOrder = eligibleSubtotalForLoyalty >= settings.loyaltyMinOrderForRedemption
   const maxDiscountByPercent = eligibleSubtotalForLoyalty * settings.loyaltyMaxRedemptionPercent / 100
@@ -474,6 +474,9 @@ export function CheckoutPage() {
       <div className="summary-card">
         <div><span>{ar.checkout.orderSummaryItemsCount(detailedItems.reduce((sum, i) => sum + i.quantity, 0))}</span><span>{formatMoney(subtotal)}</span></div>
         {discount && <div className="summary-discount"><span>{ar.cart.discountApplied(discount.code)}</span><span>-{formatMoney(discount.amount)}</span></div>}
+        {promotions.map((promo, index) => (
+          <div className="summary-discount" key={`${promo.name}-${index}`}><span>{promo.name}</span><span>-{formatMoney(promo.discountAmount)}</span></div>
+        ))}
         {loyaltyPointsToApply > 0 && (
           <div className="summary-discount"><span>{ar.checkout.loyalty.discountLine(formatNumber(loyaltyPointsToApply))}</span><span>-{formatMoney(loyaltyDiscountPreview)}</span></div>
         )}

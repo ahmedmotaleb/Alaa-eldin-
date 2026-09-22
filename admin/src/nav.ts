@@ -69,6 +69,12 @@ export const NAV: NavGroup[] = [
     ]
   },
   {
+    id: 'promotions', label: 'العروض', icon: '🎁', children: [
+      { id: 'all', label: 'جميع العروض' },
+      { id: 'new', label: 'إنشاء عرض' }
+    ]
+  },
+  {
     id: 'analytics', label: 'التحليلات', icon: '📈', children: [
       { id: 'overview', label: 'نظرة عامة' },
       { id: 'sales', label: 'المبيعات' },

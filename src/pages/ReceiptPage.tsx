@@ -103,6 +103,9 @@ export function ReceiptPage() {
           {order.discountCode && (
             <div className="receipt-discount"><span>{ar.receipt.discountLabel(order.discountCode)}</span><span>-{formatMoney(order.discountAmount)}</span></div>
           )}
+          {order.promotionApplications?.map((promo, index) => (
+            <div className="receipt-discount" key={`${promo.name}-${index}`}><span>{promo.name}</span><span>-{formatMoney(promo.discountAmount)}</span></div>
+          ))}
           {order.loyaltyPointsRedeemed > 0 && (
             <div className="receipt-discount"><span>{ar.receipt.loyaltyDiscountLabel}</span><span>-{formatMoney(order.loyaltyDiscountAmount)}</span></div>
           )}

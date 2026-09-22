@@ -90,6 +90,8 @@ export interface ApiOrder {
   status: 'placed' | 'preparing' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled'
   discountCode?: string
   discountAmount: number
+  promotionDiscountAmount: number
+  promotionApplications?: ApiPromotionApplication[]
   guestTrackingToken?: string
   // بيتحدد بس في رد تتبّع الطلب (GET /orders/:orderNumber أو /track/:orderNumber) — راجع
   // TrackingPage.tsx. صف واحد لكل انتقال حالة فعلي، بترتيب زمني تصاعدي.
@@ -146,6 +148,11 @@ export interface ApiDiscount {
   value: number
   amount: number
   freeDelivery: boolean
+}
+
+export interface ApiPromotionApplication {
+  name: string
+  discountAmount: number
 }
 
 export type ApiStockState = 'in_stock' | 'low_stock' | 'out_of_stock'
@@ -534,5 +541,7 @@ export const api = {
       body: JSON.stringify({ decision })
     }),
   validateDiscount: (code: string, subtotal: number, items: { productId: string, categoryId: string, quantity: number, unitPrice: number }[] = []) =>
-    request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal, items }) })
+    request<{ discount: ApiDiscount }>('/discounts/validate', { method: 'POST', body: JSON.stringify({ code, subtotal, items }) }),
+  previewPromotions: (items: { productId: string, categoryId: string, quantity: number, unitPrice: number }[]) =>
+    request<{ promotions: ApiPromotionApplication[], totalDiscount: number }>('/promotions/preview', { method: 'POST', body: JSON.stringify({ items }) })
 }

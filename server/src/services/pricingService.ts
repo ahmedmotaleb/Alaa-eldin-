@@ -37,13 +37,16 @@ export function calculateDeliveryFee(subtotal: number, settings: DeliverySetting
   return subtotal >= settings.freeShippingThreshold ? 0 : settings.deliveryFee
 }
 
-// ترتيب الحساب ثابت ومقصود: الإجمالي الفرعي -> خصم الكوبون/العرض -> خصم نقاط الولاء ->
-// رسوم التوصيل -> الإجمالي النهائي. الأساس المؤهّل لاكتساب نقاط ولاء جديدة على نفس الطلب
-// (لو تم التسليم) هو "afterLoyaltyPiastres" ده بالظبط — يعني النقاط بتتكسب على المتبقي بعد
-// خصم العرض وخصم الولاء الاتنين، مش على رسوم التوصيل ومش على القيمة اللي اتدفعت بنقاط.
-export function computeTotal(subtotal: number, discountAmount: number, deliveryFee: number, loyaltyDiscountAmount = 0): number {
+// ترتيب الحساب ثابت ومقصود: الإجمالي الفرعي -> خصم كود الكوبون -> خصم العروض التلقائية
+// (BOGO/باقات) -> خصم نقاط الولاء -> رسوم التوصيل -> الإجمالي النهائي. كود الكوبون والعروض
+// التلقائية مستقلان تماماً عن بعض (يقدروا يتراكموا سوا في نفس الطلب — راجع الشرح في مايجريشن
+// العروض)، لكن الاتنين بيتخصموا قبل نقاط الولاء. الأساس المؤهّل لاكتساب نقاط ولاء جديدة على
+// نفس الطلب (لو تم التسليم) هو "afterLoyaltyPiastres" ده بالظبط — يعني النقاط بتتكسب على
+// المتبقي بعد كل الخصومات التلاتة، مش على رسوم التوصيل ومش على القيمة اللي اتدفعت بنقاط.
+export function computeTotal(subtotal: number, discountAmount: number, deliveryFee: number, loyaltyDiscountAmount = 0, promotionDiscountAmount = 0): number {
   const afterDiscountPiastres = Math.max(0, toPiastres(subtotal) - toPiastres(discountAmount))
-  const afterLoyaltyPiastres = Math.max(0, afterDiscountPiastres - toPiastres(loyaltyDiscountAmount))
+  const afterPromotionPiastres = Math.max(0, afterDiscountPiastres - toPiastres(promotionDiscountAmount))
+  const afterLoyaltyPiastres = Math.max(0, afterPromotionPiastres - toPiastres(loyaltyDiscountAmount))
   const totalPiastres = afterLoyaltyPiastres + toPiastres(deliveryFee)
   return toEgp(totalPiastres)
 }

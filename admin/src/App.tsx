@@ -53,6 +53,8 @@ const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ de
 const WalletPage = lazy(() => import('./pages/WalletPage').then(m => ({ default: m.WalletPage })))
 const DiscountsListPage = lazy(() => import('./pages/discounts/DiscountsListPage').then(m => ({ default: m.DiscountsListPage })))
 const DiscountFormPage = lazy(() => import('./pages/discounts/DiscountFormPage').then(m => ({ default: m.DiscountFormPage })))
+const PromotionsListPage = lazy(() => import('./pages/promotions/PromotionsListPage').then(m => ({ default: m.PromotionsListPage })))
+const PromotionFormPage = lazy(() => import('./pages/promotions/PromotionFormPage').then(m => ({ default: m.PromotionFormPage })))
 const UsersPage = lazy(() => import('./pages/settings/UsersPage').then(m => ({ default: m.UsersPage })))
 const RolesPage = lazy(() => import('./pages/settings/RolesPage').then(m => ({ default: m.RolesPage })))
 const WhatsAppTemplatesPage = lazy(() => import('./pages/settings/WhatsAppTemplatesPage').then(m => ({ default: m.WhatsAppTemplatesPage })))
@@ -141,6 +143,10 @@ export default function App() {
               <Route path="/discounts/all" element={<DiscountsListPage />} />
               <Route path="/discounts/new" element={<DiscountFormPage />} />
               <Route path="/discounts/edit/:code" element={<DiscountFormPage />} />
+              <Route path="/promotions" element={<Navigate to="/promotions/all" replace />} />
+              <Route path="/promotions/all" element={<PromotionsListPage />} />
+              <Route path="/promotions/new" element={<PromotionFormPage />} />
+              <Route path="/promotions/edit/:id" element={<PromotionFormPage />} />
               <Route path="/settings/users" element={<RequireAdminRole><UsersPage /></RequireAdminRole>} />
               <Route path="/settings/roles" element={<RequireAdminRole><RolesPage /></RequireAdminRole>} />
               <Route path="/settings/store" element={<StoreSettingsPage />} />

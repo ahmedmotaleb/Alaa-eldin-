@@ -18,6 +18,7 @@ import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
 import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen } from './deliveryService.js'
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { lockAndValidateLoyaltyRedemption, commitLoyaltyRedemption, restoreRedeemedPointsForOrder, reverseEarnedPointsForOrder } from './loyaltyService.js'
+import { listActivePromotions, computePromotionApplications, recordPromotionApplications, listPromotionApplicationsForOrder, type PromotionApplicationResult } from './promotionService.js'
 import { logEvent, logWarn } from '../logger.js'
 
 export class OrderError extends Error {
@@ -51,6 +52,7 @@ interface OrderRow {
   status: string
   discountCode: string | null
   discountAmount: number
+  promotionDiscountAmount: number
   loyaltyPointsRedeemed: number
   loyaltyDiscountAmount: number
   requestFingerprint: string | null
@@ -74,6 +76,10 @@ export interface SerializedOrder {
   status: string
   discountCode?: string
   discountAmount: number
+  promotionDiscountAmount: number
+  // زي statusHistory تماماً — بس في المسارات اللي بتعرض تفاصيل الطلب الكاملة (serializeOrderRow)،
+  // مش في قائمة الطلبات العادية (listOrdersForUser) عشان ما تحتاجش استعلام إضافي لكل صف.
+  promotionApplications?: PromotionApplicationResult[]
   loyaltyPointsRedeemed: number
   loyaltyDiscountAmount: number
   // بيتحدد بس لو الطلب من غير تسجيل دخول (guest) — العميل المسجّل بيستخدم ownership العادي
@@ -90,6 +96,7 @@ const SELECT_ORDER_FIELDS = `
   id, order_number as "orderNumber", created_at as "createdAt", delivery_slot as "deliverySlot", delivery_date as "deliveryDate", payment_method as "paymentMethod",
   customer_full_name as "customerFullName", customer_mobile as "customerMobile", customer_governorate as "customerGovernorate", customer_address as "customerAddress",
   subtotal, delivery_fee as "deliveryFee", total, status, discount_code as "discountCode", discount_amount as "discountAmount",
+  promotion_discount_amount as "promotionDiscountAmount",
   loyalty_points_redeemed as "loyaltyPointsRedeemed", loyalty_discount_amount as "loyaltyDiscountAmount",
   request_fingerprint as "requestFingerprint", guest_tracking_token as "guestTrackingToken", delivery_instructions as "deliveryInstructions",
   substitution_preference as "substitutionPreference"
@@ -97,6 +104,7 @@ const SELECT_ORDER_FIELDS = `
 
 async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
   const itemsByOrder = await fetchItemsForOrders([row.id])
+  const promotionApplications = row.promotionDiscountAmount > 0 ? await listPromotionApplicationsForOrder(row.id) : []
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -117,6 +125,8 @@ async function serializeOrderRow(row: OrderRow): Promise<SerializedOrder> {
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
+    promotionDiscountAmount: row.promotionDiscountAmount,
+    promotionApplications,
     loyaltyPointsRedeemed: row.loyaltyPointsRedeemed,
     loyaltyDiscountAmount: row.loyaltyDiscountAmount,
     guestTrackingToken: row.guestTrackingToken ?? undefined,
@@ -311,13 +321,24 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
         logEvent('discount_applied', { discountCode: appliedDiscountCode, discountAmount, freeDelivery: discountGrantsFreeDelivery })
       }
 
-      // استخدام نقاط الولاء (لو مطلوب) — لازم يتحقق منه هنا، بعد ما خصم الكوبون اتحدد وقبل
-      // ما رسوم التوصيل تتحسب، بالظبط زي ترتيب الحساب المطلوب: الإجمالي الفرعي -> الخصم ->
-      // الولاء -> التوصيل -> الإجمالي النهائي. القفل والتحقق بيحصلوا هنا جوه نفس المعاملة —
-      // لو اتنين طلبوا نفس اللحظة يستخدموا كل رصيد العميل، التاني هيلاقي القفل مستني ويرفض
-      // برصيد محدّث فعلياً، مش نسخة قديمة (راجع lockAndValidateLoyaltyRedemption).
+      // عروض BOGO/الباقات التلقائية — بتتحسب من محتوى السلة الفعلي نفسه (مش من كود بيكتبه
+      // العميل)، فمستقلة تماماً عن كود الخصم فوق ومش بتتأثر بنطاقه (scope). لازم تتحسب هنا
+      // (مصدر الحقيقة الوحيد وقت إنشاء الطلب الفعلي)، مش بس تتقرأ من قيمة جاية من الفرونت
+      // إند، عشان العميل ميقدرش يزوّر مبلغ الخصم.
+      const promotionCartItems = lineItems.map(li => ({
+        productId: li.productId, categoryId: li.categoryId, quantity: li.quantity, unitPrice: li.unitPrice
+      }))
+      const activePromotions = await listActivePromotions()
+      const promotionResult = computePromotionApplications(promotionCartItems, activePromotions)
+      const promotionDiscountAmount = promotionResult.totalDiscount
+
+      // استخدام نقاط الولاء (لو مطلوب) — لازم يتحقق منه هنا، بعد ما خصم الكوبون وخصم العروض
+      // اتحددوا وقبل ما رسوم التوصيل تتحسب، بالظبط زي ترتيب الحساب المطلوب: الإجمالي الفرعي
+      // -> الخصم -> العروض -> الولاء -> التوصيل -> الإجمالي النهائي. القفل والتحقق بيحصلوا هنا
+      // جوه نفس المعاملة — لو اتنين طلبوا نفس اللحظة يستخدموا كل رصيد العميل، التاني هيلاقي
+      // القفل مستني ويرفض برصيد محدّث فعلياً، مش نسخة قديمة (راجع lockAndValidateLoyaltyRedemption).
       const requestedLoyaltyPoints = input.loyaltyPointsRedeemed ?? 0
-      const eligibleSubtotalForLoyalty = Math.max(0, subtotal - discountAmount)
+      const eligibleSubtotalForLoyalty = Math.max(0, subtotal - discountAmount - promotionDiscountAmount)
       const redemption = await lockAndValidateLoyaltyRedemption(client, userId, requestedLoyaltyPoints, eligibleSubtotalForLoyalty)
       if (!redemption.ok) {
         logWarn('loyalty_redemption_rejected', { errorCode: redemption.error, requestedLoyaltyPoints })
@@ -328,7 +349,7 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       const deliveryFee = discountGrantsFreeDelivery
         ? 0
         : calculateDeliveryFee(subtotal, { freeShippingThreshold: settings.freeShippingThreshold, deliveryFee: zoneDeliveryFee })
-      const total = computeTotal(subtotal, discountAmount, deliveryFee, loyaltyDiscountAmount)
+      const total = computeTotal(subtotal, discountAmount, deliveryFee, loyaltyDiscountAmount, promotionDiscountAmount)
 
       const id = crypto.randomUUID()
       const orderNumber = await nextOrderNumber(client)
@@ -342,14 +363,14 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
           `INSERT INTO orders (
              id, order_number, user_id, created_at, delivery_slot, delivery_date, payment_method,
              customer_full_name, customer_mobile, customer_governorate, customer_address,
-             subtotal, delivery_fee, total, status, discount_code, discount_amount,
+             subtotal, delivery_fee, total, status, discount_code, discount_amount, promotion_discount_amount,
              loyalty_points_redeemed, loyalty_discount_amount,
              idempotency_key, request_fingerprint, guest_tracking_token, delivery_instructions, substitution_preference
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'placed',$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
           [
             id, orderNumber, userId, createdAt, input.deliverySlot, input.deliveryDate, input.paymentMethod,
             input.customer.fullName, input.customer.mobile, input.customer.governorate, input.customer.address,
-            subtotal, deliveryFee, total, appliedDiscountCode, discountAmount,
+            subtotal, deliveryFee, total, appliedDiscountCode, discountAmount, promotionDiscountAmount,
             redemption.pointsToRedeem, loyaltyDiscountAmount,
             idempotencyKey, fingerprint, guestTrackingToken, input.deliveryInstructions ?? '', input.substitutionPreference
           ]
@@ -366,6 +387,8 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
           [id, item.productId, item.name, item.unit, item.unitPrice, item.quantity, item.lineTotal, item.variantId, item.variantName]
         )
       }
+
+      if (promotionResult.applications.length > 0) await recordPromotionApplications(client, id, promotionResult.applications)
 
       await recordOrderStatusChange(client, { orderId: id, fromStatus: null, toStatus: 'placed', source: 'system' })
 
@@ -486,6 +509,7 @@ export async function listOrdersForUser(userId: string, page: number, limit: num
     status: row.status,
     discountCode: row.discountCode ?? undefined,
     discountAmount: row.discountAmount,
+    promotionDiscountAmount: row.promotionDiscountAmount,
     loyaltyPointsRedeemed: row.loyaltyPointsRedeemed,
     loyaltyDiscountAmount: row.loyaltyDiscountAmount,
     deliveryInstructions: row.deliveryInstructions || undefined,

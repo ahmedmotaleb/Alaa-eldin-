@@ -829,6 +829,37 @@ export interface AdminDiscount {
 
 export type AdminDiscountInput = Omit<AdminDiscount, 'usedCount' | 'createdAt'>
 
+export interface AdminPromotionBundleItem {
+  id?: number
+  productId: string | null
+  categoryId: string | null
+  requiredQuantity: number
+}
+
+export interface AdminPromotion {
+  id: string
+  name: string
+  type: 'buy_x_get_y' | 'bundle_fixed_price'
+  active: boolean
+  startsAt: string | null
+  expiresAt: string | null
+  priority: number
+  maxApplicationsPerOrder: number | null
+  triggerProductId: string | null
+  triggerCategoryId: string | null
+  buyQuantity: number | null
+  getQuantity: number | null
+  getDiscountPercent: number | null
+  rewardProductId: string | null
+  rewardCategoryId: string | null
+  bundlePrice: number | null
+  bundleItems?: AdminPromotionBundleItem[]
+  createdAt: string
+  createdBy: string | null
+}
+
+export type AdminPromotionInput = Omit<AdminPromotion, 'createdAt' | 'createdBy'>
+
 export interface AdminSupplier {
   id: string
   name: string
@@ -1565,6 +1596,16 @@ export const api = {
     request<{ discount: AdminDiscount }>('/admin/discounts', { method: 'POST', body: JSON.stringify(body) }),
   updateDiscount: (code: string, body: Partial<AdminDiscountInput>) =>
     request<{ discount: AdminDiscount }>(`/admin/discounts/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  listPromotions: (params: { page?: number, limit?: number, search?: string, type?: AdminPromotion['type'] } = {}) =>
+    request<{ promotions: AdminPromotion[] } & Partial<PageInfo>>(`/admin/promotions${buildQuery(params)}`),
+  getPromotion: (id: string) =>
+    request<{ promotion: AdminPromotion }>(`/admin/promotions/${encodeURIComponent(id)}`),
+  createPromotion: (body: Partial<AdminPromotionInput>) =>
+    request<{ promotion: AdminPromotion }>('/admin/promotions', { method: 'POST', body: JSON.stringify(body) }),
+  updatePromotion: (id: string, body: Partial<AdminPromotionInput>) =>
+    request<{ promotion: AdminPromotion }>(`/admin/promotions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePromotion: (id: string) =>
+    request<void>(`/admin/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   listSuppliers: (params: { search?: string, activeOnly?: boolean } = {}) =>
     request<{ suppliers: AdminSupplier[] }>(`/admin/suppliers${buildQuery({ search: params.search, activeOnly: params.activeOnly ? 'true' : undefined })}`),
   getSupplier: (id: string) =>

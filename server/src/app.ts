@@ -42,6 +42,8 @@ import { adminCustomersRouter } from './routes/adminCustomers.js'
 import { adminReferralsRouter } from './routes/adminReferrals.js'
 import { discountsRouter } from './routes/discounts.js'
 import { adminDiscountsRouter } from './routes/adminDiscounts.js'
+import { promotionsRouter } from './routes/promotions.js'
+import { adminPromotionsRouter } from './routes/adminPromotions.js'
 import { adminStockMovementsRouter } from './routes/adminStockMovements.js'
 import { adminCycleCountsRouter } from './routes/adminCycleCounts.js'
 import { adminAlertsRouter } from './routes/adminAlerts.js'
@@ -205,6 +207,7 @@ app.use('/api/delivery', deliveryRouter)
 app.use('/api/admin/delivery', adminDeliveryRouter)
 app.use('/api', catalogRouter)
 app.use('/api', discountsRouter)
+app.use('/api', promotionsRouter)
 app.use('/api', bannersRouter)
 app.use('/api', settingsRouter)
 app.use('/api', pagesRouter)
@@ -233,6 +236,7 @@ app.use('/api/admin/categories', adminCategoriesRouter)
 app.use('/api/admin/customers', adminCustomersRouter)
 app.use('/api/admin/referrals', adminReferralsRouter)
 app.use('/api/admin/discounts', adminDiscountsRouter)
+app.use('/api/admin/promotions', adminPromotionsRouter)
 app.use('/api/admin/stock-movements', adminStockMovementsRouter)
 app.use('/api/admin/cycle-counts', adminCycleCountsRouter)
 app.use('/api/admin/alerts', adminAlertsRouter)
