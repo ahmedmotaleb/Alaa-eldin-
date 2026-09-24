@@ -76,10 +76,11 @@
 
 ## الحالة الحالية
 
-**غير مُفعّل فعلياً حتى الآن (NOT LIVE)** — القالب ده لسه محتاج يتعمل ويتعمد يدوياً في
-Meta Business Manager بمعرفة صاحب حساب واتساب Business الفعلي، ومتغير البيئة
-`WHATSAPP_ORDER_CONFIRMATION_TEMPLATE` (ولو لزم `WHATSAPP_ORDER_CONFIRMATION_LANGUAGE`)
-لازم يتضاف في متغيرات بيئة خدمة السيرفر على Railway بعد الاعتماد. لحد ما ده يتم، أي
-محاولة إرسال تأكيد تلقائي هتفشل بهدوء (تُسجَّل كـ `failed` في نظام الملكية، مع تحذير
-`whatsapp_order_confirmation_template_missing` وقت الإقلاع) من غير أي تأثير على نجاح
-الطلب نفسه.
+**مُفعّل فعلياً في الإنتاج (LIVE) — ٢٠٢٦-٠٩-٢٤.** القالب `order_confirmation_ar` تم
+اعتماده فعلياً في Meta Business Manager بمعرفة صاحب حساب واتساب Business الفعلي،
+ومتغيرات البيئة الثلاثة (`WHATSAPP_ACCESS_TOKEN`، `WHATSAPP_PHONE_NUMBER_ID`،
+`WHATSAPP_ORDER_CONFIRMATION_TEMPLATE`) اتضافت في متغيرات بيئة خدمة السيرفر على
+Railway. تم التحقق فعلياً من نجاح النشر (`latestDeployment.status: "SUCCESS"`) ومن
+لوج الإقلاع نفسه — `startup_config_summary` بيعرض `whatsapp_order_confirmation` جوه
+`configured`، من غير أي `startup_config_partial_warning`. تأكيد الطلب التلقائي عبر
+واتساب شغّال فعلياً الآن لأي طلب جديد.
