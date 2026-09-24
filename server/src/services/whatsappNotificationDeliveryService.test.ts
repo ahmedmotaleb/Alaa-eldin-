@@ -116,12 +116,14 @@ describe('whatsappNotificationDeliveryService — concurrency (13A-13Q)', () => 
     expect(status?.providerMessageId).toBe('wamid.new-owner') // مش 'wamid.stale'
   })
 
-  // E: سباق إعادة محاولة فشل — إشعار فشل قبل كده (attempt_count < الحد الأقصى)، وعمليتين
-  // بيحاولوا يعيدوا محاولته في نفس اللحظة — واحدة بس لازم تكسب حق إعادة المحاولة.
+  // E: سباق إعادة محاولة فشل — إشعار فشل قبل كده بخطأ 'retryable' مؤكد (attempt_count < الحد
+  // الأقصى)، وعمليتين بيحاولوا يعيدوا محاولته في نفس اللحظة — واحدة بس لازم تكسب حق إعادة
+  // المحاولة. (لو الفشل كان 'unknown'، ما كانش هيبقى مؤهل لإعادة محاولة أصلاً — راجع الاختبارات
+  // الجديدة تحت لهذا السلوك تحديداً.)
   it('E: failed-retry race — exactly one worker wins the retry', async () => {
     const first = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
     if (!first.claimed) throw new Error('unreachable')
-    const failedOk = await markNotificationFailed(first.deliveryId, first.ownerToken, 'unknown: network down')
+    const failedOk = await markNotificationFailed(first.deliveryId, first.ownerToken, 'retryable', 'http_500')
     expect(failedOk).toBe(true)
 
     const [a, b] = await Promise.all([
@@ -154,14 +156,14 @@ describe('whatsappNotificationDeliveryService — concurrency (13A-13Q)', () => 
     let deliveryId = first.deliveryId
 
     for (let i = 1; i < MAX_AUTOMATIC_ATTEMPTS; i++) {
-      await markNotificationFailed(deliveryId, ownerToken, 'unknown: network down')
+      await markNotificationFailed(deliveryId, ownerToken, 'retryable', 'http_500')
       const retried = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
       expect(retried.claimed).toBe(true)
       if (!retried.claimed) throw new Error('unreachable')
       ownerToken = retried.ownerToken
       deliveryId = retried.deliveryId
     }
-    await markNotificationFailed(deliveryId, ownerToken, 'unknown: network down')
+    await markNotificationFailed(deliveryId, ownerToken, 'retryable', 'http_500')
 
     const status = await getAutomaticNotificationStatus(orderId, NOTIFICATION_TYPE)
     expect(status?.attemptCount).toBe(MAX_AUTOMATIC_ATTEMPTS)
@@ -173,10 +175,49 @@ describe('whatsappNotificationDeliveryService — concurrency (13A-13Q)', () => 
   it('listRetryableFailedNotifications excludes permanent errors and max-attempt rows', async () => {
     const first = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
     if (!first.claimed) throw new Error('unreachable')
-    await markNotificationFailed(first.deliveryId, first.ownerToken, 'permanent: template not approved')
+    await markNotificationFailed(first.deliveryId, first.ownerToken, 'permanent', 'template not approved')
 
     const candidates = await listRetryableFailedNotifications(NOTIFICATION_TYPE, 50)
     expect(candidates.find(c => c.orderId === orderId)).toBeUndefined()
+  })
+
+  // بند 13/14 من المواصفة: نتيجة "unknown" (شبكة/تايم آوت قبل استلام أي رد فعلي من Meta)
+  // لازم تُستبعد من قائمة المرشّحين للسكربت الدوري — نفس استبعاد "permanent" بالظبط، لأن
+  // إعادة محاولة عليها ممكن تنتج رسالة تأكيد مكررة فعلياً لو Meta كانت استلمت الطلب الأصلي.
+  it('listRetryableFailedNotifications excludes "unknown" (ambiguous) provider results too', async () => {
+    const first = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
+    if (!first.claimed) throw new Error('unreachable')
+    await markNotificationFailed(first.deliveryId, first.ownerToken, 'unknown', 'network down')
+
+    const candidates = await listRetryableFailedNotifications(NOTIFICATION_TYPE, 50)
+    expect(candidates.find(c => c.orderId === orderId)).toBeUndefined()
+  })
+
+  // بند 17 (إلزامي): القاعدة لازم تتفرض من داخل خدمة الملكية نفسها مباشرة، مش بس من فلترة
+  // استعلام السكربت — استدعاء claimAutomaticNotification مباشرة على إشعار فشل بنتيجة 'unknown'
+  // أو 'permanent' لازم يرفض فوراً (not_retryable) من غير أي محاولة UPDATE ذرّية أصلاً.
+  it('claimAutomaticNotification directly refuses to retry an "unknown"-result failure', async () => {
+    const first = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
+    if (!first.claimed) throw new Error('unreachable')
+    await markNotificationFailed(first.deliveryId, first.ownerToken, 'unknown', 'network down')
+
+    const attempt = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
+    expect(attempt).toEqual({ claimed: false, reason: 'not_retryable' })
+
+    const status = await getAutomaticNotificationStatus(orderId, NOTIFICATION_TYPE)
+    expect(status?.attemptCount).toBe(1) // مفيش أي محاولة إعادة اتحسبت
+  })
+
+  it('claimAutomaticNotification directly refuses to retry a "permanent"-result failure', async () => {
+    const first = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
+    if (!first.claimed) throw new Error('unreachable')
+    await markNotificationFailed(first.deliveryId, first.ownerToken, 'permanent', 'template not approved')
+
+    const attempt = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
+    expect(attempt).toEqual({ claimed: false, reason: 'not_retryable' })
+
+    const status = await getAutomaticNotificationStatus(orderId, NOTIFICATION_TYPE)
+    expect(status?.attemptCount).toBe(1)
   })
 
   it('markNotificationFailed reports ownership lost when called with a stale owner token after takeover', async () => {
@@ -189,7 +230,7 @@ describe('whatsappNotificationDeliveryService — concurrency (13A-13Q)', () => 
     const second = await claimAutomaticNotification(orderId, NOTIFICATION_TYPE)
     if (!second.claimed) throw new Error('unreachable')
 
-    const staleResult = await markNotificationFailed(first.deliveryId, first.ownerToken, 'unknown: timeout')
+    const staleResult = await markNotificationFailed(first.deliveryId, first.ownerToken, 'unknown', 'timeout')
     expect(staleResult).toBe(false)
   })
 })

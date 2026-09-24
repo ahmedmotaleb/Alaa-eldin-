@@ -64,6 +64,7 @@ type BusinessEvent =
   | 'whatsapp_notification_lease_reclaimed' | 'whatsapp_notification_ownership_lost'
   | 'whatsapp_notification_sent' | 'whatsapp_notification_failed'
   | 'whatsapp_notification_provider_result_unknown' | 'whatsapp_notification_retry_skipped'
+  | 'whatsapp_notification_retry_blocked'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

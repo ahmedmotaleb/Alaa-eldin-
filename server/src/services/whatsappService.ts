@@ -10,7 +10,7 @@ import { logEvent, logWarn } from '../logger.js'
 import {
   claimAutomaticNotification, markNotificationSent, markNotificationFailed,
   listRetryableFailedNotifications, getAutomaticNotificationStatus,
-  type NotificationDeliveryStatusRow
+  type NotificationDeliveryStatusRow, type NotificationFailureClass
 } from './whatsappNotificationDeliveryService.js'
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN
@@ -109,12 +109,15 @@ type SendResult =
   | { success: true; providerMessageId: string }
   | { success: false; error: string }
 
-// class مسؤول بس عن قرار "هل الفشل ده يستاهل إعادة محاولة تلقائية لاحقاً؟":
-// retryable: تايم آوت/429/5xx (مشكلة مؤقتة في المزوّد نفسه)
-// permanent: أي رد HTTP آخر من Meta (توكن غلط، قالب غير موجود/غير معتمد، لغة/بارامترات غلط...)
+// نفس التصنيف المُستخدم في whatsappNotificationDeliveryService.ts (راجع تعليق
+// NotificationFailureClass هناك) — بس بالاسم القديم هنا لتقليل حجم التعديل في باقي الملف:
+// retryable: رد HTTP مؤقت مؤكد من Meta (429/5xx) — إعادة محاولة تلقائية مسموحة.
+// permanent: أي رد HTTP آخر من Meta (توكن غلط، قالب غير موجود/غير معتمد، لغة/بارامترات غلط،
+//   رقم وجهة غير صالح) — إعادة محاولة تلقائية ممنوعة، الخطأ مش هيتحل بإعادة المحاولة أصلاً.
 // unknown: الطلب فشل قبل ما نستلم أي رد فعلي من Meta خالص (تايم آوت محلي أو خطأ شبكة) —
-//   مينفعش نعرف هل الرسالة وصلت لـ Meta فعلاً ولا لأ، فمش فشل مؤكد ومش نجاح مؤكد.
-type ProviderErrorClass = 'retryable' | 'permanent' | 'unknown'
+//   Meta ممكن تكون استلمت الرسالة الأصلية فعلاً، فإعادة محاولة تلقائية عليها ممنوعة عمداً
+//   (خطر تأكيد مكرر فعلي للعميل) — مينفعش نعامله كفشل مؤقت عادي.
+type ProviderErrorClass = NotificationFailureClass
 
 interface TemplateSendResult {
   success: boolean
@@ -469,8 +472,9 @@ export async function sendOrderConfirmationWhatsApp(order: OrderConfirmationInpu
 
     if (!result.ok) {
       // رقم موبايل غير صالح فعلياً محفوظ بالخطأ في بيانات الطلب — إعادة المحاولة لاحقاً
-      // مش هتحل المشكلة، فبنسجّلها كخطأ دائم عشان سكربت إعادة المحاولة الدوري يتجاهلها.
-      await markNotificationFailed(claim.deliveryId, claim.ownerToken, `permanent: ${result.reason}`)
+      // مش هتحل المشكلة، فده failure_class='permanent' صريح عشان نظام الملكية وسكربت
+      // إعادة المحاولة الدوري يتجاهلوه تماماً (راجع claimAutomaticNotification).
+      await markNotificationFailed(claim.deliveryId, claim.ownerToken, 'permanent', result.reason)
       logWarn('whatsapp_order_confirmation_failed', { orderId: order.orderId, error: result.reason })
       return
     }
@@ -481,13 +485,15 @@ export async function sendOrderConfirmationWhatsApp(order: OrderConfirmationInpu
       return
     }
 
+    // errorClass جاي مباشرة من callWhatsAppCloudApiTemplate (راجع تعليقه فوق) وبيتخزن كـ
+    // failure_class صريح — ده المصدر الوحيد اللي بيقرر أهلية إعادة المحاولة التلقائية،
+    // مفيش أي اعتماد على تحليل نص result.error لاحقاً.
     if (result.errorClass === 'unknown') {
       logWarn('whatsapp_notification_provider_result_unknown', {
         orderId: order.orderId, notificationType: ORDER_CONFIRMATION_CATEGORY, attemptCount: claim.attemptCount
       })
     }
-    const errorPrefix = result.errorClass === 'unknown' ? 'unknown: ' : result.errorClass === 'permanent' ? 'permanent: ' : ''
-    await markNotificationFailed(claim.deliveryId, claim.ownerToken, `${errorPrefix}${result.error}`)
+    await markNotificationFailed(claim.deliveryId, claim.ownerToken, result.errorClass, result.error)
     logWarn('whatsapp_order_confirmation_failed', { orderId: order.orderId, error: result.error })
   } catch (err) {
     logWarn('whatsapp_order_confirmation_error', { orderId: order.orderId, error: err instanceof Error ? err.message : 'unknown_error' })

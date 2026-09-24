@@ -188,7 +188,17 @@ export function OrderDrawer({
               </div>
             </div>
           )}
-          {confirmationReady && confirmationStatus?.status === 'failed' && (
+          {confirmationReady && confirmationStatus?.status === 'failed' && confirmationStatus.failureClass === 'unknown' && (
+            <div style={{ fontSize: 12.5, color: '#B4740E', fontWeight: 600 }}>
+              حالة الإرسال غير مؤكدة (بعد {confirmationStatus.attemptCount} محاولة)
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#8A948C', marginTop: 2 }}>
+                تعذر التأكد من وصول الرسالة لواتساب — ممكن تكون فعلاً اتبعتت. الإرسال التلقائي
+                مش هيعيد المحاولة تلقائياً (تجنباً لتكرار الرسالة)؛ لو حابب تتأكد، استخدم
+                "إعادة إرسال يدوي" تحت.
+              </div>
+            </div>
+          )}
+          {confirmationReady && confirmationStatus?.status === 'failed' && confirmationStatus.failureClass !== 'unknown' && (
             <div style={{ fontSize: 12.5, color: '#B42318', fontWeight: 600 }}>
               فشل الإرسال (بعد {confirmationStatus.attemptCount} محاولة) — {confirmationStatus.lastError ?? 'خطأ غير معروف'}
             </div>

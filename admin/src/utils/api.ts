@@ -152,6 +152,10 @@ export interface WhatsAppNotificationDeliveryStatus {
   status: 'pending' | 'sent' | 'failed'
   attemptCount: number
   providerMessageId: string | null
+  // بس لما status='failed': 'retryable' (هيعاد المحاولة تلقائياً)، 'permanent' (خطأ مش هيتحل
+  // بإعادة المحاولة)، 'unknown' (نتيجة غامضة — Meta ممكن تكون استلمت الرسالة فعلاً، فمفيش
+  // إعادة محاولة تلقائية عليها أبداً؛ لازم تتعرض بوضوح كـ"غير مؤكد" مش "فشل" في الواجهة).
+  failureClass: 'retryable' | 'permanent' | 'unknown' | null
   lastError: string | null
   sentAt: string | null
   updatedAt: string

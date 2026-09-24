@@ -256,31 +256,37 @@ describe('retryFailedOrderConfirmations (whatsapp:retry-confirmations cron scrip
     await pool.end()
   })
 
-  it('retries a previously failed automatic confirmation and succeeds once the provider recovers', async () => {
-    const { whatsappService, pool } = await loadConfigured()
+  // بند 16 من المواصفة: فشل مزوّد مؤقت مؤكد (Meta بترجع 500 صراحة) — failure_class='retryable'،
+  // وسكربت إعادة المحاولة الدوري لازم يقدر يعيد المحاولة وينجح لما المزوّد يرجع يشتغل.
+  it('retries a retryable (Meta 5xx) failed confirmation and succeeds once the provider recovers', async () => {
+    const { whatsappService, deliveryService, pool } = await loadConfigured()
     await insertOrder(pool, orderId)
 
-    // أول محاولة (تلقائية بعد إنشاء الطلب) بتفشل — خطأ شبكة عابر (مؤهل لإعادة المحاولة).
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: { message: 'internal_error' } }) }))
     await whatsappService.sendOrderConfirmationWhatsApp(confirmationInput(orderId))
-    const { rows: afterFirstAttempt } = await pool.query(`SELECT status FROM whatsapp_messages WHERE order_id = $1`, [orderId])
-    expect(afterFirstAttempt[0].status).toBe('failed')
+    const afterFirstAttempt = await deliveryService.getAutomaticNotificationStatus(orderId, 'order_confirmation')
+    expect(afterFirstAttempt?.status).toBe('failed')
+    expect(afterFirstAttempt?.failureClass).toBe('retryable')
+    expect(afterFirstAttempt?.attemptCount).toBe(1)
 
-    // المزوّد بقى شغّال — تشغيلة سكربت إعادة المحاولة الدوري لازم تنجح دلوقتي.
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ messages: [{ id: 'wamid.retry-ok' }] }) })
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await whatsappService.retryFailedOrderConfirmations(20)
     expect(result.attempted).toBeGreaterThanOrEqual(1)
     expect(result.sent).toBeGreaterThanOrEqual(1)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1) // محاولة واحدة بس اتبعتت فعلياً للمزوّد
+
+    const after = await deliveryService.getAutomaticNotificationStatus(orderId, 'order_confirmation')
+    expect(after?.status).toBe('sent')
+    expect(after?.attemptCount).toBe(2) // محاولة أولى فاشلة + محاولة إعادة واحدة ناجحة
 
     const { rows } = await pool.query(`SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1 AND status = 'sent'`, [orderId])
     expect(Number(rows[0].n)).toBe(1)
   })
 
   it('does not retry a permanently-failed confirmation (invalid mobile number)', async () => {
-    const { whatsappService, pool } = await loadConfigured()
+    const { whatsappService, deliveryService, pool } = await loadConfigured()
     await pool.query(
       `INSERT INTO orders (id, order_number, created_at, delivery_slot, delivery_date, payment_method, customer_full_name, customer_mobile,
                             customer_governorate, customer_address, subtotal, delivery_fee, total, status, discount_amount, guest_tracking_token)
@@ -293,8 +299,49 @@ describe('retryFailedOrderConfirmations (whatsapp:retry-confirmations cron scrip
     await whatsappService.sendOrderConfirmationWhatsApp(confirmationInput(orderId, { customerMobile: '0000' }))
     expect(fetchMock).not.toHaveBeenCalled() // رقم غير صالح — اترفض قبل أي اتصال بالمزوّد أصلاً
 
+    const status = await deliveryService.getAutomaticNotificationStatus(orderId, 'order_confirmation')
+    expect(status?.failureClass).toBe('permanent')
+
     const result = await whatsappService.retryFailedOrderConfirmations(20)
     const retriedThisOrder = result.attempted > 0 && fetchMock.mock.calls.length > 0
     expect(retriedThisOrder).toBe(false) // خطأ دائم (permanent) — مش في نطاق إعادة المحاولة
+
+    // بند 17: نفس القاعدة لازم تتفرض من طبقة الملكية نفسها مباشرة، مش بس من فلترة السكربت.
+    const directClaim = await deliveryService.claimAutomaticNotification(orderId, 'order_confirmation')
+    expect(directClaim).toEqual({ claimed: false, reason: 'not_retryable' })
+  })
+
+  // بند 14 من المواصفة: نتيجة "unknown" (خطأ شبكة/تايم آوت قبل استلام أي رد من Meta) —
+  // Meta ممكن تكون استلمت الرسالة الأصلية فعلاً، فسكربت إعادة المحاولة الدوري ممنوع يمسها
+  // خالص — عشان مايتسببش في تأكيد مكرر فعلي للعميل.
+  it('never retries a network-timeout ("unknown") confirmation, even repeatedly', async () => {
+    const { whatsappService, deliveryService, pool } = await loadConfigured()
+    await insertOrder(pool, orderId)
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    await whatsappService.sendOrderConfirmationWhatsApp(confirmationInput(orderId))
+    const afterFirstAttempt = await deliveryService.getAutomaticNotificationStatus(orderId, 'order_confirmation')
+    expect(afterFirstAttempt?.status).toBe('failed')
+    expect(afterFirstAttempt?.failureClass).toBe('unknown')
+    expect(afterFirstAttempt?.attemptCount).toBe(1)
+
+    // المزوّد بقى شغّال دلوقتي فرضاً — بس ده مش بيفرق، النتيجة السابقة لسه "غير مؤكدة".
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ messages: [{ id: 'wamid.should-not-happen' }] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await whatsappService.retryFailedOrderConfirmations(20)
+    expect(fetchMock).not.toHaveBeenCalled() // الكرون ممنوع يتصل بـ Meta تاني لنتيجة غير مؤكدة
+
+    const after = await deliveryService.getAutomaticNotificationStatus(orderId, 'order_confirmation')
+    expect(after?.status).toBe('failed') // فضل زي ما هو، مش 'sent' ولا 'pending'
+    expect(after?.failureClass).toBe('unknown')
+    expect(after?.attemptCount).toBe(1) // مفيش زيادة في عدد المحاولات خالص
+
+    const { rows } = await pool.query(`SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1`, [orderId])
+    expect(Number(rows[0].n)).toBe(1) // مفيش محاولة إرسال تانية اتسجّلت خالص
+
+    // بند 17: طلب ادّعاء ملكية مباشر لازم يترفض بنفس السبب، مش بس فلترة السكربت.
+    const directClaim = await deliveryService.claimAutomaticNotification(orderId, 'order_confirmation')
+    expect(directClaim).toEqual({ claimed: false, reason: 'not_retryable' })
   })
 })

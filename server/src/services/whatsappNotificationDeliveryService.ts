@@ -14,14 +14,26 @@ import { logEvent, logWarn } from '../logger.js'
 export const AUTOMATIC_NOTIFICATION_LEASE_SECONDS = 90
 export const MAX_AUTOMATIC_ATTEMPTS = 5
 
+// retryable: فشل مزوّد مؤقت مؤكد (429/5xx من Meta) — إعادة محاولة تلقائية مسموحة.
+// permanent: رد HTTP آخر من Meta (توكن غلط، قالب غير موجود/معتمد، بارامترات/لغة غلط، رقم
+//   وجهة غير صالح) — إعادة محاولة تلقائية ممنوعة، مش هتتحل بإعادة المحاولة أصلاً.
+// unknown: الطلب فشل قبل ما نستلم أي رد فعلي من Meta خالص (تايم آوت/انقطاع شبكة) — Meta
+//   ممكن تكون استلمت الرسالة الأصلية فعلاً قبل ما الخطأ يحصل، فإعادة محاولة تلقائية عليها
+//   ممنوعة عمداً (خطر تأكيد مكرر فعلي للعميل)، رغم إنها مش خطأ دائم في حد ذاتها.
+export type NotificationFailureClass = 'retryable' | 'permanent' | 'unknown'
+
 export type ClaimResult =
   | { claimed: true; deliveryId: string; ownerToken: string; attemptCount: number }
-  | { claimed: false; reason: 'already_sent' | 'active_owner' | 'max_attempts_reached' }
+  | { claimed: false; reason: 'already_sent' | 'active_owner' | 'max_attempts_reached' | 'not_retryable' }
 
 interface DeliveryRow {
   id: string
   status: 'pending' | 'sent' | 'failed'
   attemptCount: number
+}
+
+interface FailedDeliveryRow extends DeliveryRow {
+  failureClass: NotificationFailureClass | null
 }
 
 // أول ادّعاء ملكية لإشعار تلقائي غير موجود أصلاً — إدراج ذرّي واحد (ON CONFLICT DO NOTHING)،
@@ -56,14 +68,16 @@ async function tryLeaseTakeover(deliveryId: string, ownerToken: string): Promise
 }
 
 // إعادة محاولة مُتحكَّم فيها لإشعار فشل قبل كده — نفس مبدأ الاستيلاء تماماً، بس الشرط هنا
-// status='failed' AND attempt_count < الحد الأقصى، وبيرجّع الحالة لـ 'pending' مع owner_token
-// جديد قبل أي محاولة إرسال فعلية.
+// status='failed' AND failure_class='retryable' AND attempt_count < الحد الأقصى، وبيرجّع
+// الحالة لـ 'pending' مع owner_token جديد قبل أي محاولة إرسال فعلية. شرط failure_class='retryable'
+// جوه الـ WHERE نفسه — مش قراءة سابقة بترشّح الطلب — هو الضمان الفعلي إن نتيجة 'permanent' أو
+// 'unknown' أبداً ما تتاخد لإعادة محاولة تلقائية، حتى لو مُنادى عليها الدالة دي مباشرة بالغلط.
 async function tryFailedRetryClaim(deliveryId: string, ownerToken: string): Promise<DeliveryRow | null> {
   const { rows } = await pool.query<DeliveryRow>(
     `UPDATE whatsapp_notification_deliveries
      SET status = 'pending', owner_token = $2, claimed_at = now(),
          lease_expires_at = now() + ($3 || ' seconds')::interval, attempt_count = attempt_count + 1, updated_at = now()
-     WHERE id = $1 AND status = 'failed' AND attempt_count < $4
+     WHERE id = $1 AND status = 'failed' AND failure_class = 'retryable' AND attempt_count < $4
      RETURNING id, status, attempt_count as "attemptCount"`,
     [deliveryId, ownerToken, AUTOMATIC_NOTIFICATION_LEASE_SECONDS, MAX_AUTOMATIC_ATTEMPTS]
   )
@@ -83,10 +97,12 @@ export async function claimAutomaticNotification(orderId: string, notificationTy
   }
 
   // في صف موجود بالفعل — قراءة واحدة بس لتحديد أي محاولة ذرّية نجرّب (القرار النهائي دايماً
-  // من نتيجة الـ UPDATE الشرطي نفسه تحت، مش من القراءة دي).
-  const { rows: existingRows } = await pool.query<DeliveryRow>(
-    `SELECT id, status, attempt_count as "attemptCount" FROM whatsapp_notification_deliveries
-     WHERE order_id = $1 AND notification_type = $2`,
+  // من نتيجة الـ UPDATE الشرطي نفسه تحت، مش من القراءة دي) — عدا استثناء واحد صريح: لو
+  // failure_class مش 'retryable' (يعني permanent أو unknown)، بنرفض فوراً من غير أي محاولة
+  // UPDATE أصلاً (راجع بند 8 في المواصفة) — ده مش سباق ملكية، ده قرار سياسة واضح.
+  const { rows: existingRows } = await pool.query<FailedDeliveryRow>(
+    `SELECT id, status, attempt_count as "attemptCount", failure_class as "failureClass"
+     FROM whatsapp_notification_deliveries WHERE order_id = $1 AND notification_type = $2`,
     [orderId, notificationType]
   )
   const existing = existingRows[0]
@@ -111,6 +127,15 @@ export async function claimAutomaticNotification(orderId: string, notificationTy
   }
 
   // existing.status === 'failed'
+  if (existing.failureClass !== 'retryable') {
+    // permanent أو unknown — قرار سياسة صريح، مش سباق ملكية؛ إعادة محاولة تلقائية ممنوعة
+    // (راجع تعليق NotificationFailureClass فوق). الإرسال اليدوي من الأدمن لسه ممكن، لكنه
+    // بيتخطى نظام الملكية دي بالكامل عمداً (راجع sendOrderConfirmationWhatsApp).
+    logWarn('whatsapp_notification_retry_blocked', {
+      orderId, notificationType, failureClass: existing.failureClass, attemptCount: existing.attemptCount
+    })
+    return { claimed: false, reason: 'not_retryable' }
+  }
   if (existing.attemptCount >= MAX_AUTOMATIC_ATTEMPTS) {
     return { claimed: false, reason: 'max_attempts_reached' }
   }
@@ -142,22 +167,25 @@ export async function markNotificationSent(deliveryId: string, ownerToken: strin
   return true
 }
 
-// نفس مبدأ markNotificationSent — بس لحالة الفشل. lastError ممكن يبقى بادئ بـ "unknown:"
-// (نتيجة مزوّد غير معروفة، راجع تعليق sendOrderConfirmationWhatsApp) أو "permanent:"
-// (خطأ إعدادي مش هيتحل بإعادة محاولة) أو من غير بادئة (خطأ قابل لإعادة المحاولة عادي).
-export async function markNotificationFailed(deliveryId: string, ownerToken: string, lastError: string): Promise<boolean> {
+// نفس مبدأ markNotificationSent — بس لحالة الفشل. failureClass إجباري وصريح (مش مُستنتج لاحقاً
+// من تحليل نص last_error) — هو المصدر الوحيد اللي بتعتمد عليه سياسة إعادة المحاولة (راجع
+// tryFailedRetryClaim وclaimAutomaticNotification فوق). lastError نص تشخيصي بشري بس، من غير
+// أي دور في قرار الأهلية لإعادة المحاولة.
+export async function markNotificationFailed(
+  deliveryId: string, ownerToken: string, failureClass: NotificationFailureClass, lastError: string
+): Promise<boolean> {
   const { rows } = await pool.query(
     `UPDATE whatsapp_notification_deliveries
-     SET status = 'failed', last_error = $3, owner_token = NULL, lease_expires_at = NULL, updated_at = now()
+     SET status = 'failed', failure_class = $3, last_error = $4, owner_token = NULL, lease_expires_at = NULL, updated_at = now()
      WHERE id = $1 AND owner_token = $2 AND status = 'pending'
      RETURNING id`,
-    [deliveryId, ownerToken, lastError]
+    [deliveryId, ownerToken, failureClass, lastError]
   )
   if (!rows[0]) {
     logWarn('whatsapp_notification_ownership_lost', { deliveryId })
     return false
   }
-  logEvent('whatsapp_notification_failed', { deliveryId, error: lastError })
+  logEvent('whatsapp_notification_failed', { deliveryId, failureClass, error: lastError })
   return true
 }
 
@@ -165,6 +193,7 @@ export interface NotificationDeliveryStatusRow {
   status: 'pending' | 'sent' | 'failed'
   attemptCount: number
   providerMessageId: string | null
+  failureClass: NotificationFailureClass | null
   lastError: string | null
   sentAt: string | null
   updatedAt: string
@@ -175,7 +204,7 @@ export interface NotificationDeliveryStatusRow {
 export async function getAutomaticNotificationStatus(orderId: string, notificationType: string): Promise<NotificationDeliveryStatusRow | null> {
   const { rows } = await pool.query<NotificationDeliveryStatusRow>(
     `SELECT status, attempt_count as "attemptCount", provider_message_id as "providerMessageId",
-            last_error as "lastError", sent_at as "sentAt", updated_at as "updatedAt"
+            failure_class as "failureClass", last_error as "lastError", sent_at as "sentAt", updated_at as "updatedAt"
      FROM whatsapp_notification_deliveries WHERE order_id = $1 AND notification_type = $2`,
     [orderId, notificationType]
   )
@@ -188,14 +217,17 @@ export interface RetryableDeliveryRow {
   attemptCount: number
 }
 
-// دفعة محدودة من الإشعارات الفاشلة القابلة لإعادة المحاولة (مش أخطاء دائمة/إعدادية) —
-// تُستخدم من سكربت إعادة المحاولة الدوري (راجع whatsappRetryFailedConfirmations.ts).
+// دفعة محدودة من الإشعارات الفاشلة القابلة فعلياً لإعادة المحاولة — status='failed' AND
+// failure_class='retryable' بس (مش أخطاء دائمة 'permanent' ولا نتائج غامضة 'unknown' — راجع
+// تعليق NotificationFailureClass فوق لسبب استبعاد 'unknown' تحديداً). مفيش أي تحليل لنص
+// last_error هنا أصلاً، العمود المخصص هو مصدر القرار الوحيد. تُستخدم من سكربت إعادة المحاولة
+// الدوري (راجع whatsappRetryFailedConfirmations.ts)، لكن claimAutomaticNotification نفسها
+// (مش الاستعلام ده) هي اللي بتفرض القاعدة فعلياً عند أي محاولة ادّعاء حقيقية.
 export async function listRetryableFailedNotifications(notificationType: string, batchSize: number): Promise<RetryableDeliveryRow[]> {
   const { rows } = await pool.query<RetryableDeliveryRow>(
     `SELECT id, order_id as "orderId", attempt_count as "attemptCount"
      FROM whatsapp_notification_deliveries
-     WHERE notification_type = $1 AND status = 'failed' AND attempt_count < $2
-       AND (last_error IS NULL OR last_error NOT LIKE 'permanent:%')
+     WHERE notification_type = $1 AND status = 'failed' AND failure_class = 'retryable' AND attempt_count < $2
      ORDER BY updated_at ASC
      LIMIT $3`,
     [notificationType, MAX_AUTOMATIC_ATTEMPTS, batchSize]
