@@ -104,7 +104,11 @@ beforeEach(async () => {
   await resetFixtures()
 })
 
+// afterAll لازم ينضّف الـ fixtures نفسها (مش بس يقفل الـ pool) — من غير كده صفوف
+// stock_movements/orders/products بتاعة آخر اختبار في الملف بتفضل موجودة، وأي ملف تاني
+// بعده أبجدياً بيعمل DELETE شامل على نفس الجداول هيفشل بقيد مفتاح خارجي عليها.
 afterAll(async () => {
+  await resetFixtures()
   await pool.end()
 })
 

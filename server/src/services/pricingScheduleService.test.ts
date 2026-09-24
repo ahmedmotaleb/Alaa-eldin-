@@ -50,7 +50,11 @@ async function insertDueSchedule(overrides: { productId?: string | null, variant
 }
 
 beforeEach(resetFixtures, 20000)
-afterAll(async () => { await pool.end() })
+// afterAll لازم ينضّف الـ fixtures نفسها (مش بس يقفل الـ pool) — من غير كده، صفوف
+// product_variants/products بتاعة الملف ده بتفضل موجودة بعد آخر اختبار فيه، وأي ملف تاني
+// بعده أبجدياً (زي productAlternativeService.test.ts) بيعمل DELETE FROM products شامل
+// (بدون WHERE) في beforeEach بتاعه هيفشل بقيد مفتاح خارجي على product_variants المتروكة دي.
+afterAll(async () => { await resetFixtures(); await pool.end() })
 
 describe('createPriceSchedule', () => {
   it('snapshots the actual current price at creation time', async () => {
