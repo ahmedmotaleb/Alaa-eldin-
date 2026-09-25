@@ -5,22 +5,23 @@
 تحت "ملاحظات تحقّق تاريخية" وتفضل كما هي بتاريخها الأصلي لغرض التتبّع فقط، ومفيش أي رقم
 قديم فيها (زي "883/883" أو "990/990") يتقرأ كحالة حالية.
 
-## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٢٤
+## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٢٥
 
 | البند | القيمة | كيف اتحقّقنا |
 |---|---|---|
-| آخر commit على `main` | `7915495` | `git log` مباشر |
-| آخر ترحيلة (migration) | `0063_default_store_settings_row.sql` | قراءة مباشرة لمجلد `server/migrations/` |
-| عدد الترحيلات الكلي | 63 | عدّ ملفات `server/migrations/*.sql` |
-| اختبارات السيرفر | **1104/1104 ناجحة** — تم التحقق **على قاعدة بيانات جديدة تماماً** (مش قاعدة التطوير القديمة) مرتين متتاليتين مستقلتين، بالإضافة لأربع تشغيلات سابقة على قاعدة التطوير | `npx vitest run` بعد `CREATE DATABASE` فاضية + `tsx src/migrate.ts` |
+| آخر commit على `main` | `ee1e8ef` | `git log` مباشر |
+| آخر ترحيلة (migration) | `0065_whatsapp_delivery_webhooks.sql` | قراءة مباشرة لمجلد `server/migrations/` |
+| عدد الترحيلات الكلي | 65 | عدّ ملفات `server/migrations/*.sql` |
+| اختبارات السيرفر | **1141/1141 ناجحة** — تم التحقق **على قاعدة بيانات جديدة تماماً** مرتين مستقلتين، بالإضافة لتشغيلات سابقة على قاعدة التطوير | `npx vitest run` بعد `CREATE DATABASE` فاضية + `tsx src/migrate.ts` |
 | بناء المتجر (storefront) | ✅ نظيف | `npm run build` (الجذر) |
 | بناء السيرفر | ✅ نظيف (`tsc` صارم) | `npm run build --prefix server` |
 | بناء لوحة التحكم (admin) | ✅ نظيف | `npm run build --prefix admin` |
-| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `7915495` (run `36059563853`، `status: completed`, `conclusion: success`) | `GET /repos/.../actions/runs?head_sha=...` عبر GitHub API مباشرة |
-| نشر Railway (`endearing-clarity`/`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit (deployment `ea0030f0-...`، `status: SUCCESS`) | Railway API مباشر (`list-deployments`) |
-| `GET /health` | ⚠️ **NOT DIRECTLY VERIFIED** — طلب HTTP مباشر لرابط الإنتاج محجوب من بيئة هذه الجلسة (`EGRESS_BLOCKED`/`connect_rejected`، مؤكَّد بمحاولة فعلية). الدليل غير المباشر فقط: `healthcheckPath: /health` في `railway.json` هو ما يعتمد عليه Railway قبل تعليم أي نشر `SUCCESS` | محاولة `curl`/`WebFetch` فعلية فشلت بحجب شبكة صريح |
+| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `ee1e8ef` (run `36099126044`) | `GET /repos/.../actions/runs?head_sha=...` عبر GitHub API مباشرة |
+| نشر Railway (`endearing-clarity`/`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit (deployment `5bbd3a86-...`) | Railway API مباشر (`list-deployments`) |
+| `GET /health` | ⚠️ **NOT DIRECTLY VERIFIED** — طلب HTTP مباشر لرابط الإنتاج محجوب من بيئة هذه الجلسة (`EGRESS_BLOCKED`/`connect_rejected`). الدليل غير المباشر فقط: `healthcheckPath: /health` هو ما يعتمد عليه Railway قبل تعليم أي نشر `SUCCESS` | محاولة `curl`/`WebFetch` فعلية فشلت بحجب شبكة صريح |
 | Cloudinary | ✅ CONFIGURED | لوج إقلاع فعلي (`startup_config_summary`) بعد آخر نشر ناجح |
 | WhatsApp (رسائل + قالب تأكيد الطلب) | ✅ CONFIGURED | نفس المصدر |
+| WhatsApp — webhook تسليم/قراءة حقيقي | ❌ **NOT CONFIGURED** — الكود جاهز ومنشور فعلياً (`GET`/`POST /api/webhooks/whatsapp`)، لكن `WHATSAPP_WEBHOOK_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` لسه مش مضبوطين. راجع `server/docs/WHATSAPP_DELIVERY_WEBHOOK.md` لخطوات التفعيل | `startup_config_summary`: `whatsapp_delivery_webhook` جوه `notConfigured` |
 | WhatsApp — Railway Cron لإعادة محاولة الإشعارات الفاشلة | ❌ **NOT CONFIGURED** — لا توجد أي خدمة Cron على المشروع | `mcp__Railway__list-services`: خدمتان بس (`Postgres`، `Alaa-eldin-`) |
 | Web Push (VAPID) | ✅ CONFIGURED | لوج إقلاع فعلي |
 | Turnstile (CAPTCHA) | ✅ CONFIGURED | لوج إقلاع فعلي |
@@ -28,9 +29,19 @@
 | Railway Cron — انتهاء صلاحية نقاط الولاء | ❌ **NOT CONFIGURED** | نفس تأكيد `list-services` |
 | Railway Cron — تذكير السلة المهجورة | ❌ **NOT CONFIGURED** | نفس تأكيد `list-services` |
 | Railway Cron — تطبيق الأسعار المجدولة | ❌ **NOT CONFIGURED** | نفس تأكيد `list-services` |
-| نسخة احتياطية للإنتاج | ❌ **NOT VERIFIED** — لا توجد بيانات اعتماد وصول مباشر لقاعدة بيانات الإنتاج من هذه الجلسة | راجع القسم 8 التاريخي |
-| اختبار الدخان الإنتاجي (smoke test) | ⚠️ تم تشغيله محلياً بس (سيرفر بناء إنتاج + قاعدة تطوير حقيقية)، **لم يُنفَّذ ضد رابط الإنتاج الحقيقي** في هذه الجلسة بسبب حجب الشبكة | راجع القسم 8 التاريخي |
+| مراقبة الأخطاء (error monitoring) | ⚠️ **لوج مُهيكل بس (pino) — لا يوجد APM/error-tracking خارجي** (زي Sentry) مُفعّل. `uncaughtException`/`unhandledRejection` بيتسجّلوا ويعملوا exit صريح (فلسفة crash-only + `restartPolicy: ON_FAILURE`). إضافة Sentry أو مشابه تحتاج حساب خارجي وDSN من صاحب المشروع — بند "توسّع مستقبلي"، مش عطل حالي | قراءة مباشرة لـ `src/index.ts`/`src/logger.ts` |
+| نسخة احتياطية للإنتاج | ❌ **NOT VERIFIED** — لا توجد بيانات اعتماد وصول مباشر لقاعدة بيانات الإنتاج من هذه الجلسة. التوثيق وتجربة الاستعادة (على قاعدة محلية معزولة) موجودين ومكتملين في `server/docs/BACKUP_RESTORE.md` | راجع `BACKUP_RESTORE.md` |
+| اختبار الدخان الإنتاجي (smoke test) | ⚠️ تم تشغيله محلياً بس (سيرفر بناء إنتاج + قاعدة تطوير حقيقية)، **لم يُنفَّذ ضد رابط الإنتاج الحقيقي** بسبب حجب الشبكة | راجع القسم 8 التاريخي |
 | اختبار Android حقيقي | ❌ **NOT VERIFIED** (لا يوجد جهاز Android حقيقي في بيئة هذه الجلسة) — أي تحقق واجهة سابق كان **DESKTOP CHROMIUM VIEWPORT ONLY** عبر Playwright، مش جهاز حقيقي | راجع `DEVICE_QA_CHECKLIST.md` |
+
+**تحديث ٢٠٢٦-٠٩-٢٥ — دفعة ميزات ما بعد التحقق**: بعد الدفعة أعلاه (اكتشاف/إصلاح `store_settings`)،
+تم بناء ثلاث ميزات كانت متبقية من طلب سابق (variant-aware manual stock adjustments،
+variant-aware cycle counts، WhatsApp delivery/read webhooks) — كل واحدة باختبارات حقيقية
+جديدة، وتم التحقق من الاستقرار على قاعدتي بيانات جديدتين مستقلتين بعد كل تغيير، مش مرة
+واحدة بس في الآخر. **لم يتم تنفيذ**: إنشاء خدمات Railway Cron فعلية (تشغّل تلقائياً وتبدأ
+ترسل رسائل واتساب حقيقية/تنهي نقاط ولاء حقيقية على جدول)، ولا تنفيذ نسخة احتياطية إنتاجية
+فعلية (يحتاج بيانات اعتماد مباشرة) — الاتنين محتاجين موافقة صريحة من صاحب المشروع قبل أي
+تنفيذ فعلي، مش قرار يُتخذ من تلقاء نفسه.
 
 **ملاحظة صريحة عن اكتشاف حقيقي في هذه الجلسة**: أول push في هذه الجلسة (commit `456af89`)
 كان فعلاً **فشل CI حقيقياً** — `GET /api/settings` كان بيرجع 500 على أي قاعدة بيانات جديدة
