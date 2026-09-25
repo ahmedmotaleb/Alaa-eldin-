@@ -19,6 +19,9 @@ const INTEGRATIONS: IntegrationCheck[] = [
   // دي هي اللي بتخلي رسالة التحذير تحديداً "واتساب متصل لكن قالب تأكيد الطلب غير مضبوط"
   // بدل ما تختلط مع حالة عدم الاتصال بالكامل.
   { name: 'whatsapp_order_confirmation', required: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ORDER_CONFIRMATION_TEMPLATE'] },
+  // فرع مستقل تالت — الـ webhook (تأكيد تسليم/قراءة حقيقي من واتساب) مش نفس اتصال الإرسال
+  // فوق، ومحتاج متغيرات بيئة مختلفة تماماً (رمز تحقق + سر التطبيق للتوقيع).
+  { name: 'whatsapp_delivery_webhook', required: ['WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET'] },
   { name: 'web_push', required: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'] },
   { name: 'email', required: ['RESEND_API_KEY'] },
   { name: 'turnstile', required: ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'] }

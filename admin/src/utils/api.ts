@@ -139,6 +139,8 @@ export interface WhatsAppMessage {
   error: string | null
   notificationType: string | null
   createdAt: string
+  deliveryStatus: 'sent' | 'delivered' | 'read' | 'failed' | null
+  deliveryStatusUpdatedAt: string | null
 }
 
 export interface WhatsAppOrderConfirmationConfigStatus {

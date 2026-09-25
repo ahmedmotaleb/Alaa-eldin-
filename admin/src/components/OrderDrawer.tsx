@@ -209,6 +209,22 @@ export function OrderDrawer({
               {lastConfirmationMessage.status === 'failed' ? ' (فشلت)' : ' (اتقبلت)'}
             </div>
           )}
+          {/* هذا يعكس حدث webhook حقيقي من واتساب (تسليم/قراءة فعلية على الجهاز) — مختلف
+              تماماً عن "اتقبلت" فوق (قبول Meta API بس). null يعني لسه مفيش حدث وصل. */}
+          {lastConfirmationMessage?.deliveryStatus && (
+            <div style={{
+              fontSize: 11.5, fontWeight: 600, marginTop: 4,
+              color: lastConfirmationMessage.deliveryStatus === 'read' ? '#12813C'
+                : lastConfirmationMessage.deliveryStatus === 'delivered' ? '#12813C'
+                : lastConfirmationMessage.deliveryStatus === 'failed' ? '#B42318' : '#8A948C'
+            }}>
+              {lastConfirmationMessage.deliveryStatus === 'read' && '✓✓ قُرئت فعلياً على الجهاز'}
+              {lastConfirmationMessage.deliveryStatus === 'delivered' && '✓✓ وصلت فعلياً للجهاز'}
+              {lastConfirmationMessage.deliveryStatus === 'sent' && '✓ اتبعتت من المزوّد (لسه مفيش تأكيد وصول)'}
+              {lastConfirmationMessage.deliveryStatus === 'failed' && '✗ فشل التسليم فعلياً'}
+              {lastConfirmationMessage.deliveryStatusUpdatedAt && ` — ${formatDateTime(lastConfirmationMessage.deliveryStatusUpdatedAt)}`}
+            </div>
+          )}
           {confirmationReady && (
             <button className="admin-category-card-btn" disabled={resending} onClick={resendConfirmation} style={{ marginTop: 8 }}>
               {resending ? 'جارٍ الإرسال...' : '🔁 إعادة إرسال تأكيد واتساب'}

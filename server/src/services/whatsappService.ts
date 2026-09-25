@@ -315,12 +315,18 @@ export interface WhatsAppMessageLogRow {
   error: string | null
   notificationType: string | null
   createdAt: string
+  // اتنيها من webhook حقيقي من Meta (sent/delivered/read/failed) — مش نفس status فوق (اللي
+  // معناها بس "Meta API قبلت الطلب"). null يعني لسه مفيش أي حدث حالة حقيقي وصل بعد (إما
+  // الـ webhook مش مُفعّل، أو Meta لسه ما بعتتش الحدث).
+  deliveryStatus: string | null
+  deliveryStatusUpdatedAt: string | null
 }
 
 export async function listWhatsAppMessagesForOrder(orderId: string): Promise<WhatsAppMessageLogRow[]> {
   const { rows } = await pool.query<WhatsAppMessageLogRow>(
     `SELECT id, order_id as "orderId", template_id as "templateId", to_number as "toNumber", body,
-            status, provider_message_id as "providerMessageId", error, notification_type as "notificationType", created_at as "createdAt"
+            status, provider_message_id as "providerMessageId", error, notification_type as "notificationType", created_at as "createdAt",
+            delivery_status as "deliveryStatus", delivery_status_updated_at as "deliveryStatusUpdatedAt"
      FROM whatsapp_messages WHERE order_id = $1 ORDER BY created_at DESC`,
     [orderId]
   )

@@ -78,6 +78,7 @@ import { seoRouter } from './routes/seo.js'
 import { loyaltyRouter } from './routes/loyalty.js'
 import { cartSnapshotRouter } from './routes/cartSnapshot.js'
 import { backInStockRouter } from './routes/backInStock.js'
+import { whatsappWebhookRouter } from './routes/whatsappWebhook.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DEV_ORIGIN = process.env.DEV_ORIGIN ?? 'http://localhost:5183'
@@ -159,6 +160,12 @@ app.use(seoRouter)
 // فترتيب التسجيل ده هو اللي بيحدد أي حد يتطبّق فعلياً على كل مسار.
 app.use('/api/admin/products', express.json({ limit: '5mb' }))
 
+// webhook واتساب لازم البايتات الخام لجسم الطلب (rawBody) عشان يتحقق من توقيع Meta
+// (X-Hub-Signature-256) — express.json() العادي بيرمي الـ body الخام بعد التحليل، وأي
+// إعادة تسلسل لاحقة (JSON.stringify) ممكن تختلف عن البايتات الأصلية وتكسر التحقق. لازم
+// يتسجّل هنا (قبل المحلل العام تحت) عشان يبقى هو اللي يتطبّق فعلياً على المسار ده بالظبط.
+app.use('/api/webhooks/whatsapp', express.json({ verify: (req, _res, buf) => { (req as unknown as { rawBody: Buffer }).rawBody = buf } }))
+
 // الحد الافتراضي لباقي كل الـ API — طلبات JSON عادية (تسجيل دخول، عربة، عناوين، طلبات...)
 // ما بتحتاجش أكتر من كده أبداً، وأي حمولة أكبر غالباً محاولة إساءة استخدام أو خطأ عميل.
 app.use(express.json({ limit: '256kb' }))
@@ -202,6 +209,7 @@ app.use('/api/account/shopping-lists', shoppingListsRouter)
 app.use('/api/loyalty', loyaltyRouter)
 app.use('/api/account/cart-snapshot', cartSnapshotRouter)
 app.use('/api/products/notify-when-available', backInStockRouter)
+app.use('/api/webhooks/whatsapp', whatsappWebhookRouter)
 app.use('/api/notifications', notificationsRouter)
 app.use('/api/account/frequently-purchased', frequentlyPurchasedRouter)
 app.use('/api/delivery', deliveryRouter)

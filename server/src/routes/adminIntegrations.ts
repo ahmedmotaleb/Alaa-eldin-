@@ -3,6 +3,7 @@ import { requireAdmin, requirePermission } from '../auth.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent, maskPhone } from '../logger.js'
 import { whatsappConfigured, sendWhatsAppMessage } from '../services/whatsappService.js'
+import { whatsappWebhookConfigured } from '../services/whatsappWebhookService.js'
 import { pushConfigured, countPushSubscriptions } from '../services/pushService.js'
 import { emailConfigured } from '../email.js'
 import { imageStorageConfigured } from '../services/imageStorageService.js'
@@ -16,7 +17,7 @@ adminIntegrationsRouter.use(requireAdmin)
 adminIntegrationsRouter.get('/', requirePermission('integrations.manage'), async (_req, res) => {
   const pushSubscriptionCount = pushConfigured ? await countPushSubscriptions() : 0
   res.json({
-    whatsapp: { configured: whatsappConfigured },
+    whatsapp: { configured: whatsappConfigured, deliveryWebhookConfigured: whatsappWebhookConfigured },
     push: { configured: pushConfigured, subscriptionCount: pushSubscriptionCount },
     email: { configured: emailConfigured },
     cloudinary: { configured: imageStorageConfigured }
