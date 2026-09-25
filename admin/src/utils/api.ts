@@ -1161,12 +1161,14 @@ export type StockMovementType = 'restock' | 'return' | 'damage' | 'loss' | 'adju
 export interface AdminStockMovement {
   id: number
   productId: string
+  variantId: string | null
   type: StockMovementType
   quantityChange: number
   note: string
   createdAt: string
   productName: string
   productEmoji: string
+  variantName: string | null
 }
 
 export type CycleCountStatus = 'draft' | 'completed' | 'cancelled'
@@ -1187,7 +1189,9 @@ export interface CycleCountSummary {
 export interface CycleCountItem {
   id: string
   productId: string
+  variantId: string | null
   productName: string
+  variantName: string | null
   sku: string | null
   barcode: string
   systemQuantity: number
@@ -1738,9 +1742,9 @@ export const api = {
     request<{ messages: WhatsAppMessage[] }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/messages`),
   resendWhatsAppConfirmation: (orderId: string) =>
     request<{ message: WhatsAppMessage | null }>(`/admin/whatsapp/orders/${encodeURIComponent(orderId)}/resend-confirmation`, { method: 'POST' }),
-  listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, type?: StockMovementType } = {}) =>
+  listStockMovements: (params: { page?: number, limit?: number, search?: string, productId?: string, variantId?: string, type?: StockMovementType } = {}) =>
     request<{ movements: AdminStockMovement[] } & Partial<PageInfo>>(`/admin/stock-movements${buildQuery(params)}`),
-  createStockMovement: (body: { productId: string, type: StockMovementType, quantityChange: number, note?: string }) =>
+  createStockMovement: (body: { productId: string, variantId?: string | null, type: StockMovementType, quantityChange: number, note?: string }) =>
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
   exportProductsCsv: () => downloadFile('/admin/products/export', 'products.csv'),
   importProductsCsv: (file: File) => uploadFile<{ updated: number, skipped: { row: number, reason: string }[] }>('/admin/products/import', file),
@@ -1754,7 +1758,7 @@ export const api = {
   createCycleCount: (body: { categoryId?: string | null, note?: string }) =>
     request<{ id: string }>('/admin/cycle-counts', { method: 'POST', body: JSON.stringify(body) }),
   getCycleCount: (id: string) => request<{ cycleCount: CycleCountDetail }>(`/admin/cycle-counts/${encodeURIComponent(id)}`),
-  recordCycleCountCounts: (id: string, counts: { productId: string, countedQuantity: number }[]) =>
+  recordCycleCountCounts: (id: string, counts: { productId: string, variantId?: string | null, countedQuantity: number }[]) =>
     request<{ updated: number, skipped: string[] }>(`/admin/cycle-counts/${encodeURIComponent(id)}/counts`, { method: 'PATCH', body: JSON.stringify({ counts }) }),
   completeCycleCount: (id: string) =>
     request<{ adjustedCount: number }>(`/admin/cycle-counts/${encodeURIComponent(id)}/complete`, { method: 'POST' }),

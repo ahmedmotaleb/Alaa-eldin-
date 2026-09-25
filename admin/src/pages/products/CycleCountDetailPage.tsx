@@ -19,7 +19,10 @@ export function CycleCountDetailPage() {
     api.getCycleCount(id)
       .then(({ cycleCount }) => {
         setDetail(cycleCount)
-        setCounts(Object.fromEntries(cycleCount.items.map(i => [i.productId, i.countedQuantity === null ? '' : String(i.countedQuantity)])))
+        // المفتاح لازم يكون id الصف نفسه (cycle_count_item)، مش productId — منتج بمتغيّرات
+        // بياخد أكتر من صف بنفس productId، وربطهم كلهم بمفتاح productId واحد كان هيخلي
+        // إدخال كمية لمتغيّر يمسح إدخال المتغيّر التاني في نفس اللحظة.
+        setCounts(Object.fromEntries(cycleCount.items.map(i => [i.id, i.countedQuantity === null ? '' : String(i.countedQuantity)])))
       })
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل الجرد' : 'حدث خطأ، حاول مرة أخرى'))
   }
@@ -35,7 +38,14 @@ export function CycleCountDetailPage() {
     setBusy(true)
     setNotice('')
     try {
-      const entries = Object.entries(counts).filter(([, v]) => v.trim() !== '').map(([productId, v]) => ({ productId, countedQuantity: Number(v) }))
+      const itemsById = new Map((detail?.items ?? []).map(i => [i.id, i]))
+      const entries = Object.entries(counts)
+        .filter(([, v]) => v.trim() !== '')
+        .map(([itemId, v]) => {
+          const item = itemsById.get(itemId)
+          return item ? { productId: item.productId, variantId: item.variantId, countedQuantity: Number(v) } : null
+        })
+        .filter((e): e is { productId: string, variantId: string | null, countedQuantity: number } => e !== null)
       await api.recordCycleCountCounts(id, entries)
       setNotice('تم حفظ الكميات المعدودة')
       load()
@@ -132,14 +142,14 @@ export function CycleCountDetailPage() {
                 const variance = item.variance
                 return (
                   <div key={item.id} className="admin-table-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
-                    <div className="admin-cell-plain">{item.productName}</div>
+                    <div className="admin-cell-plain">{item.productName}{item.variantName ? ` — ${item.variantName}` : ''}</div>
                     <div className="admin-cell-plain">{item.systemQuantity}</div>
                     <div>
                       {isDraft ? (
                         <input
                           type="number"
-                          value={counts[item.productId] ?? ''}
-                          onChange={e => setCounts(c => ({ ...c, [item.productId]: e.target.value }))}
+                          value={counts[item.id] ?? ''}
+                          onChange={e => setCounts(c => ({ ...c, [item.id]: e.target.value }))}
                           style={{ width: 90 }}
                         />
                       ) : (item.countedQuantity ?? '—')}

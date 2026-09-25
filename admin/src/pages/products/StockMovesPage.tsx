@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
-import { api, ApiError, type AdminProduct, type AdminStockMovement, type StockMovementType } from '../../utils/api'
+import { api, ApiError, type AdminProduct, type AdminVariant, type AdminStockMovement, type StockMovementType } from '../../utils/api'
 import { formatDateTime } from '../../utils/format'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
 import type { LayoutContext } from '../../components/AdminLayout'
@@ -40,6 +40,8 @@ export function StockMovesPage() {
   const [showCreate, setShowCreate] = useState(false)
 
   const [productId, setProductId] = useState('')
+  const [variants, setVariants] = useState<AdminVariant[]>([])
+  const [variantId, setVariantId] = useState('')
   const [type, setType] = useState<StockMovementType>('restock')
   const [amount, setAmount] = useState(1)
   const [direction, setDirection] = useState<1 | -1>(1)
@@ -53,6 +55,14 @@ export function StockMovesPage() {
       setProductId(current => current || products[0]?.id || '')
     }).catch(() => {})
   }, [])
+
+  // كل ما المنتج المختار في نموذج "تسجيل حركة" يتغيّر، بنجيب متغيّراته (لو موجودة) عشان
+  // الأدمن يقدر يختار يعدّل رصيد المتغيّر نفسه بدل رصيد المنتج الأب.
+  useEffect(() => {
+    setVariantId('')
+    if (!productId) { setVariants([]); return }
+    api.listProductVariants(productId).then(({ variants }) => setVariants(variants)).catch(() => setVariants([]))
+  }, [productId])
 
   // الإحصائيات بتتحسب من كل الحركات (بدون ترقيم) عشان تفضل صحيحة بغض النظر عن الصفحة
   // الحالية أو البحث المطبّق على الجدول.
@@ -90,7 +100,7 @@ export function StockMovesPage() {
     }
     setSaving(true)
     try {
-      await api.createStockMovement({ productId, type, quantityChange: quantityChange(), note: note.trim() || undefined })
+      await api.createStockMovement({ productId, variantId: variantId || undefined, type, quantityChange: quantityChange(), note: note.trim() || undefined })
       setAmount(1)
       setNote('')
       setShowCreate(false)
@@ -120,6 +130,14 @@ export function StockMovesPage() {
               {products.map(p => <option key={p.id} value={p.id}>{p.name} — متاح حالياً: {p.stock}</option>)}
             </select>
           </label>
+          {variants.length > 0 && (
+            <label>المتغيّر (اختياري — سيب الاختيار الافتراضي لتعديل رصيد المنتج نفسه)
+              <select value={variantId} onChange={e => setVariantId(e.target.value)}>
+                <option value="">المنتج نفسه (بدون متغيّر)</option>
+                {variants.map(v => <option key={v.id} value={v.id}>{v.name} — متاح حالياً: {v.stock}</option>)}
+              </select>
+            </label>
+          )}
           <label>نوع الحركة
             <span className="admin-form-chips">
               {TYPE_OPTIONS.map(t => (
@@ -172,7 +190,7 @@ export function StockMovesPage() {
                 <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDateTime(m.createdAt)}</div>
                 <div className="admin-cell-product">
                   <span className="admin-cell-product-icon" style={{ background: '#F1F4F2' }}>{m.productEmoji}</span>
-                  <span className="admin-cell-product-text">{m.productName}</span>
+                  <span className="admin-cell-product-text">{m.productName}{m.variantName ? ` — ${m.variantName}` : ''}</span>
                 </div>
                 <div className="admin-cell-plain" style={{ color: '#68746B' }}>{TYPE_LABEL[m.type]}</div>
                 <div className="admin-cell-plain" style={{ fontWeight: 900, color: m.quantityChange > 0 ? '#12813C' : '#B42318' }}>

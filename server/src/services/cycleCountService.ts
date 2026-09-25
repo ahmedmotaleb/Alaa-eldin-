@@ -19,7 +19,9 @@ export interface CycleCountSummary {
 export interface CycleCountItem {
   id: string
   productId: string
+  variantId: string | null
   productName: string
+  variantName: string | null
   sku: string | null
   barcode: string
   systemQuantity: number
@@ -34,6 +36,11 @@ export interface CycleCountDetail extends CycleCountSummary {
 // بيلقط مخزون النظام الحالي لحظة الإنشاء (كل المنتجات، أو منتجات قسم واحد لو اتحدد) كنقطة
 // بداية للعد الفعلي. اللقطة دي للعرض/المقارنة بس — التسوية الفعلية عند الإكمال بتستخدم
 // المخزون الحالي وقتها (راجع completeCycleCount).
+//
+// منتج عنده متغيّرات (product_variants): بياخد صف واحد *لكل متغيّر* بمخزون المتغيّر نفسه،
+// مش صف واحد بمخزون الأب — نفس القاعدة المتّبعة بالفعل في bulkStockService (توليد قالب
+// CSV) لأن مخزون الأب مش المرجع الحقيقي لمنتج له متغيّرات. منتج من غير متغيّرات بياخد صف
+// واحد بمخزون الأب زي ما كان الحال دايماً.
 export async function createCycleCount(input: { categoryId?: string | null; note?: string; userId: string }): Promise<{ id: string } | { error: 'category_not_found' }> {
   if (input.categoryId) {
     const { rows } = await pool.query('SELECT id FROM categories WHERE id = $1', [input.categoryId])
@@ -50,11 +57,34 @@ export async function createCycleCount(input: { categoryId?: string | null; note
       input.categoryId ? 'SELECT id, stock FROM products WHERE category_id = $1' : 'SELECT id, stock FROM products',
       input.categoryId ? [input.categoryId] : []
     )
+    const productIds = products.map(p => p.id)
+    const { rows: variants } = productIds.length
+      ? await client.query<{ id: string; productId: string; stock: number }>(
+          'SELECT id, product_id as "productId", stock FROM product_variants WHERE product_id = ANY($1::text[])',
+          [productIds]
+        )
+      : { rows: [] }
+    const variantsByProduct = new Map<string, { id: string; stock: number }[]>()
+    for (const v of variants) {
+      if (!variantsByProduct.has(v.productId)) variantsByProduct.set(v.productId, [])
+      variantsByProduct.get(v.productId)!.push(v)
+    }
+
     for (const product of products) {
-      await client.query(
-        'INSERT INTO cycle_count_items (id, cycle_count_id, product_id, system_quantity) VALUES ($1, $2, $3, $4)',
-        [crypto.randomUUID(), id, product.id, product.stock]
-      )
+      const productVariants = variantsByProduct.get(product.id) ?? []
+      if (productVariants.length === 0) {
+        await client.query(
+          'INSERT INTO cycle_count_items (id, cycle_count_id, product_id, variant_id, system_quantity) VALUES ($1, $2, $3, NULL, $4)',
+          [crypto.randomUUID(), id, product.id, product.stock]
+        )
+      } else {
+        for (const v of productVariants) {
+          await client.query(
+            'INSERT INTO cycle_count_items (id, cycle_count_id, product_id, variant_id, system_quantity) VALUES ($1, $2, $3, $4, $5)',
+            [crypto.randomUUID(), id, product.id, v.id, v.stock]
+          )
+        }
+      }
     }
   })
   return { id }
@@ -99,14 +129,18 @@ export async function getCycleCount(id: string): Promise<CycleCountDetail | null
   if (!cc) return null
 
   const { rows: itemRows } = await pool.query<{
-    id: string; productId: string; productName: string; sku: string | null; barcode: string
-    systemQuantity: number; countedQuantity: number | null
+    id: string; productId: string; variantId: string | null; productName: string; variantName: string | null
+    sku: string | null; barcode: string; systemQuantity: number; countedQuantity: number | null
   }>(`
-    SELECT cci.id, cci.product_id as "productId", p.name as "productName", p.sku, p.barcode,
+    SELECT cci.id, cci.product_id as "productId", cci.variant_id as "variantId", p.name as "productName",
+           v.name as "variantName",
+           COALESCE(v.sku, p.sku) as sku, COALESCE(v.barcode, p.barcode) as barcode,
            cci.system_quantity as "systemQuantity", cci.counted_quantity as "countedQuantity"
-    FROM cycle_count_items cci JOIN products p ON p.id = cci.product_id
+    FROM cycle_count_items cci
+    JOIN products p ON p.id = cci.product_id
+    LEFT JOIN product_variants v ON v.id = cci.variant_id
     WHERE cci.cycle_count_id = $1
-    ORDER BY p.name
+    ORDER BY p.name, v.sort_order NULLS FIRST
   `, [id])
 
   const items: CycleCountItem[] = itemRows.map(r => ({
@@ -132,9 +166,11 @@ async function assertDraft(id: string): Promise<{ error: 'not_found' | 'not_draf
 
 // بيسجّل الكميات المعدودة فعلياً — productId مش موجود في الجرد ده بيتجاهل (مرجوع في
 // skipped) بدل ما يفشل العملية كلها، لأن غالباً المصدر بيانات مُدخلة يدوياً أو CSV مرفوع.
+// variantId لازم يتبعت صراحة (أو يتسيب فاضي/null) لما المنتج له أكتر من صف (متغيّرات) —
+// من غيره الـ WHERE هيتطابق مع IS NOT DISTINCT FROM NULL بس، يعني هيفشل يلاقي صف المتغيّر.
 export async function recordCounts(
   cycleCountId: string,
-  counts: { productId: string; countedQuantity: number }[]
+  counts: { productId: string; variantId?: string | null; countedQuantity: number }[]
 ): Promise<{ updated: number; skipped: string[] } | { error: 'not_found' | 'not_draft' }> {
   const draftCheck = await assertDraft(cycleCountId)
   if (draftCheck) return draftCheck
@@ -143,16 +179,17 @@ export async function recordCounts(
   const skipped: string[] = []
   await withTransaction(async client => {
     for (const count of counts) {
+      const key = count.variantId ?? count.productId
       if (!Number.isFinite(count.countedQuantity) || count.countedQuantity < 0) {
-        skipped.push(count.productId)
+        skipped.push(key)
         continue
       }
       const { rowCount } = await client.query(
-        'UPDATE cycle_count_items SET counted_quantity = $1 WHERE cycle_count_id = $2 AND product_id = $3',
-        [Math.trunc(count.countedQuantity), cycleCountId, count.productId]
+        'UPDATE cycle_count_items SET counted_quantity = $1 WHERE cycle_count_id = $2 AND product_id = $3 AND variant_id IS NOT DISTINCT FROM $4',
+        [Math.trunc(count.countedQuantity), cycleCountId, count.productId, count.variantId ?? null]
       )
       if (rowCount) updated++
-      else skipped.push(count.productId)
+      else skipped.push(key)
     }
   })
   return { updated, skipped }
@@ -170,27 +207,39 @@ export async function completeCycleCount(
   if (draftCheck) return draftCheck
 
   const adjustedCount = await withTransaction(async client => {
-    const { rows: items } = await client.query<{ productId: string; countedQuantity: number }>(
-      'SELECT product_id as "productId", counted_quantity as "countedQuantity" FROM cycle_count_items WHERE cycle_count_id = $1 AND counted_quantity IS NOT NULL',
+    const { rows: items } = await client.query<{ productId: string; variantId: string | null; countedQuantity: number }>(
+      'SELECT product_id as "productId", variant_id as "variantId", counted_quantity as "countedQuantity" FROM cycle_count_items WHERE cycle_count_id = $1 AND counted_quantity IS NOT NULL',
       [cycleCountId]
     )
 
     let adjusted = 0
     for (const item of items) {
-      const { rows: productRows } = await client.query<{ stock: number }>(
-        'SELECT stock FROM products WHERE id = $1 FOR UPDATE',
-        [item.productId]
-      )
-      const currentStock = productRows[0]?.stock
-      if (currentStock === undefined) continue
-      const delta = item.countedQuantity - currentStock
-      if (delta === 0) continue
+      let currentStock: number | undefined
+      if (item.variantId) {
+        const { rows } = await client.query<{ stock: number }>(
+          'SELECT stock FROM product_variants WHERE id = $1 FOR UPDATE',
+          [item.variantId]
+        )
+        currentStock = rows[0]?.stock
+        if (currentStock === undefined) continue
+        if (item.countedQuantity === currentStock) continue
+        await client.query('UPDATE product_variants SET stock = $1 WHERE id = $2', [item.countedQuantity, item.variantId])
+      } else {
+        const { rows } = await client.query<{ stock: number }>(
+          'SELECT stock FROM products WHERE id = $1 FOR UPDATE',
+          [item.productId]
+        )
+        currentStock = rows[0]?.stock
+        if (currentStock === undefined) continue
+        if (item.countedQuantity === currentStock) continue
+        await client.query('UPDATE products SET stock = $1 WHERE id = $2', [item.countedQuantity, item.productId])
+      }
 
-      await client.query('UPDATE products SET stock = $1 WHERE id = $2', [item.countedQuantity, item.productId])
+      const delta = item.countedQuantity - currentStock
       await client.query(
-        `INSERT INTO stock_movements (product_id, type, quantity_change, note, created_at, quantity_before, quantity_after, created_by_user_id)
-         VALUES ($1, 'adjustment', $2, $3, now(), $4, $5, $6)`,
-        [item.productId, delta, `جرد دوري #${cycleCountId}`, currentStock, item.countedQuantity, userId]
+        `INSERT INTO stock_movements (product_id, variant_id, type, quantity_change, note, created_at, quantity_before, quantity_after, created_by_user_id)
+         VALUES ($1, $2, 'adjustment', $3, $4, now(), $5, $6, $7)`,
+        [item.productId, item.variantId, delta, `جرد دوري #${cycleCountId}`, currentStock, item.countedQuantity, userId]
       )
       adjusted++
     }

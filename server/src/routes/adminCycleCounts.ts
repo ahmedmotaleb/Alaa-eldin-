@@ -45,7 +45,13 @@ adminCycleCountsRouter.get('/:id', requirePermission('inventory.view'), async (r
 
 adminCycleCountsRouter.patch('/:id/counts', requirePermission('inventory.adjust'), async (req, res) => {
   const { counts } = req.body ?? {}
-  if (!Array.isArray(counts) || counts.some((c: unknown) => typeof c !== 'object' || c === null || typeof (c as { productId?: unknown }).productId !== 'string')) {
+  if (!Array.isArray(counts) || counts.some((c: unknown) => {
+    if (typeof c !== 'object' || c === null) return true
+    const row = c as { productId?: unknown; variantId?: unknown }
+    if (typeof row.productId !== 'string') return true
+    if (row.variantId !== undefined && row.variantId !== null && typeof row.variantId !== 'string') return true
+    return false
+  })) {
     res.status(400).json({ error: 'invalid_counts' })
     return
   }
@@ -85,7 +91,7 @@ adminCycleCountsRouter.get('/:id/export', requirePermission('inventory.view'), a
   }
   const csv = toCsv(
     ['sku', 'barcode', 'name', 'system_quantity', 'counted_quantity'],
-    detail.items.map(i => [i.sku ?? '', i.barcode, i.productName, i.systemQuantity, ''])
+    detail.items.map(i => [i.sku ?? '', i.barcode, i.variantName ? `${i.productName} — ${i.variantName}` : i.productName, i.systemQuantity, ''])
   )
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader('Content-Disposition', `attachment; filename="cycle-count-${String(req.params.id)}.csv"`)
@@ -105,11 +111,11 @@ adminCycleCountsRouter.post('/:id/import', requirePermission('inventory.adjust')
     return
   }
 
-  const bySku = new Map(detail.items.filter(i => i.sku).map(i => [i.sku as string, i.productId]))
-  const byBarcode = new Map(detail.items.filter(i => i.barcode).map(i => [i.barcode, i.productId]))
+  const bySku = new Map(detail.items.filter(i => i.sku).map(i => [i.sku as string, { productId: i.productId, variantId: i.variantId }]))
+  const byBarcode = new Map(detail.items.filter(i => i.barcode).map(i => [i.barcode, { productId: i.productId, variantId: i.variantId }]))
 
   const records = csvRecords(parseCsv(req.file.buffer.toString('utf-8')))
-  const counts: { productId: string; countedQuantity: number }[] = []
+  const counts: { productId: string; variantId: string | null; countedQuantity: number }[] = []
   const unmatched: string[] = []
   for (const record of records) {
     const countedRaw = record.counted_quantity?.trim()
@@ -117,12 +123,12 @@ adminCycleCountsRouter.post('/:id/import', requirePermission('inventory.adjust')
     const countedQuantity = Number(countedRaw)
     if (!Number.isFinite(countedQuantity)) continue
 
-    const productId = bySku.get(record.sku?.trim()) ?? byBarcode.get(record.barcode?.trim())
-    if (!productId) {
+    const match = bySku.get(record.sku?.trim()) ?? byBarcode.get(record.barcode?.trim())
+    if (!match) {
       unmatched.push(record.sku || record.barcode || '?')
       continue
     }
-    counts.push({ productId, countedQuantity })
+    counts.push({ productId: match.productId, variantId: match.variantId, countedQuantity })
   }
 
   const result = await recordCounts(String(req.params.id), counts)
