@@ -5,30 +5,31 @@
 تحت "ملاحظات تحقّق تاريخية" وتفضل كما هي بتاريخها الأصلي لغرض التتبّع فقط، ومفيش أي رقم
 قديم فيها (زي "883/883" أو "990/990") يتقرأ كحالة حالية.
 
-## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٢٥
+## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٢٧
 
 | البند | القيمة | كيف اتحقّقنا |
 |---|---|---|
-| آخر commit على `main` | `ee1e8ef` | `git log` مباشر |
+| آخر commit على `main` | `1af9dd9` | `git log` مباشر |
 | آخر ترحيلة (migration) | `0065_whatsapp_delivery_webhooks.sql` | قراءة مباشرة لمجلد `server/migrations/` |
 | عدد الترحيلات الكلي | 65 | عدّ ملفات `server/migrations/*.sql` |
 | اختبارات السيرفر | **1141/1141 ناجحة** — تم التحقق **على قاعدة بيانات جديدة تماماً** مرتين مستقلتين، بالإضافة لتشغيلات سابقة على قاعدة التطوير | `npx vitest run` بعد `CREATE DATABASE` فاضية + `tsx src/migrate.ts` |
 | بناء المتجر (storefront) | ✅ نظيف | `npm run build` (الجذر) |
 | بناء السيرفر | ✅ نظيف (`tsc` صارم) | `npm run build --prefix server` |
 | بناء لوحة التحكم (admin) | ✅ نظيف | `npm run build --prefix admin` |
-| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `ee1e8ef` (run `36099126044`) | `GET /repos/.../actions/runs?head_sha=...` عبر GitHub API مباشرة |
-| نشر Railway (`endearing-clarity`/`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit (deployment `5bbd3a86-...`) | Railway API مباشر (`list-deployments`) |
+| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `1af9dd9` (run `36168687537`) — **مستقل تماماً عن أي مشكلة Railway Cron** (راجع التوضيح تحت) | `GET /repos/.../actions/runs?head_sha=...` عبر GitHub API مباشرة |
+| نشر Railway — خدمة الويب الرئيسية (`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit (deployment `aca9ebc5-...`)، `state: online`، replica شغّالة 1/1، `hasIssues: false` | `environment-status`/`list-deployments` مباشر |
+| نشر Railway — خدمات Cron الثلاثة الموجودة | ✅ **SUCCESS بعد إصلاح فعلي (٢٠٢٦-٠٩-٢٧)** — الثلاثة `cronReady`، `recentFailures: 0`، `hasIssues: false`. راجع القسم الجديد تحت لتفاصيل العطل والإصلاح | `environment-status(includeSuccessful: true)` + لوجات بناء فعلية |
 | `GET /health` | ⚠️ **NOT DIRECTLY VERIFIED** — طلب HTTP مباشر لرابط الإنتاج محجوب من بيئة هذه الجلسة (`EGRESS_BLOCKED`/`connect_rejected`). الدليل غير المباشر فقط: `healthcheckPath: /health` هو ما يعتمد عليه Railway قبل تعليم أي نشر `SUCCESS` | محاولة `curl`/`WebFetch` فعلية فشلت بحجب شبكة صريح |
 | Cloudinary | ✅ CONFIGURED | لوج إقلاع فعلي (`startup_config_summary`) بعد آخر نشر ناجح |
 | WhatsApp (رسائل + قالب تأكيد الطلب) | ✅ CONFIGURED | نفس المصدر |
 | WhatsApp — webhook تسليم/قراءة حقيقي | ❌ **NOT CONFIGURED** — الكود جاهز ومنشور فعلياً (`GET`/`POST /api/webhooks/whatsapp`)، لكن `WHATSAPP_WEBHOOK_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` لسه مش مضبوطين. راجع `server/docs/WHATSAPP_DELIVERY_WEBHOOK.md` لخطوات التفعيل | `startup_config_summary`: `whatsapp_delivery_webhook` جوه `notConfigured` |
-| WhatsApp — Railway Cron لإعادة محاولة الإشعارات الفاشلة | ❌ **NOT CONFIGURED — مؤجَّل بقرار صاحب المشروع (٢٠٢٦-٠٩-٢٥)** — Railway رفضت إنشاء خدمة رابعة (حد الخطة المجانية: 5 خدم بالظبط). تم تقييم الأثر: محدود جداً (بديل يدوي "إعادة إرسال" شغّال فعلياً في لوحة التحكم)، فتم تأجيل ترقية الخطة عمداً، مش لأنه عطل حرج | راجع `server/docs/WHATSAPP_ORDER_CONFIRMATION_RETRY_CRON.md` |
+| WhatsApp — Railway Cron لإعادة محاولة الإشعارات الفاشلة | ❌ **NOT CREATED — مؤجَّل بقرار صاحب المشروع (٢٠٢٦-٠٩-٢٥)** — Railway رفضت إنشاء خدمة رابعة: `"Free plan resource provision limit exceeded"` (حد فعلي لعدد الخدمات: 5 بالظبط على الخطة المجانية، مش عطل مؤقت). تم تقييم الأثر: محدود جداً (بديل يدوي "إعادة إرسال" شغّال فعلياً في لوحة التحكم)، فتم تأجيل ترقية الخطة عمداً، مش لأنه عطل حرج. **عطل بناء الخدمات التلاتة التانية (تحت) لا علاقة له بهذا القيد إطلاقاً** — قيدان منفصلان تماماً | راجع `server/docs/WHATSAPP_ORDER_CONFIRMATION_RETRY_CRON.md` |
 | Web Push (VAPID) | ✅ CONFIGURED | لوج إقلاع فعلي |
 | Turnstile (CAPTCHA) | ✅ CONFIGURED | لوج إقلاع فعلي |
 | مُرسِل البريد الإلكتروني (`RESEND_FROM`) | ❌ **لسه على قيمة sandbox الافتراضية** (`onboarding@resend.dev`) — مش دومين مُتحقق منه، غير جاهز لإطلاق فعلي لمستخدمين حقيقيين | قراءة مباشرة لمتغيرات Railway |
-| Railway Cron — انتهاء صلاحية نقاط الولاء | ~~❌ NOT CONFIGURED~~ **✅ CONFIGURED (٢٠٢٦-٠٩-٢٥)** — خدمة `cron-loyalty-expiry` حقيقية، `0 1 * * *` UTC. لسه ماجاش ميعاد أول تشغيلة (يومية) وقت آخر تحقق | `environment-status`: `state: cronReady` |
-| Railway Cron — تذكير السلة المهجورة | ~~❌ NOT CONFIGURED~~ **✅ CONFIGURED ومُتحقَّق من تشغيلها الفعلي (٢٠٢٦-٠٩-٢٥)** — خدمة `cron-abandoned-cart` حقيقية، `0 */6 * * *` UTC. **أول تشغيلة فعلية نجحت** وطبعت `sent 0 abandoned-cart reminder(s), 0 skipped (already converted), 1 skipped (promotions disabled)` — فحصت بيانات إنتاج حقيقية | `environment-status`: `state: cronSucceeded` + لوج تشغيل حقيقي |
-| Railway Cron — تطبيق الأسعار المجدولة | ~~❌ NOT CONFIGURED~~ **✅ CONFIGURED ومُتحقَّق من تشغيلها الفعلي (٢٠٢٦-٠٩-٢٥)** — خدمة `cron-scheduled-pricing` حقيقية، `*/15 * * * *` UTC. **بتشتغل فعلياً كل 15 دقيقة بالظبط** منذ التفعيل، وطبعت `scheduled pricing: applied 0, conflicts 0` في كل تشغيلة (٠ متوقع — مفيش جدولة سعر حالية) | `environment-status`: `state: cronSucceeded` + لوج تشغيل حقيقي (تشغيلات متعددة متتالية) |
+| Railway Cron — انتهاء صلاحية نقاط الولاء | ✅ **CONFIGURED، بناء نظيف بعد إصلاح (٢٠٢٦-٠٩-٢٧)** — خدمة `cron-loyalty-expiry` حقيقية، `0 1 * * *` UTC، `cronReady`، `recentFailures: 0`. أول تشغيلة فعلية (يومية) لسه ماجاش ميعادها وقت آخر تحقق | `environment-status`: `state: cronReady`, `recentFailures: 0` |
+| Railway Cron — تذكير السلة المهجورة | ✅ **CONFIGURED، بناء نظيف بعد إصلاح (٢٠٢٦-٠٩-٢٧)** — خدمة `cron-abandoned-cart` حقيقية، `0 */6 * * *` UTC. **تشغيلة فعلية سابقة (قبل الإصلاح) نجحت** وطبعت `sent 0 abandoned-cart reminder(s), 0 skipped (already converted), 1 skipped (promotions disabled)`؛ بعد الإصلاح الخدمة رجعت `cronReady` نظيفة وهتتأكد أول تشغيلة على البناء الجديد في الجدول القادم | `environment-status`: `recentFailures: 0` + لوج تشغيل حقيقي سابق |
+| Railway Cron — تطبيق الأسعار المجدولة | ✅ **CONFIGURED، بناء نظيف بعد إصلاح (٢٠٢٦-٠٩-٢٧)** — خدمة `cron-scheduled-pricing` حقيقية، `*/15 * * * *` UTC. **تشغيلات فعلية متعددة سابقة (قبل الإصلاح)** نجحت وطبعت `scheduled pricing: applied 0, conflicts 0`؛ بعد الإصلاح الخدمة رجعت `cronReady` نظيفة، وأول تشغيلة على البناء الجديد متوقعة خلال ١٥ دقيقة من وقت الإصلاح | `environment-status`: `recentFailures: 0` + لوج تشغيل حقيقي سابق |
 | مراقبة الأخطاء (error monitoring) | ⚠️ **لوج مُهيكل بس (pino) — لا يوجد APM/error-tracking خارجي** (زي Sentry) مُفعّل. `uncaughtException`/`unhandledRejection` بيتسجّلوا ويعملوا exit صريح (فلسفة crash-only + `restartPolicy: ON_FAILURE`). إضافة Sentry أو مشابه تحتاج حساب خارجي وDSN من صاحب المشروع — بند "توسّع مستقبلي"، مش عطل حالي | قراءة مباشرة لـ `src/index.ts`/`src/logger.ts` |
 | نسخة احتياطية للإنتاج | ❌ **NOT VERIFIED** — لا توجد بيانات اعتماد وصول مباشر لقاعدة بيانات الإنتاج من هذه الجلسة. التوثيق وتجربة الاستعادة (على قاعدة محلية معزولة) موجودين ومكتملين في `server/docs/BACKUP_RESTORE.md` | راجع `BACKUP_RESTORE.md` |
 | اختبار الدخان الإنتاجي (smoke test) | ⚠️ تم تشغيله محلياً بس (سيرفر بناء إنتاج + قاعدة تطوير حقيقية)، **لم يُنفَّذ ضد رابط الإنتاج الحقيقي** بسبب حجب الشبكة | راجع القسم 8 التاريخي |
@@ -58,6 +59,51 @@ Railway لأجل غير مسمى — الأثر الحقيقي لغيابها م
 ("إعادة إرسال" في درج الطلب بلوحة التحكم) شغّال فعلياً بدون أي اعتماد على الخدمة دي.
 راجع `server/docs/WHATSAPP_ORDER_CONFIRMATION_RETRY_CRON.md` للتفاصيل والخطوات الجاهزة
 لو حابب يرجع يفعّلها لاحقاً.
+
+**تحديث ٢٠٢٦-٠٩-٢٧ — تشخيص وإصلاح: حالة GitHub commit status المضلِّلة للخدمات الثلاثة**:
+GitHub كان بيوضّح حالة أعمدة منفصلة لكل push على `main`: خدمة الويب الرئيسية `success`،
+والثلاث خدمات Cron (`cron-loyalty-expiry`/`cron-abandoned-cart`/`cron-scheduled-pricing`)
+`failure`. **الافتراض الأولي كان إن السبب حد موارد/خطة Railway (نفس القيد اللي منع الخدمة
+الرابعة) — ده غير صحيح، وتم تصحيحه بعد فحص مباشر**:
+
+- **الفحص**: `environment-status` بيّن إن كل خدمة من التلاتة كانت `cronReady`/`cronSucceeded`
+  فعلاً (النشر النشط ناجح)، لكن `recentFailedDeployments` بيها فشل متكرر مع كل push جديد.
+  فحص لوجات البناء الفعلية (`get-logs` بنوع `build`) لأحدث فشل كشف خطأ حقيقي وقابل
+  لإعادة الإنتاج: `/bin/bash: line 1: cd: server: No such file or directory` — مش أي رسالة
+  متعلقة بحد موارد أو خطة.
+- **السبب الجذري الفعلي**: خطة البناء (build plan) المُولَّدة فعلياً لهذه الخدمات الثلاثة
+  كانت عالقة على نسخة قديمة (`nixpacks v1.41.0`) بتستخدم أمر بناء الـ monorepo الكامل الخاص
+  بخدمة الويب الرئيسية (`... && cd server && ... && cd ../admin && ...`) ومعه `npm run
+  start` — **بينما `rootDirectory`/`buildCommand`/`startCommand` المُسجَّلة فعلياً على مستوى
+  كل خدمة (`server`، بناء قصير، أمر السكريبت الصحيح) كانت مسجَّلة صح في Railway لكن مش
+  بتتطبّق على البناء الحقيقي**. النشر "الناجح" النشط في كل خدمة كان في الحقيقة إعادة استخدام
+  صورة بناء قديمة (من `redeploy` سابق) — مش بناء جديد بالإعدادات الصحيحة. أي بناء *جديد
+  فعلياً* من push حقيقي كان بيفشل بنفس الخطأ باستمرار — عطل بنية بناء، مش حد خدمات.
+- **الإصلاح المُطبَّق (على الثلاث خدمات)**: أعدنا كتابة نفس قيم
+  `rootDirectory`/`buildCommand`/`startCommand`/`cronSchedule`/`restartPolicyType` عبر
+  `update-service` (نداء واحد لكل خدمة)، وبعدين `redeploy` صريح. النتيجة: Railway استخدم
+  تلقائياً نسخة بناء أحدث (`railpack v0.40.0`)، والخطة المطبوعة فعلياً أصبحت صحيحة 100%
+  للثلاثة (مثال لخدمة الولاء: `build: npm install && npm run build` / `Deploy: npm run
+  loyalty:expire`). الثلاث deployments الجديدة `SUCCESS` فعلياً، والخدمات الثلاثة رجعت
+  `cronReady` نظيفة تماماً (`recentFailures: 0`, `hasIssues: false`) — تم التحقق مباشرة عبر
+  `environment-status(includeSuccessful: true)`، مش افتراض.
+- **إجراء وقائي إضافي**: تم إضافة `watchPatterns: ["server/**"]` على الخدمات الثلاثة —
+  Railway بيدعم فلترة إعادة النشر حسب مسارات الملفات فعلياً (حقل `watchPatterns` مؤكَّد في
+  `update-service`)، يعني من دلوقتي أي push بيغيّر بس ملفات توثيق/متجر/لوحة تحكم (من غير أي
+  تغيير جوه `server/`) مش هيحاول يعيد نشر خدمات الـ Cron دي خالص — تقليل فعلي لعدد محاولات
+  البناء غير الضرورية، مش بس تجميل لحالة GitHub.
+- **الخدمة الرابعة (واتساب) غير متأثرة بهذا الإصلاح إطلاقاً** — قيدها (حد 5 خدمات) منفصل
+  تماماً عن عطل خطة البناء ده. راجع
+  `server/docs/WHATSAPP_ORDER_CONFIRMATION_RETRY_CRON.md` للتوضيح الكامل.
+- **خيار مستقبلي (لم يُنفَّذ، تقييم فقط)**: توحيد المهام الدورية الأربعة (تسعير مجدول، سلة
+  مهجورة، انتهاء ولاء، إعادة محاولة واتساب) في خدمة Cron واحدة (`cron-maintenance`) بدل 4
+  خدمات منفصلة يقلل استهلاك حد الخدمات على الخطة المجانية ويحل مشكلة الخدمة الرابعة مباشرة.
+  **العيوب**: الجداول الأربعة مختلفة تماماً في التكرار المطلوب (15 دقيقة مقابل 6 ساعات مقابل
+  يومي)، فتشغيل الكل بمعدل موحّد (أعلى تكرار: 15 دقيقة) يعني تشغيل مهام غير محتاجة كل مرة؛
+  فشل مهمة واحدة جوه سكريبت موحّد ممكن يوقف/يأخر مهام تانية غير مرتبطة بيها لو التنفيذ
+  متسلسل؛ وعزل الأخطاء والمراقبة بيبقى أصعب (لوج واحد لأربع مهام بدل أربعة منفصلة). **قرار
+  مقترح**: مفيش داعي للتنفيذ حالياً — الخدمات الأربعة (لو اتفعّلت كلها) لسه جوه أي حد معقول،
+  والتوحيد ده يستاهل بس لو حد الخدمات نفسه بقى قيد فعلي متكرر عبر ميزات تانية مستقبلية.
 
 **نسخة احتياطية إنتاجية فعلية**: لسه **NOT VERIFIED** — يحتاج بيانات اعتماد وصول مباشر
 لقاعدة بيانات الإنتاج، غير متاحة من هذه الجلسة. محتاج تنفيذ يدوي بمعرفة صاحب الوصول.

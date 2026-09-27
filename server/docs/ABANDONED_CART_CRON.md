@@ -1,6 +1,18 @@
 # جدولة معالج تذكير السلة المهجورة (Railway Cron)
 
-## ✅ تحديث ٢٠٢٦-٠٩-٢٥ — تم التفعيل فعلياً
+## ✅ تحديث ٢٠٢٦-٠٩-٢٧ — اكتشاف وإصلاح عطل بناء حقيقي (build plan قديم)
+
+نفس العطل والإصلاح الموثَّق بالتفصيل في [`LOYALTY_EXPIRY_CRON.md`](./LOYALTY_EXPIRY_CRON.md#-تحديث-٢٠٢٦-٠٩-٢٧--اكتشاف-وإصلاح-عطل-بناء-حقيقي-build-plan-قديم)
+أثّر على الخدمة دي بالظبط بنفس الشكل: أي `redeploy` حقيقي (مش إعادة استخدام صورة قديمة) كان
+بيفشل بـ `cd: server: No such file or directory` بسبب خطة بناء قديمة عالقة على `nixpacks
+v1.41.0` كانت بتتجاهل `rootDirectory`/`buildCommand`/`startCommand` المُعدَّة فعلياً.
+**مش حد موارد/خطة Railway، ومش خطأ كود** — عطل بنية بناء على مستوى المنصة. الإصلاح: إعادة
+كتابة نفس الإعدادات عبر `update-service` ثم `redeploy` — البناء الجديد استخدم `railpack
+v0.40.0` وطبّق الإعدادات الصحيحة فعلياً (`build: npm install && npm run build`، `Deploy: npm
+run notify:abandoned-cart`). Deployment جديد `SUCCESS`، الخدمة رجعت `cronReady` نظيفة
+(`recentFailures: 0`)، وتم إضافة `watchPatterns: ["server/**"]`.
+
+## ✅ تحديث ٢٠٢٦-٠٩-٢٥ — تم التفعيل فعلياً (تاريخي)
 
 خدمة Railway Cron حقيقية اتعملت واتأكدت (`cron-abandoned-cart`، جدولة `0 */6 * * *` UTC،
 `restartPolicyType: NEVER`). المتغيرات مربوطة بمرجع مباشر: `DATABASE_URL` من خدمة

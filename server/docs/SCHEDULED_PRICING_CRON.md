@@ -1,6 +1,17 @@
 # جدولة معالج تنفيذ الأسعار المستقبلية (Railway Cron)
 
-## ✅ تحديث ٢٠٢٦-٠٩-٢٥ — تم التفعيل فعلياً، وتم التحقق من تشغيلها الحقيقي
+## ✅ تحديث ٢٠٢٦-٠٩-٢٧ — اكتشاف وإصلاح عطل بناء حقيقي (build plan قديم)
+
+نفس العطل والإصلاح الموثَّق بالتفصيل في [`LOYALTY_EXPIRY_CRON.md`](./LOYALTY_EXPIRY_CRON.md#-تحديث-٢٠٢٦-٠٩-٢٧--اكتشاف-وإصلاح-عطل-بناء-حقيقي-build-plan-قديم)
+أثّر على الخدمة دي بالظبط بنفس الشكل: أي `redeploy` حقيقي كان بيفشل بـ `cd: server: No such
+file or directory` بسبب خطة بناء قديمة عالقة على `nixpacks v1.41.0`. **مش حد موارد/خطة
+Railway، ومش خطأ كود**. الإصلاح: إعادة كتابة نفس الإعدادات عبر `update-service` ثم
+`redeploy` — البناء الجديد استخدم `railpack v0.40.0` وطبّق الإعدادات الصحيحة (`build: npm
+install && npm run build`، `Deploy: npm run pricing:apply-scheduled`). Deployment جديد
+`SUCCESS`، الخدمة رجعت `cronReady` نظيفة (`recentFailures: 0`)، وتم إضافة
+`watchPatterns: ["server/**"]`.
+
+## ✅ تحديث ٢٠٢٦-٠٩-٢٥ — تم التفعيل فعلياً، وتم التحقق من تشغيلها الحقيقي (تاريخي)
 
 خدمة Railway Cron حقيقية اتعملت واتأكدت (`cron-scheduled-pricing`، جدولة `*/15 * * * *`
 UTC، `restartPolicyType: NEVER`، `DATABASE_URL` مربوطة بمرجع مباشر لخدمة Postgres).
