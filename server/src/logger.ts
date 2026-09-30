@@ -67,6 +67,8 @@ type BusinessEvent =
   | 'whatsapp_notification_retry_blocked'
   | 'whatsapp_webhook_processed' | 'whatsapp_webhook_entries_skipped' | 'whatsapp_webhook_signature_invalid'
   | 'android_apk_download'
+  | 'backup_attempt_succeeded' | 'backup_attempt_failed'
+  | 'backup_token_created' | 'backup_token_revoked'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

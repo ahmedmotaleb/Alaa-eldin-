@@ -1,0 +1,17 @@
+node_modules
+server/node_modules
+admin/node_modules
+dist
+dist-ssr
+server/dist
+admin/dist
+*.tsbuildinfo
+.DS_Store
+.vite
+.git
+
+# نفس مبدأ .gitignore بالظبط — أي ملف .env حقيقي (فيه أسرار) ما ينفعش يدخل الصورة خالص،
+# حتى لو حد نساه في مجلد المشروع محلياً وقت البناء.
+.env
+.env.*
+!.env.example

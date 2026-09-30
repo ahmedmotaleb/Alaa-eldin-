@@ -79,6 +79,8 @@ import { loyaltyRouter } from './routes/loyalty.js'
 import { cartSnapshotRouter } from './routes/cartSnapshot.js'
 import { backInStockRouter } from './routes/backInStock.js'
 import { whatsappWebhookRouter } from './routes/whatsappWebhook.js'
+import { adminBackupRouter } from './routes/adminBackup.js'
+import { backupRouter } from './routes/backup.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DEV_ORIGIN = process.env.DEV_ORIGIN ?? 'http://localhost:5183'
@@ -262,6 +264,8 @@ app.use('/api/admin/settlements', adminSettlementsRouter)
 app.use('/api/admin/analytics', adminAnalyticsRouter)
 app.use('/api/admin/integrations', adminIntegrationsRouter)
 app.use('/api/admin/security-status', adminSecurityStatusRouter)
+app.use('/api/admin/backup', adminBackupRouter)
+app.use('/api/backup', backupRouter)
 
 if (isProduction) {
   const clientDir = path.join(__dirname, '..', '..', 'dist')

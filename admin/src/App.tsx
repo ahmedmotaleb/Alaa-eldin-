@@ -64,6 +64,7 @@ const DeliverySettingsPage = lazy(() => import('./pages/settings/DeliverySetting
 const PaymentSettingsPage = lazy(() => import('./pages/settings/PaymentSettingsPage').then(m => ({ default: m.PaymentSettingsPage })))
 const SecuritySettingsPage = lazy(() => import('./pages/settings/SecuritySettingsPage').then(m => ({ default: m.SecuritySettingsPage })))
 const IntegrationsSettingsPage = lazy(() => import('./pages/settings/IntegrationsSettingsPage').then(m => ({ default: m.IntegrationsSettingsPage })))
+const BackupSettingsPage = lazy(() => import('./pages/settings/BackupSettingsPage').then(m => ({ default: m.BackupSettingsPage })))
 const AuditLogPage = lazy(() => import('./pages/settings/AuditLogPage').then(m => ({ default: m.AuditLogPage })))
 const PagesListPage = lazy(() => import('./pages/pages/PagesListPage').then(m => ({ default: m.PagesListPage })))
 const PageEditorPage = lazy(() => import('./pages/pages/PageEditorPage').then(m => ({ default: m.PageEditorPage })))
@@ -156,6 +157,7 @@ export default function App() {
               <Route path="/settings/payment" element={<PaymentSettingsPage />} />
               <Route path="/settings/security" element={<SecuritySettingsPage />} />
               <Route path="/settings/integrations" element={<IntegrationsSettingsPage />} />
+              <Route path="/settings/backup" element={<BackupSettingsPage />} />
               <Route path="/settings/audit" element={<RequireAdminRole><AuditLogPage /></RequireAdminRole>} />
               <Route path="/pages" element={<PagesListPage />} />
               <Route path="/pages/edit/:id" element={<PageEditorPage />} />

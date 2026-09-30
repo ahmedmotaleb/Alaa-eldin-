@@ -113,7 +113,8 @@ export const NAV: NavGroup[] = [
       { id: 'integrations', label: 'التكاملات' },
       { id: 'users', label: 'المستخدمون والصلاحيات', adminOnly: true },
       { id: 'roles', label: 'الأدوار والصلاحيات', adminOnly: true },
-      { id: 'audit', label: 'سجل النشاط', adminOnly: true }
+      { id: 'audit', label: 'سجل النشاط', adminOnly: true },
+      { id: 'backup', label: 'النسخ الاحتياطي', adminOnly: true }
     ]
   }
 ]

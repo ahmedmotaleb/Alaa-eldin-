@@ -78,6 +78,37 @@ async function downloadFilePost(path: string, filename: string, body: unknown): 
   URL.revokeObjectURL(url)
 }
 
+// نسخة احتياطية: POST بكلمة سر + قراءة اسم الملف/SHA-256 من الهيدرز، مش زي downloadFile
+// العادية (GET بدون جسم). بيرجّع الـ sha256 عشان الصفحة تقدر تعرضه للتأكيد اليدوي لو حد حب.
+async function downloadBackup(password: string): Promise<{ sha256: string | null }> {
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/admin/backup/download`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
+    })
+  } catch {
+    throw new ApiError('network_error', 0)
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new ApiError(data?.error ?? 'server_error', res.status)
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="([^"]+)"/.exec(disposition)
+  const filename = match ? match[1] : 'backup.dump'
+  const sha256 = res.headers.get('X-Backup-SHA256')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return { sha256 }
+}
+
 async function uploadFile<T>(path: string, file: File): Promise<T> {
   const form = new FormData()
   form.append('file', file)
@@ -1225,6 +1256,34 @@ export interface AdminBanner {
 
 export type AdminBannerInput = Omit<AdminBanner, 'id' | 'sortOrder' | 'imageUrl' | 'mobileImageUrl'>
 
+export interface BackupStatus {
+  pgDumpMajor: number | null
+  serverMajor: number | null
+  lastSuccessfulBackupAt: string | null
+}
+
+export interface BackupToken {
+  id: string
+  name: string
+  createdBy: string | null
+  createdByEmail: string | null
+  createdAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+}
+
+export interface BackupAttempt {
+  id: number
+  actorType: string
+  adminEmail: string | null
+  ip: string
+  success: boolean
+  bytesTransferred: number | null
+  durationMs: number | null
+  failureReason: string | null
+  createdAt: string
+}
+
 export interface AdminSettings {
   name: string
   whatsappNumber: string
@@ -1901,5 +1960,13 @@ export const api = {
   confirmBulkCost: (rows: CostConfirmRowInput[]) =>
     request<ApplyResult>('/admin/products/bulk-cost/confirm', { method: 'POST', body: JSON.stringify({ rows }) }),
   downloadBulkCostResultReport: (rows: ApplyResultRow[]) =>
-    downloadFilePost('/admin/products/bulk-cost/confirm/report', `bulk-cost-result-${new Date().toISOString().slice(0, 10)}.csv`, { rows })
+    downloadFilePost('/admin/products/bulk-cost/confirm/report', `bulk-cost-result-${new Date().toISOString().slice(0, 10)}.csv`, { rows }),
+  getBackupStatus: () => request<BackupStatus>('/admin/backup/status'),
+  downloadBackupNow: (password: string) => downloadBackup(password),
+  listBackupTokens: () => request<{ tokens: BackupToken[] }>('/admin/backup/tokens'),
+  createBackupToken: (name: string, password: string) =>
+    request<{ id: string, token: string }>('/admin/backup/tokens', { method: 'POST', body: JSON.stringify({ name, password }) }),
+  revokeBackupToken: (id: string) =>
+    request<void>(`/admin/backup/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listBackupAttempts: () => request<{ attempts: BackupAttempt[] }>('/admin/backup/attempts')
 }

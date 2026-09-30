@@ -11,7 +11,8 @@ export const ALL_PERMISSIONS = [
   'products.pricing.bulk_update', 'products.cost.bulk_update',
   'loyalty.view', 'loyalty.adjust', 'loyalty.settings', 'referrals.view', 'referrals.manage',
   'products.barcode.view', 'products.barcode.generate', 'products.barcode.print',
-  'support.view', 'support.reply', 'support.assign', 'support.manage'
+  'support.view', 'support.reply', 'support.assign', 'support.manage',
+  'backups.manage'
 ] as const
 
 export type Permission = typeof ALL_PERMISSIONS[number]
