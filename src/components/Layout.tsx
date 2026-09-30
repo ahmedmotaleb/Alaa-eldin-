@@ -1,9 +1,13 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useCart } from '../store/CartContext'
 import { useCatalog } from '../store/CatalogContext'
+import { useAddresses } from '../store/AddressContext'
+import { useAuth } from '../store/AuthContext'
 import { usePageTitle } from '../store/pageTitleStore'
 import { PromoModal } from './PromoModal'
 import { StickyCartBar } from './StickyCartBar'
+import { AddressSheet } from './AddressSheet'
 import { ar } from '../i18n/ar'
 
 function useSubTitle() {
@@ -33,11 +37,21 @@ function useSubTitle() {
   return ''
 }
 
+function addressLabel(address: { label: string, area: string, governorate: string } | null, isGuest: boolean): string {
+  if (isGuest) return ar.home.selectDeliveryAddress
+  if (!address) return ar.home.selectDeliveryAddress
+  const place = address.area || address.governorate
+  return address.label ? `${address.label} - ${place}` : place
+}
+
 export function Layout() {
   const { totalQuantity } = useCart()
+  const { user } = useAuth()
+  const { defaultAddress } = useAddresses()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const subTitle = useSubTitle()
+  const [addressSheetOpen, setAddressSheetOpen] = useState(false)
 
   const isHome = pathname === '/'
   const hideHeaderCart = pathname === '/cart' || pathname === '/checkout' || pathname.startsWith('/confirmation/') || pathname.endsWith('/receipt')
@@ -56,15 +70,15 @@ export function Layout() {
       {isHome ? (
         <header className="home-header">
           <div className="home-header-row">
-            <div className="home-header-address">
+            <button className="home-header-address" onClick={() => setAddressSheetOpen(true)}>
               <img src="/images/logo.png" alt="" className="home-header-logo" onError={e => (e.currentTarget.style.display = 'none')} />
               <div>
                 <div className="home-header-address-label">{ar.home.deliverTo}</div>
-                <div className="home-header-address-value">{ar.home.deliveryAddress}
+                <div className="home-header-address-value">{addressLabel(defaultAddress, !user)}
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#16A34A" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </div>
               </div>
-            </div>
+            </button>
             <button className="header-cart" onClick={() => navigate('/cart')} aria-label={ar.common.openCart}>
               <span>🛒</span>
               {totalQuantity > 0 && <span className="cart-count">{totalQuantity}</span>}
@@ -96,6 +110,7 @@ export function Layout() {
 
       <StickyCartBar />
       <PromoModal />
+      {addressSheetOpen && <AddressSheet onClose={() => setAddressSheetOpen(false)} />}
 
       {!hideNav && (
         <nav className="bottom-nav" aria-label={ar.nav.mainNavLabel}>

@@ -26,6 +26,9 @@ export interface ListProductsParams {
   bestseller?: boolean
   available?: boolean
   brand?: string
+  unit?: string
+  minPrice?: number
+  maxPrice?: number
 }
 
 export interface ProductCard {
@@ -137,21 +140,34 @@ function sortClause(sort: SortOption | undefined, hasSearch: boolean, searchPara
   }
 }
 
-export async function listProducts(params: ListProductsParams) {
-  const page = Math.max(1, Math.floor(params.page ?? 1) || 1)
-  const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT))
-  const offset = (page - 1) * limit
-
+// بيبني شروط WHERE من الفلاتر — مشتركة بين listProducts (كل الفلاتر) وgetProductFacets
+// (بدون brand/unit/price نفسها، عشان القيم المعروضة كخيارات فلترة تعكس الفلاتر التانية
+// الفعّالة بس، مش تُستبعد بفلتر brand/unit نفسه اللي هي مُعروضة عشان يُختار منه).
+function buildConditions(params: ListProductsParams, values: unknown[], opts: { includeBrandUnitPrice: boolean }): { conditions: string[], searchParamIndex: number } {
   const conditions: string[] = []
-  const values: unknown[] = []
+  let searchParamIndex = -1
 
   if (params.category) {
     values.push(params.category)
     conditions.push(`p.category_id = $${values.length}`)
   }
-  if (params.brand) {
-    values.push(params.brand)
-    conditions.push(`p.brand = $${values.length}`)
+  if (opts.includeBrandUnitPrice) {
+    if (params.brand) {
+      values.push(params.brand)
+      conditions.push(`p.brand = $${values.length}`)
+    }
+    if (params.unit) {
+      values.push(params.unit)
+      conditions.push(`p.unit = $${values.length}`)
+    }
+    if (typeof params.minPrice === 'number' && Number.isFinite(params.minPrice)) {
+      values.push(params.minPrice)
+      conditions.push(`p.price >= $${values.length}`)
+    }
+    if (typeof params.maxPrice === 'number' && Number.isFinite(params.maxPrice)) {
+      values.push(params.maxPrice)
+      conditions.push(`p.price <= $${values.length}`)
+    }
   }
   if (params.offer) conditions.push('p.offer = 1')
   if (params.bestseller) conditions.push('p.bestseller = 1')
@@ -160,7 +176,6 @@ export async function listProducts(params: ListProductsParams) {
   }
 
   const trimmedSearch = (params.search ?? '').trim()
-  let searchParamIndex = -1
   if (trimmedSearch) {
     values.push(trimmedSearch)
     searchParamIndex = values.length
@@ -179,6 +194,36 @@ export async function listProducts(params: ListProductsParams) {
       conditions.push(`p.barcode = $${searchParamIndex}`)
     }
   }
+
+  return { conditions, searchParamIndex }
+}
+
+export async function getProductFacets(params: Pick<ListProductsParams, 'category' | 'search' | 'offer' | 'bestseller' | 'available'>) {
+  const values: unknown[] = []
+  const { conditions } = buildConditions(params, values, { includeBrandUnitPrice: false })
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const [brandsRes, unitsRes] = await Promise.all([
+    pool.query<{ brand: string }>(
+      `SELECT DISTINCT p.brand FROM products p JOIN categories c ON c.id = p.category_id ${where} AND p.brand <> '' ORDER BY p.brand`,
+      values
+    ),
+    pool.query<{ unit: string }>(
+      `SELECT DISTINCT p.unit FROM products p JOIN categories c ON c.id = p.category_id ${where} AND p.unit <> '' ORDER BY p.unit`,
+      values
+    )
+  ])
+
+  return { brands: brandsRes.rows.map(r => r.brand), units: unitsRes.rows.map(r => r.unit) }
+}
+
+export async function listProducts(params: ListProductsParams) {
+  const page = Math.max(1, Math.floor(params.page ?? 1) || 1)
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT))
+  const offset = (page - 1) * limit
+
+  const values: unknown[] = []
+  const { conditions, searchParamIndex } = buildConditions(params, values, { includeBrandUnitPrice: true })
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   values.push(limit)

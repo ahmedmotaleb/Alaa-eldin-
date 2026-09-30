@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useRequireAuth } from '../hooks/useRequireAuth'
 import { useCart } from '../store/CartContext'
+import { EmptyState } from '../components/EmptyState'
 import { api, ApiError, type ApiProduct, type ShoppingListItem } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { ar } from '../i18n/ar'
@@ -101,12 +102,15 @@ export function ShoppingListDetailPage() {
   function addAllToCart() {
     if (!items) return
     const available = items.filter(i => i.product?.available)
+    const unavailableCount = items.length - available.length
     if (available.length === 0) {
       setNotice(ar.shoppingLists.addAllNoneAvailable)
       return
     }
     for (const item of available) addItem(item.productId, item.quantity)
-    setNotice(ar.shoppingLists.addAllDone)
+    setNotice(unavailableCount > 0
+      ? ar.shoppingLists.addAllPartial(available.length, unavailableCount)
+      : ar.shoppingLists.addAllDone)
   }
 
   if (!user && !authLoading) return null
@@ -161,31 +165,28 @@ export function ShoppingListDetailPage() {
       {notice && <div className="admin-form-success" style={{ marginBottom: 12 }}>{notice}</div>}
 
       {items.length === 0 ? (
-        <div className="empty-card">
-          <div className="empty-icon">📝</div>
-          <p>{ar.shoppingLists.emptyNote}</p>
-        </div>
+        <EmptyState icon="📝" title={ar.shoppingLists.emptyNote} />
       ) : (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          <div className="shopping-list-items">
             {items.map(item => (
-              <div key={item.productId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F7F8F7', borderRadius: 12, padding: '10px 12px' }}>
-                <span style={{ flex: 1 }}>
+              <div key={item.productId} className="shopping-list-item-row">
+                <span className="shopping-list-item-info">
                   <strong>{item.product ? `${item.product.emoji} ${item.product.name}` : item.productId}</strong>
                   {item.product && !item.product.available && (
-                    <span style={{ display: 'block', fontSize: 12, color: '#B42318' }}>{ar.shoppingLists.unavailableNote}</span>
+                    <span className="shopping-list-item-unavailable">{ar.shoppingLists.unavailableNote}</span>
                   )}
                 </span>
                 <input
+                  className="shopping-list-item-qty"
                   type="number" min={1} value={item.quantity}
                   onChange={e => updateQuantity(item.productId, Number(e.target.value))}
-                  style={{ width: 56, textAlign: 'center' }}
                 />
                 <button className="secondary-button" onClick={() => removeItem(item.productId)}>{ar.shoppingLists.removeItem}</button>
               </div>
             ))}
           </div>
-          <button className="primary-button" onClick={addAllToCart}>{ar.shoppingLists.addAllToCart}</button>
+          <button className="shopping-list-add-all-button" onClick={addAllToCart}>{ar.shoppingLists.addAllToCart}</button>
         </>
       )}
     </div>

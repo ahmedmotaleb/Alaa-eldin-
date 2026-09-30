@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
+import { EmptyState } from '../components/EmptyState'
 import { api, ApiError, type ApiSupportTicket } from '../utils/api'
 import { formatDate } from '../utils/format'
 import { ar } from '../i18n/ar'
@@ -70,7 +71,7 @@ export function SupportTicketsPage() {
 
   return (
     <div className="order-list">
-      {!showForm && (
+      {!showForm && tickets && tickets.length > 0 && (
         <button className="primary-button" onClick={() => { setShowForm(true); setSearchParams({}) }}>
           {ar.support.newTicketButton}
         </button>
@@ -104,7 +105,13 @@ export function SupportTicketsPage() {
       )}
 
       {error && <div className="empty-card">{error}</div>}
-      {!error && tickets && tickets.length === 0 && !showForm && <div className="empty-card">{ar.support.emptyList}</div>}
+      {!error && tickets && tickets.length === 0 && !showForm && (
+        <EmptyState
+          icon="🎧"
+          title={ar.support.emptyList}
+          cta={{ label: ar.support.newTicketButton, onClick: () => { setShowForm(true); setSearchParams({}) } }}
+        />
+      )}
 
       {tickets && tickets.length > 0 && (
         <div className="order-list">

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct } from './catalogService.js'
+import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct, getProductFacets } from './catalogService.js'
 
 const CATEGORY_A = 'test-cat-catalog-a'
 const CATEGORY_B = 'test-cat-catalog-b'
@@ -153,6 +153,91 @@ describe('listProducts', () => {
     expect(products[0]).not.toHaveProperty('cost')
     expect(products[0]).not.toHaveProperty('stock')
     expect(products[0]).not.toHaveProperty('description')
+  })
+
+  it('filters by a minimum price', async () => {
+    const { products } = await listProducts({ minPrice: 50, limit: 100 })
+    expect(products.map(p => p.id)).toEqual(['cat-p2'])
+  })
+
+  it('filters by a maximum price', async () => {
+    const { products } = await listProducts({ maxPrice: 15, limit: 100 })
+    expect(products.map(p => p.id)).toEqual(['cat-p3'])
+  })
+
+  it('filters by a min/max price range together', async () => {
+    const { products } = await listProducts({ minPrice: 15, maxPrice: 30, limit: 100 })
+    expect(products.map(p => p.id)).toEqual(['cat-p1'])
+  })
+
+  it('filters by exact unit value', async () => {
+    await pool.query(`UPDATE products SET unit = 'كيلو' WHERE id = 'cat-p1'`)
+    const kilos = await listProducts({ unit: 'كيلو', limit: 100 })
+    expect(kilos.products.map(p => p.id)).toEqual(['cat-p1'])
+    const pieces = await listProducts({ unit: 'قطعة', limit: 100 })
+    expect(pieces.products.map(p => p.id).sort()).toEqual(['cat-p2', 'cat-p3', 'cat-p4'])
+  })
+})
+
+describe('listProducts combined filters', () => {
+  it('category + query narrows to matches within that category only', async () => {
+    const { products } = await listProducts({ category: CATEGORY_B, search: 'زبادي', limit: 100 })
+    expect(products.map(p => p.id)).toEqual(['cat-p4'])
+  })
+
+  it('category + query + availability excludes an out-of-stock match within the same category', async () => {
+    // "مخبوزات" (اسم القسم B) بيطابق المنتجين cat-p3 وcat-p4 عادي، لكن cat-p3 نافد
+    // المخزون فلازم يُستبعد لما نضيف available=true فوق نفس القسم والبحث.
+    const both = await listProducts({ category: CATEGORY_B, search: 'مخبوزات', limit: 100 })
+    expect(both.products.map(p => p.id).sort()).toEqual(['cat-p3', 'cat-p4'])
+    const availableOnly = await listProducts({ category: CATEGORY_B, search: 'مخبوزات', available: true, limit: 100 })
+    expect(availableOnly.products.map(p => p.id)).toEqual(['cat-p4'])
+  })
+
+  it('offer + query applies both as AND, not OR', async () => {
+    const matching = await listProducts({ offer: true, search: 'جبنة', limit: 100 })
+    expect(matching.products.map(p => p.id)).toEqual(['cat-p2'])
+    const nonMatching = await listProducts({ offer: true, search: 'طماطم', limit: 100 })
+    expect(nonMatching.products).toHaveLength(0)
+  })
+
+  it('bestseller + price range narrows the bestseller set further', async () => {
+    const bestsellers = await listProducts({ bestseller: true, limit: 100 })
+    expect(bestsellers.products.map(p => p.id).sort()).toEqual(['cat-p1', 'cat-p4'])
+    const narrowed = await listProducts({ bestseller: true, minPrice: 30, limit: 100 })
+    expect(narrowed.products.map(p => p.id)).toEqual(['cat-p4'])
+  })
+
+  it('category + sort + pagination keeps a stable order across pages', async () => {
+    const page1 = await listProducts({ category: CATEGORY_A, sort: 'price_desc', limit: 1, page: 1 })
+    expect(page1.products.map(p => p.id)).toEqual(['cat-p2'])
+    expect(page1.pagination).toEqual({ page: 1, limit: 1, total: 2, pages: 2 })
+    const page2 = await listProducts({ category: CATEGORY_A, sort: 'price_desc', limit: 1, page: 2 })
+    expect(page2.products.map(p => p.id)).toEqual(['cat-p1'])
+  })
+})
+
+describe('getProductFacets', () => {
+  it('returns the real distinct brands and units present across all products', async () => {
+    const { brands, units } = await getProductFacets({})
+    expect(brands.slice().sort()).toEqual(['المخبز', 'بلدي', 'دومتي'])
+    expect(units).toEqual(['قطعة'])
+  })
+
+  it('scopes facets to the same category/search/offer/bestseller/available context as listProducts', async () => {
+    const { brands } = await getProductFacets({ category: CATEGORY_B })
+    expect(brands.slice().sort()).toEqual(['المخبز', 'دومتي'])
+  })
+
+  it('excludes brands only reachable through an unavailable product once available=true is applied', async () => {
+    const { brands } = await getProductFacets({ available: true })
+    expect(brands.slice().sort()).toEqual(['بلدي', 'دومتي'])
+  })
+
+  it('never includes empty-string brand/unit placeholders', async () => {
+    await pool.query(`UPDATE products SET brand = '' WHERE id = 'cat-p3'`)
+    const { brands } = await getProductFacets({})
+    expect(brands).not.toContain('')
   })
 })
 

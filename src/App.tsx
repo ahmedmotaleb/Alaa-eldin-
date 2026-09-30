@@ -6,6 +6,7 @@ import { AuthProvider } from './store/AuthContext'
 import { CartProvider } from './store/CartContext'
 import { CatalogProvider, useCatalog } from './store/CatalogContext'
 import { FavoritesProvider } from './store/FavoritesContext'
+import { AddressProvider } from './store/AddressContext'
 import { ToastProvider } from './store/ToastContext'
 import { ar } from './i18n/ar'
 
@@ -82,6 +83,7 @@ export default function App() {
         <CatalogProvider>
           <CartProvider>
             <FavoritesProvider>
+              <AddressProvider>
               <ToastProvider>
                 <OfflineBanner />
                 <CatalogGate>
@@ -124,6 +126,7 @@ export default function App() {
                   </Suspense>
                 </CatalogGate>
               </ToastProvider>
+              </AddressProvider>
             </FavoritesProvider>
           </CartProvider>
         </CatalogProvider>

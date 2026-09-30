@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ProductArt } from '../components/ProductArt'
 import { AddControl } from '../components/AddControl'
+import { EmptyState } from '../components/EmptyState'
 import { api, type ApiProduct } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { addRecentSearch, loadRecentSearches } from '../utils/recentSearches'
@@ -120,12 +121,12 @@ export function SearchPage() {
       )}
 
       {trimmed && trimmed.length >= 2 && !searching && results.length === 0 && (
-        <div className="no-results-card">
-          <div className="no-results-icon">🔍</div>
-          <div className="no-results-title">{ar.search.noResultsTitle(trimmed)}</div>
-          <div className="no-results-note">{ar.search.noResultsNote}</div>
-          <button onClick={() => navigate('/categories')}>{ar.search.browseCategories}</button>
-        </div>
+        <EmptyState
+          icon="🔍"
+          title={ar.search.noResultsTitle(trimmed)}
+          note={ar.search.noResultsNote}
+          cta={{ label: ar.search.browseCategories, onClick: () => navigate('/categories') }}
+        />
       )}
     </div>
   )

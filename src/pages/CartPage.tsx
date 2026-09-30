@@ -4,6 +4,7 @@ import { ProductArt } from '../components/ProductArt'
 import { StickyActionBar } from '../components/StickyActionBar'
 import { CartUpsell } from '../components/CartUpsell'
 import { CartItemAlternatives } from '../components/CartItemAlternatives'
+import { EmptyState } from '../components/EmptyState'
 import { getSettings } from '../store/settingsStore'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
@@ -50,12 +51,13 @@ export function CartPage() {
 
   if (!detailedItems.length) {
     return (
-      <div className="empty-card cart-empty">
-        <div className="empty-icon">🛒</div>
-        <h2>{ar.cart.emptyTitle}</h2>
-        <p>{ar.cart.emptyNote}</p>
-        <button className="primary-button" onClick={() => navigate('/')}>{ar.cart.shopNow}</button>
-      </div>
+      <EmptyState
+        className="cart-empty"
+        icon="🛒"
+        title={ar.cart.emptyTitle}
+        note={ar.cart.emptyNote}
+        cta={{ label: ar.cart.shopNow, onClick: () => navigate('/') }}
+      />
     )
   }
 

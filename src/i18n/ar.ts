@@ -41,7 +41,7 @@ export const ar = {
 
   home: {
     deliverTo: 'التوصيل إلى',
-    deliveryAddress: 'شارع الجمهورية، طنطا',
+    selectDeliveryAddress: 'حدد عنوان التوصيل',
     searchPlaceholder: 'ابحث عن منتج... لبن، أرز، طماطم',
     sectionsTitle: 'الأقسام',
     todaysOffersTitle: 'عروض اليوم',
@@ -291,6 +291,9 @@ export const ar = {
     guestTitle: 'سجّل الدخول لعرض حسابك',
     guestNote: 'أنشئ حساب أو سجّل الدخول لمتابعة طلباتك وبياناتك المحفوظة.',
     noOrders: 'لسه معملتش أي طلب.',
+    noOrdersTitle: 'لسه مفيش طلبات',
+    noOrdersNote: 'أول طلب ليك هيظهر هنا وتقدر تتابعه بسهولة',
+    startShopping: 'ابدأ التسوق',
     ordersLoginPrompt: 'سجّل الدخول لعرض طلباتك.',
     productsCount: (count: number) => `${count} منتج`,
     contactWhatsapp: 'تواصل معنا على واتساب',
@@ -308,7 +311,25 @@ export const ar = {
     editProfile: 'تعديل البيانات الشخصية',
     frequentlyPurchasedTitle: 'مشترياتي المعتادة',
     rewards: 'المكافآت',
-    supportTickets: 'الدعم والمساعدة'
+    supportTickets: 'الدعم والمساعدة',
+    downloadApp: 'تحميل التطبيق',
+    groupAccount: 'الحساب',
+    groupShopping: 'التسوق',
+    groupHelp: 'المساعدة',
+    groupApp: 'التطبيق',
+    subtitleEditProfile: 'الاسم والبريد الإلكتروني ورقم الموبايل',
+    subtitleAddresses: 'إدارة عناوين التوصيل المحفوظة',
+    subtitleSecurity: 'كلمة المرور، الأجهزة المسجّلة',
+    subtitleOrders: 'تتبّع طلباتك الحالية والسابقة',
+    subtitleFavorites: 'المنتجات اللي حفظتها للمتابعة بسرعة',
+    subtitleShoppingLists: 'احفظ احتياجات البيت واطلبها بسرعة',
+    subtitleRewards: 'نقاطك ومكافآتك وكود الدعوة',
+    subtitleSupport: 'تذاكر الدعم وتاريخ المحادثات',
+    subtitleWhatsapp: 'تواصل مباشر مع خدمة العملاء',
+    subtitleReturnPolicy: 'شروط الاسترجاع والاستبدال',
+    subtitleDownloadApp: 'ثبّت التطبيق على جهازك',
+    subtitleSettings: 'الإشعارات وتفضيلات الحساب',
+    rewardsBalanceLabel: (points: string) => `${points} نقطة`
   },
 
   rewards: {
@@ -386,6 +407,7 @@ export const ar = {
     renamePrompt: 'اسم القائمة الجديد',
     addAllToCart: 'إضافة الكل للسلة',
     addAllDone: 'تم إضافة المنتجات المتاحة للسلة',
+    addAllPartial: (added: number, skipped: number) => `تمت إضافة ${added} منتج، وتعذر إضافة ${skipped}`,
     addAllNoneAvailable: 'كل منتجات هذه القائمة غير متاحة حالياً',
     searchPlaceholder: 'ابحث عن منتج تضيفه للقائمة...',
     unavailableNote: 'غير متاح حالياً',
@@ -430,13 +452,15 @@ export const ar = {
     cancel: 'إلغاء',
     deleteConfirm: 'تحذف العنوان ده؟',
     governorateRequired: 'اختر المحافظة',
-    addressRequired: 'أدخل العنوان بالتفصيل'
+    addressRequired: 'أدخل العنوان بالتفصيل',
+    outsideZoneWarning: 'هذه المنطقة غير مشمولة بمناطق التوصيل النشطة حالياً'
   },
 
   favorites: {
     title: 'المفضلة',
-    emptyTitle: 'مفيش منتجات في المفضلة لسه',
-    emptyNote: 'اضغط على ♡ في أي منتج عشان تضيفه هنا.',
+    emptyTitle: 'المفضلة فاضية',
+    emptyNote: 'اضغط على القلب في أي منتج عشان تحفظه هنا.',
+    browseProducts: 'تصفح المنتجات',
     addedToast: 'تمت الإضافة للمفضلة',
     removedToast: 'تمت الإزالة من المفضلة',
     loginRequired: 'سجّل الدخول عشان تضيف المفضلة'
@@ -631,6 +655,44 @@ export const ar = {
     reportIssueButton: 'الإبلاغ عن مشكلة في هذا الطلب',
     you: 'أنت',
     supportTeam: 'فريق الدعم'
+  },
+
+  addressSheet: {
+    title: 'اختر عنوان التوصيل',
+    guestTitle: 'سجّل الدخول لحفظ عنوان توصيل',
+    guestNote: 'العناوين المحفوظة متاحة للعملاء المسجّلين فقط — تقدر تكمّل التصفح من غير تسجيل دخول.',
+    guestLoginCta: 'تسجيل الدخول',
+    emptyTitle: 'لسه معندكش عنوان محفوظ',
+    emptyCta: 'إضافة أول عنوان',
+    addNew: 'إضافة عنوان جديد',
+    defaultBadge: 'الحالي'
+  },
+
+  filters: {
+    title: 'فلترة',
+    titleWithCount: (count: number) => `فلترة (${count})`,
+    priceTitle: 'السعر',
+    minPricePlaceholder: 'من',
+    maxPricePlaceholder: 'إلى',
+    availableOnly: 'المتوفر فقط',
+    offersOnly: 'العروض فقط',
+    brandTitle: 'البراند',
+    unitTitle: 'الوحدة',
+    allBrands: 'كل البراندات',
+    allUnits: 'كل الوحدات',
+    clearAll: 'مسح الكل',
+    apply: 'عرض النتائج',
+    chipAvailable: 'متوفر فقط',
+    chipOffer: 'عروض',
+    chipMaxPrice: (price: string) => `حتى ${price}`,
+    chipMinPrice: (price: string) => `من ${price}`,
+    chipBrand: (brand: string) => brand,
+    chipUnit: (unit: string) => unit,
+    removeFilterAriaLabel: (label: string) => `إزالة فلتر ${label}`,
+    searchPlaceholderCategory: 'ابحث داخل القسم',
+    searchPlaceholderOffers: 'ابحث في العروض',
+    searchPlaceholderBestSellers: 'ابحث في الأكثر مبيعًا',
+    clearSearchAriaLabel: 'مسح البحث'
   }
 }
 

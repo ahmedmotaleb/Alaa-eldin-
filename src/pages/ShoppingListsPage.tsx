@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useRequireAuth } from '../hooks/useRequireAuth'
+import { EmptyState } from '../components/EmptyState'
 import { api, ApiError, type ShoppingList } from '../utils/api'
 import { ar } from '../i18n/ar'
 
@@ -51,14 +52,14 @@ export function ShoppingListsPage() {
   if (!lists) return null
 
   return (
-    <div className="form-card">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+    <div className="shopping-lists-page">
+      <div className="shopping-list-create-card">
         <input
+          className="shopping-list-create-input"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder={ar.shoppingLists.newListPlaceholder}
           maxLength={60}
-          style={{ flex: 1 }}
         />
         <button className="primary-button" disabled={creating || !name.trim()} onClick={create}>
           {ar.shoppingLists.createButton}
@@ -66,24 +67,14 @@ export function ShoppingListsPage() {
       </div>
 
       {lists.length === 0 ? (
-        <div className="empty-card">
-          <div className="empty-icon">📝</div>
-          <h2>{ar.shoppingLists.emptyTitle}</h2>
-          <p>{ar.shoppingLists.emptyNote}</p>
-        </div>
+        <EmptyState icon="📝" title={ar.shoppingLists.emptyTitle} note={ar.shoppingLists.emptyNote} />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="shopping-list-cards">
           {lists.map(list => (
-            <div
-              key={list.id}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                background: '#F7F8F7', borderRadius: 12, padding: '12px 14px'
-              }}
-            >
-              <Link to={`/account/shopping-lists/${list.id}`} style={{ flex: 1, color: 'inherit', textDecoration: 'none' }}>
-                <strong style={{ display: 'block' }}>{list.name}</strong>
-                <span style={{ fontSize: 13, color: '#68746B' }}>{ar.shoppingLists.itemsCount(list.itemCount)}</span>
+            <div className="shopping-list-card" key={list.id}>
+              <Link to={`/account/shopping-lists/${list.id}`} className="shopping-list-card-body">
+                <strong className="shopping-list-card-name">{list.name}</strong>
+                <span className="shopping-list-card-meta">{ar.shoppingLists.itemsCount(list.itemCount)}</span>
               </Link>
               <button className="secondary-button" onClick={() => remove(list.id)}>{ar.shoppingLists.removeItem}</button>
             </div>

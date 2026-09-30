@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRequireAuth } from '../hooks/useRequireAuth'
 import { useFavorites } from '../store/FavoritesContext'
 import { ProductGrid } from '../components/ProductGrid'
+import { EmptyState } from '../components/EmptyState'
 import { api, ApiError, type ApiProduct } from '../utils/api'
 import { ar } from '../i18n/ar'
 
@@ -27,13 +28,7 @@ export function FavoritesPage() {
   const visibleFavorites = favorites.filter(p => isFavorite(p.id))
 
   if (visibleFavorites.length === 0) {
-    return (
-      <div className="empty-card">
-        <div className="empty-icon">🤍</div>
-        <h2>{ar.favorites.emptyTitle}</h2>
-        <p>{ar.favorites.emptyNote}</p>
-      </div>
-    )
+    return <EmptyState icon="🤍" title={ar.favorites.emptyTitle} note={ar.favorites.emptyNote} cta={{ label: ar.favorites.browseProducts, to: '/categories' }} />
   }
 
   return (

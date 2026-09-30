@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { ProductListScreen } from '../components/ProductListScreen'
 import { useCatalog } from '../store/CatalogContext'
 import { setPageMeta } from '../utils/pageMeta'
+import { ar } from '../i18n/ar'
 
 export function CategoryPage() {
   const { categoryId } = useParams()
@@ -18,5 +19,5 @@ export function CategoryPage() {
     })
   }, [category, categoryId])
 
-  return <ProductListScreen filters={{ category: categoryId }} filterKey={`category:${categoryId}`} />
+  return <ProductListScreen filters={{ category: categoryId }} filterKey={`category:${categoryId}`} searchPlaceholder={ar.filters.searchPlaceholderCategory} />
 }

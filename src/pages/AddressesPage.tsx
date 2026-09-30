@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRequireAuth } from '../hooks/useRequireAuth'
 import { useCatalog } from '../store/CatalogContext'
-import { api, ApiError, type ApiAddress, type ApiAddressInput } from '../utils/api'
+import { useAddresses } from '../store/AddressContext'
+import { EmptyState } from '../components/EmptyState'
+import { api, type ApiAddress, type ApiAddressInput } from '../utils/api'
 import { ar } from '../i18n/ar'
 
 const emptyForm: ApiAddressInput = {
@@ -13,24 +15,14 @@ const emptyForm: ApiAddressInput = {
 export function AddressesPage() {
   const { user, loading: authLoading } = useRequireAuth()
   const { deliveryZones } = useCatalog()
+  const { addresses, loading: addressesLoading, refresh, setDefault } = useAddresses()
   const navigate = useNavigate()
-  const [addresses, setAddresses] = useState<ApiAddress[] | null>(null)
   const [error, setError] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<ApiAddressInput>(emptyForm)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
-
-  function load() {
-    api.listAddresses()
-      .then(({ addresses: list }) => setAddresses(list))
-      .catch(err => setError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic))
-  }
-
-  useEffect(() => {
-    if (user) load()
-  }, [user])
 
   if (!user && !authLoading) return null
 
@@ -72,7 +64,7 @@ export function AddressesPage() {
       if (editingId) await api.updateAddress(editingId, form)
       else await api.createAddress(form)
       setShowForm(false)
-      load()
+      refresh()
     } catch {
       setFormError(ar.errors.generic)
     } finally {
@@ -83,43 +75,38 @@ export function AddressesPage() {
   async function remove(id: string) {
     if (!window.confirm(ar.addresses.deleteConfirm)) return
     await api.deleteAddress(id)
-    load()
-  }
-
-  async function makeDefault(id: string) {
-    await api.setDefaultAddress(id)
-    load()
+    refresh()
   }
 
   if (error) return <div className="empty-card">{error}</div>
-  if (!addresses) return null
+  if (addressesLoading) return null
 
   return (
     <div className="addresses-page">
       {!showForm && (
         <>
           {addresses.length === 0 ? (
-            <div className="empty-card">
-              <div className="empty-icon">📍</div>
-              <h2>{ar.addresses.emptyTitle}</h2>
-              <p>{ar.addresses.emptyNote}</p>
-            </div>
+            <EmptyState icon="📍" title={ar.addresses.emptyTitle} note={ar.addresses.emptyNote} />
           ) : (
             <div className="address-list">
-              {addresses.map(a => (
-                <div className="address-card" key={a.id}>
-                  <div className="address-card-head">
-                    <strong>{a.label || a.governorate}</strong>
-                    {a.isDefault && <span className="address-default-badge">{ar.addresses.defaultBadge}</span>}
+              {addresses.map(a => {
+                const outsideZone = !deliveryZones.some(z => z.governorate === a.governorate)
+                return (
+                  <div className="address-card" key={a.id}>
+                    <div className="address-card-head">
+                      <strong>{a.label || a.governorate}</strong>
+                      {a.isDefault && <span className="address-default-badge">{ar.addresses.defaultBadge}</span>}
+                    </div>
+                    <div className="address-card-body">{a.area ? `${a.area}، ` : ''}{a.address}</div>
+                    {outsideZone && <div className="address-zone-warning">{ar.addresses.outsideZoneWarning}</div>}
+                    <div className="address-card-actions">
+                      {!a.isDefault && <button onClick={() => setDefault(a.id)}>{ar.addresses.setDefault}</button>}
+                      <button onClick={() => startEdit(a)}>{ar.addresses.edit}</button>
+                      <button className="danger" onClick={() => remove(a.id)}>{ar.addresses.delete}</button>
+                    </div>
                   </div>
-                  <div className="address-card-body">{a.area ? `${a.area}، ` : ''}{a.address}</div>
-                  <div className="address-card-actions">
-                    {!a.isDefault && <button onClick={() => makeDefault(a.id)}>{ar.addresses.setDefault}</button>}
-                    <button onClick={() => startEdit(a)}>{ar.addresses.edit}</button>
-                    <button className="danger" onClick={() => remove(a.id)}>{ar.addresses.delete}</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           <button className="primary-button" onClick={startAdd}>{ar.addresses.addNew}</button>

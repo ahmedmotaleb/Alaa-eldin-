@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
-import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct, type SortOption } from '../services/catalogService.js'
+import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct, getProductFacets, type SortOption } from '../services/catalogService.js'
 import { resolveVariants } from '../services/productVariantService.js'
 import { setShortPublicCache } from '../publicCache.js'
 import { logEvent } from '../logger.js'
@@ -23,6 +23,12 @@ function parseBool(value: unknown): boolean | undefined {
   if (value === 'true') return true
   if (value === 'false') return false
   return undefined
+}
+
+function parseNumber(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
 }
 
 catalogRouter.get('/categories', async (_req, res) => {
@@ -58,12 +64,30 @@ catalogRouter.get('/products', async (req, res) => {
     offer: parseBool(req.query.offer),
     bestseller: parseBool(req.query.bestseller),
     available: parseBool(req.query.available),
-    brand: typeof req.query.brand === 'string' ? req.query.brand : undefined
+    brand: typeof req.query.brand === 'string' ? req.query.brand : undefined,
+    unit: typeof req.query.unit === 'string' ? req.query.unit : undefined,
+    minPrice: parseNumber(req.query.minPrice),
+    maxPrice: parseNumber(req.query.maxPrice)
   })
   if (typeof req.query.search === 'string' && req.query.search.trim()) {
     logEvent('catalog_search', { query: req.query.search.trim(), resultCount: result.products.length })
   }
   res.json(result)
+})
+
+// قيم brand/unit الحقيقية المتاحة فعلاً ضمن نفس سياق الفلاتر الحالي (قسم/بحث/عرض/أكثر
+// مبيعاً/توفر) — بيستخدمها شيت الفلترة في الواجهة عشان يعرض خيارات حقيقية بس، من غير ما
+// يفترض قيم ثابتة أو يحمّل الكتالوج كامل. استعلام خفيف (DISTINCT) على نفس شروط /products.
+catalogRouter.get('/products/facets', async (req, res) => {
+  setShortPublicCache(res, 60, 300)
+  const facets = await getProductFacets({
+    category: typeof req.query.category === 'string' ? req.query.category : undefined,
+    search: typeof req.query.search === 'string' ? req.query.search : undefined,
+    offer: parseBool(req.query.offer),
+    bestseller: parseBool(req.query.bestseller),
+    available: parseBool(req.query.available)
+  })
+  res.json(facets)
 })
 
 // إكمال تلقائي بعد 300ms debounce على الواجهة — هنا برضه بنفس شرط حد أدنى حرفين، ما عدا

@@ -43,6 +43,10 @@ describe('createAddress / listAddresses / getAddress', () => {
     expect(address.mobile).toBeUndefined()
   })
 
+  it('returns an empty list for a user with no saved addresses', async () => {
+    expect(await listAddresses(USER_ID)).toEqual([])
+  })
+
   it('lists only the requesting user\'s own addresses', async () => {
     await createAddress(USER_ID, baseInput({ label: 'بيتي' }))
     await createAddress(OTHER_USER_ID, baseInput({ label: 'عنوان الآخر' }))

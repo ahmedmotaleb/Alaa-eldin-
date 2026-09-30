@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/AuthContext'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
+import { EmptyState } from '../components/EmptyState'
 import { api, ApiError, type ApiOrder } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { formatDate } from '../utils/format'
@@ -77,7 +78,9 @@ export function OrdersPage() {
   }
 
   if (error) return <div className="empty-card">{error}</div>
-  if (!orders || orders.length === 0) return <div className="empty-card">{ar.account.noOrders}</div>
+  if (!orders || orders.length === 0) {
+    return <EmptyState icon="📦" title={ar.account.noOrdersTitle} note={ar.account.noOrdersNote} cta={{ label: ar.account.startShopping, to: '/' }} />
+  }
 
   return (
     <div className="order-list">

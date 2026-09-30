@@ -292,6 +292,14 @@ export interface ListProductsParams {
   bestseller?: boolean
   available?: boolean
   brand?: string
+  unit?: string
+  minPrice?: number
+  maxPrice?: number
+}
+
+export interface ApiProductFacets {
+  brands: string[]
+  units: string[]
 }
 
 function buildQuery(params: object): string {
@@ -487,6 +495,10 @@ export const api = {
   // كامل أبداً ولا بتعمل أي فلترة بنفسها.
   listProducts: (params: ListProductsParams = {}) =>
     request<{ products: ApiProduct[], pagination: ApiPagination }>(`/products${buildQuery(params)}`),
+  // خيارات brand/unit الحقيقية المتاحة فعلاً بنفس فلاتر القسم/البحث/العرض/الأكثر مبيعاً/التوفر
+  // الحالية — لشيت الفلترة، من غير ما تفترض قيم ثابتة.
+  getProductFacets: (params: Pick<ListProductsParams, 'category' | 'search' | 'offer' | 'bestseller' | 'available'> = {}) =>
+    request<ApiProductFacets>(`/products/facets${buildQuery(params)}`),
   getProduct: (slug: string) => request<{ product: ApiProductDetail }>(`/products/${encodeURIComponent(slug)}`),
   // بتُستخدم من السلة (وأي مكان تاني محتاج يتأكد من الحالة الحالية لمنتجات معروفة بالـ id)
   // عشان تاخد السعر/التوفر/الصورة الحاليين من غير ما تحمّل الكتالوج كامل.
