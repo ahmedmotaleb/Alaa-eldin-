@@ -5,20 +5,23 @@
 تحت "ملاحظات تحقّق تاريخية" وتفضل كما هي بتاريخها الأصلي لغرض التتبّع فقط، ومفيش أي رقم
 قديم فيها (زي "883/883" أو "990/990") يتقرأ كحالة حالية.
 
-## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٢٧
+## 0. الحالة الحالية للإنتاج (CURRENT PRODUCTION STATE) — آخر تحقّق: ٢٠٢٦-٠٩-٣٠
 
 | البند | القيمة | كيف اتحقّقنا |
 |---|---|---|
-| آخر commit على `main` | `1af9dd9` | `git log` مباشر |
-| آخر ترحيلة (migration) | `0065_whatsapp_delivery_webhooks.sql` | قراءة مباشرة لمجلد `server/migrations/` |
-| عدد الترحيلات الكلي | 65 | عدّ ملفات `server/migrations/*.sql` |
-| اختبارات السيرفر | **1141/1141 ناجحة** — تم التحقق **على قاعدة بيانات جديدة تماماً** مرتين مستقلتين، بالإضافة لتشغيلات سابقة على قاعدة التطوير | `npx vitest run` بعد `CREATE DATABASE` فاضية + `tsx src/migrate.ts` |
-| بناء المتجر (storefront) | ✅ نظيف | `npm run build` (الجذر) |
+| آخر commit على `main` | `56778b6` (`56778b61db23aa9d0830662421afbf82ee74cf8c`) — "Fix npm audit vulnerabilities and restore CI" | `git log` مباشر |
+| آخر ترحيلة (migration) | `0067_backup_tokens.sql` | قراءة مباشرة لمجلد `server/migrations/` |
+| عدد الترحيلات الكلي | 67 | عدّ ملفات `server/migrations/*.sql` + تطبيق كامل من الصفر على قاعدة بيانات فاضية جديدة (67/67 نجحوا) |
+| فحص أمان التبعيات (`npm audit`) | ✅ **0 vulnerabilities** في الجذر والسيرفر ولوحة التحكم الثلاثة — كانت فيه 3 ثغرات معروفة (`brace-expansion` HIGH، `fast-uri` MODERATE، `serialize-javascript` LOW في الجذر؛ `ip-address` MODERATE في السيرفر)، كلها اتصلحت بترقيات patch-level فقط عبر `npm audit fix` العادي (من غير `--force` ومن غير ترقية أي حزمة أب) | `npm audit` + `npm audit fix` + `npm ci` (تأكيد حتمية الـ lockfile) في الثلاثة |
+| اختبارات السيرفر | **1165/1165 ناجحة**، 93 ملف | `npx vitest run` على قاعدة تطوير محلية (PostgreSQL 16) |
+| بناء المتجر (storefront) | ✅ نظيف (يشمل بناء service worker/PWA عبر الحزم المُرقّاة) | `npm run build` (الجذر) |
 | بناء السيرفر | ✅ نظيف (`tsc` صارم) | `npm run build --prefix server` |
 | بناء لوحة التحكم (admin) | ✅ نظيف | `npm run build --prefix admin` |
-| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `1af9dd9` (run `36168687537`) — **مستقل تماماً عن أي مشكلة Railway Cron** (راجع التوضيح تحت) | `GET /repos/.../actions/runs?head_sha=...` عبر GitHub API مباشرة |
-| نشر Railway — خدمة الويب الرئيسية (`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit (deployment `aca9ebc5-...`)، `state: online`، replica شغّالة 1/1، `hasIssues: false` | `environment-status`/`list-deployments` مباشر |
-| نشر Railway — خدمات Cron الثلاثة الموجودة | ⚠️ **ACTIVE (شغّالة بدون انقطاع) — لكن الإصلاح مش دائم 100%** — النشر النشط الحالي لكل خدمة ناجح (`cronReady`)، لكن ثبت بالاختبار إن النشر التلقائي من `git push` (عكس `redeploy` يدوي) ممكن يرجع أحياناً لخطة بناء قديمة فاشلة. راجع القسم الجديد تحت للتفاصيل والتوصية التشغيلية | `environment-status` + لوجات بناء فعلية (نجاح وفشل حقيقيين اتنين) |
+| Gitleaks | ✅ **0 نتائج** — فحص المحتوى الحالي (`--no-git`) وفحص كامل تاريخ الـ git (126 commit) | `gitleaks detect` بنفس إعدادات CI (`.gitleaks.toml`) |
+| GitHub CI (`main`, آخر push) | ✅ **SUCCESS فعلياً مؤكَّد** لـ commit `56778b6` (run `36781406320`) — كل الخطوات الـ23 نجحت (Gitleaks، npm audit ×3، migrations، 3 builds، اختبارات السيرفر) | `GET /repos/.../actions/runs/{id}` و`/jobs` عبر GitHub API مباشرة |
+| نشر Railway — خدمة الويب الرئيسية (`Alaa-eldin-`) | ✅ **SUCCESS فعلياً مؤكَّد** لنفس الـ commit `56778b6` (deployment `68a19c58-...`)، `state: live`، لوج إقلاع نظيف (`database_connected`، "schema is up to date"، `server_started`)، من غير أي crash أو خطأ قاعدة بيانات | `describe-service`/`list-deployments`/`get-logs` مباشر |
+| نشر Railway — خدمات Cron الثلاثة الموجودة | ✅ **SUCCESS بعد redeploy يدوي** — النشر التلقائي التلقائي (`git push`) لكل الثلاث خدمات فشل بنفس مشكلة خطة البناء القديمة الموثّقة سابقاً (`cd: server: No such file or directory`، ناتجة عن إعادة استخدام خطة بناء الجذر بدل خطة الخدمة نفسها اللي بتاخد `rootDirectory: server`). تم عمل `redeploy` يدوي (نفس الخدمة، بدون أي تغيير في rootDirectory/buildCommand/startCommand/الجدولة/المتغيرات) والثلاثة رجعوا `SUCCESS`. `cron-scheduled-pricing` اتأكد بتشغيلة فعلية حقيقية بعد الـ redeploy مباشرة (نفّذت `node dist/pricingApplyScheduled.js` وطبعت `scheduled pricing: applied 0, conflicts 0, across 1 batch(es)` وخرجت بنظافة). الخدمتان التانيتان (`cron-loyalty-expiry` جدولتها مرة يومياً، `cron-abandoned-cart` كل 6 ساعات) لسه ماجاش ميعاد تشغيلهم الفعلي وقت آخر تحقق، لكن البناء نجح بنظافة والأوامر/الجدولة/المتغيرات مُتأكَّد منها مطابقة | `describe-service` + `get-logs` (بناء وتشغيل) مباشر لكل خدمة |
+| Railway Cron — إعادة محاولة إشعارات واتساب (الخدمة الرابعة) | ❌ **لسه مؤجَّلة عمداً** — لم تُنشأ، بدون أي تغيير عن القرار السابق (حد خدمات الخطة المجانية) | `list-services`: غير موجودة ضمن الخدمات الخمس الحالية |
 | `GET /health` | ⚠️ **NOT DIRECTLY VERIFIED** — طلب HTTP مباشر لرابط الإنتاج محجوب من بيئة هذه الجلسة (`EGRESS_BLOCKED`/`connect_rejected`). الدليل غير المباشر فقط: `healthcheckPath: /health` هو ما يعتمد عليه Railway قبل تعليم أي نشر `SUCCESS` | محاولة `curl`/`WebFetch` فعلية فشلت بحجب شبكة صريح |
 | Cloudinary | ✅ CONFIGURED | لوج إقلاع فعلي (`startup_config_summary`) بعد آخر نشر ناجح |
 | WhatsApp (رسائل + قالب تأكيد الطلب) | ✅ CONFIGURED | نفس المصدر |
@@ -27,9 +30,9 @@
 | Web Push (VAPID) | ✅ CONFIGURED | لوج إقلاع فعلي |
 | Turnstile (CAPTCHA) | ✅ CONFIGURED | لوج إقلاع فعلي |
 | مُرسِل البريد الإلكتروني (`RESEND_FROM`) | ❌ **لسه على قيمة sandbox الافتراضية** (`onboarding@resend.dev`) — مش دومين مُتحقق منه، غير جاهز لإطلاق فعلي لمستخدمين حقيقيين | قراءة مباشرة لمتغيرات Railway |
-| Railway Cron — انتهاء صلاحية نقاط الولاء | ✅ **CONFIGURED، بناء نظيف بعد إصلاح (٢٠٢٦-٠٩-٢٧)** — خدمة `cron-loyalty-expiry` حقيقية، `0 1 * * *` UTC، `cronReady`، `recentFailures: 0`. أول تشغيلة فعلية (يومية) لسه ماجاش ميعادها وقت آخر تحقق | `environment-status`: `state: cronReady`, `recentFailures: 0` |
-| Railway Cron — تذكير السلة المهجورة | ✅ **CONFIGURED، بناء نظيف بعد إصلاح (٢٠٢٦-٠٩-٢٧)** — خدمة `cron-abandoned-cart` حقيقية، `0 */6 * * *` UTC. **تشغيلة فعلية سابقة (قبل الإصلاح) نجحت** وطبعت `sent 0 abandoned-cart reminder(s), 0 skipped (already converted), 1 skipped (promotions disabled)`؛ بعد الإصلاح الخدمة رجعت `cronReady` نظيفة وهتتأكد أول تشغيلة على البناء الجديد في الجدول القادم | `environment-status`: `recentFailures: 0` + لوج تشغيل حقيقي سابق |
-| Railway Cron — تطبيق الأسعار المجدولة | ✅ **مُتحقَّق من التشغيل الفعلي على البناء المُصلَح (٢٠٢٦-٠٩-٢٧ ١٥:٤٥ UTC)** — خدمة `cron-scheduled-pricing` حقيقية، `*/15 * * * *` UTC. أول تشغيلة فعلية بعد الإصلاح نفّذت الأمر الصحيح فعلياً (`node dist/pricingApplyScheduled.js`، مش `npm run start` الخاطئ القديم) وطبعت `scheduled pricing: applied 0, conflicts 0, across 1 batch(es)` — `cronJob.lastExecutionStatus: succeeded` | `environment-status` + `get-logs` مباشر لنفس التشغيلة |
+| Railway Cron — انتهاء صلاحية نقاط الولاء | ✅ **بناء نظيف بعد redeploy يدوي (٢٠٢٦-٠٩-٣٠)** — خدمة `cron-loyalty-expiry`، `startCommand: npm run loyalty:expire` (→ `node dist/loyaltyExpire.js`)، `0 1 * * *` UTC. أول تشغيلة فعلية (يومية) لسه ماجاش ميعادها وقت آخر تحقق | `describe-service` (latestDeployment: `SUCCESS`) |
+| Railway Cron — تذكير السلة المهجورة | ✅ **بناء نظيف بعد redeploy يدوي (٢٠٢٦-٠٩-٣٠)** — خدمة `cron-abandoned-cart`، `startCommand: npm run notify:abandoned-cart` (→ `node dist/sendAbandonedCartReminders.js`)، `0 */6 * * *` UTC. أول تشغيلة فعلية على هذا البناء لسه ماجاش ميعادها وقت آخر تحقق | `describe-service` (latestDeployment: `SUCCESS`) |
+| Railway Cron — تطبيق الأسعار المجدولة | ✅ **مُتحقَّق من التشغيل الفعلي بعد redeploy يدوي (٢٠٢٦-٠٩-٣٠)** — خدمة `cron-scheduled-pricing`، `startCommand: npm run pricing:apply-scheduled` (→ `node dist/pricingApplyScheduled.js`)، `*/15 * * * *` UTC. أول تشغيلة فعلية بعد الـ redeploy نفّذت الأمر الصحيح وطبعت `scheduled pricing: applied 0, conflicts 0, across 1 batch(es)` ثم خرجت بنظافة (`Stopping Container`) | `get-logs` مباشر — تشغيلة حقيقية كاملة |
 | مراقبة الأخطاء (error monitoring) | ⚠️ **لوج مُهيكل بس (pino) — لا يوجد APM/error-tracking خارجي** (زي Sentry) مُفعّل. `uncaughtException`/`unhandledRejection` بيتسجّلوا ويعملوا exit صريح (فلسفة crash-only + `restartPolicy: ON_FAILURE`). إضافة Sentry أو مشابه تحتاج حساب خارجي وDSN من صاحب المشروع — بند "توسّع مستقبلي"، مش عطل حالي | قراءة مباشرة لـ `src/index.ts`/`src/logger.ts` |
 | نسخة احتياطية للإنتاج | ❌ **NOT VERIFIED** — لا توجد بيانات اعتماد وصول مباشر لقاعدة بيانات الإنتاج من هذه الجلسة. التوثيق وتجربة الاستعادة (على قاعدة محلية معزولة) موجودين ومكتملين في `server/docs/BACKUP_RESTORE.md` | راجع `BACKUP_RESTORE.md` |
 | اختبار الدخان الإنتاجي (smoke test) | ⚠️ تم تشغيله محلياً بس (سيرفر بناء إنتاج + قاعدة تطوير حقيقية)، **لم يُنفَّذ ضد رابط الإنتاج الحقيقي** بسبب حجب الشبكة | راجع القسم 8 التاريخي |
