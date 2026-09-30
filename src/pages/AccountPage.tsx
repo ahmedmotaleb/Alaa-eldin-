@@ -17,6 +17,7 @@ const ACCOUNT_ROWS = [
   { icon: '🔒', label: ar.account.security, path: '/account/security' },
   { icon: '🎧', label: ar.account.supportTickets, path: '/account/support' },
   { icon: '↺', label: ar.account.returnPolicy, path: '/refund-exchange-policy' },
+  { icon: '📱', label: 'تحميل التطبيق', path: '/download' },
   { icon: '⚙️', label: ar.account.settingsAndNotifications, path: undefined }
 ]
 

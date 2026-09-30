@@ -1,0 +1,146 @@
+name: Android TWA APK Release
+
+# يبني APK موقّع فعلياً لتطبيق TWA (Trusted Web Activity) اللي بيفتح متجر علاء الدين
+# الحقيقي (PWA) بشكل ملء الشاشة. الأمن: مفتاح التوقيع وكلماته موجودين فقط كـ GitHub
+# Actions secrets (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
+# ANDROID_KEY_PASSWORD) — مفيش أي منهم في الكود أو في تاريخ Git. لو الأسرار دي مش
+# مضبوطة، الخطوة بتفشل بوضوح بدل ما ترجع لتوقيع debug بصمت.
+#
+# يتشغّل يدوياً فقط (workflow_dispatch) — بناء APK حقيقي مش حاجة نعملها تلقائياً مع كل
+# push عادي، لأن تغييرات المتجر العادية (منتجات/أسعار/checkout) بتظهر فوراً من غير APK
+# جديد أصلاً (TWA بيفتح الموقع الحقيقي مباشرة).
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'اسم الإصدار (مثال: 1.0.0)'
+        required: true
+        default: '1.0.0'
+      versionCode:
+        description: 'رقم الإصدار الداخلي (لازم يكون أكبر من آخر إصدار منشور)'
+        required: true
+        default: '1'
+
+env:
+  PACKAGE_ID: com.alaaeldin.supermarket
+  MANIFEST_URL: https://alaa-eldin-production.up.railway.app/manifest.webmanifest
+  ANDROID_TWA_DIR: android-twa
+
+jobs:
+  build-signed-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # مطلوبة قبل أي حاجة تانية — لو أي واحدة من الأسرار الأربعة مش مضبوطة، الخطوة دي
+      # بتوقف الـ build فوراً بدل ما تكمل وترجع APK موقّع بمفتاح مؤقت/debug بصمت.
+      - name: Verify signing secrets are configured
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] && MISSING="$MISSING ANDROID_KEYSTORE_BASE64"
+          [ -z "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] && MISSING="$MISSING ANDROID_KEYSTORE_PASSWORD"
+          [ -z "${{ secrets.ANDROID_KEY_ALIAS }}" ] && MISSING="$MISSING ANDROID_KEY_ALIAS"
+          [ -z "${{ secrets.ANDROID_KEY_PASSWORD }}" ] && MISSING="$MISSING ANDROID_KEY_PASSWORD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required repository secrets:$MISSING — add them under Settings > Secrets and variables > Actions before running this workflow."
+            exit 1
+          fi
+          echo "All required signing secrets are present."
+
+      - name: Decode signing keystore
+        run: |
+          mkdir -p android-signing
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android-signing/alaa-eldin-release.keystore.jks
+          test -s android-signing/alaa-eldin-release.keystore.jks
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Initialize TWA project from production manifest
+        run: |
+          bubblewrap init --manifest="$MANIFEST_URL" -y --directory="$ANDROID_TWA_DIR"
+
+      - name: Configure package ID, version, and signing key path
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = '$ANDROID_TWA_DIR/twa-manifest.json';
+            const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+            manifest.packageId = process.env.PACKAGE_ID;
+            manifest.appVersionName = '${{ inputs.versionName }}';
+            manifest.appVersionCode = parseInt('${{ inputs.versionCode }}', 10);
+            manifest.signingKey = manifest.signingKey || {};
+            manifest.signingKey.path = '../android-signing/alaa-eldin-release.keystore.jks';
+            manifest.signingKey.alias = '${{ secrets.ANDROID_KEY_ALIAS }}';
+            fs.writeFileSync(path, JSON.stringify(manifest, null, 2));
+            console.log('packageId:', manifest.packageId);
+            console.log('appVersionName:', manifest.appVersionName);
+            console.log('appVersionCode:', manifest.appVersionCode);
+          "
+
+      - name: Build signed release APK
+        working-directory: ${{ env.ANDROID_TWA_DIR }}
+        run: |
+          printf '%s\n%s\n' "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" "${{ secrets.ANDROID_KEY_PASSWORD }}" | bubblewrap build --skipPwaValidation
+
+      - name: Locate built APK
+        working-directory: ${{ env.ANDROID_TWA_DIR }}
+        run: |
+          APK_PATH=$(find . -iname "app-release-signed.apk" -o -iname "*-release-signed.apk" | head -n1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No signed release APK found after build — check the previous step's output."
+            find . -iname "*.apk"
+            exit 1
+          fi
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          ls -la "$APK_PATH"
+
+      - name: Verify APK is release-signed (not debug)
+        working-directory: ${{ env.ANDROID_TWA_DIR }}
+        run: |
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK_PATH" | tee apksigner-output.txt
+          if grep -qi "CN=Android Debug" apksigner-output.txt; then
+            echo "::error::APK is signed with the Android debug key, not the production keystore."
+            exit 1
+          fi
+          echo "SIGNED RELEASE APK: PASS"
+
+      - name: Rename APK with version and compute checksum
+        working-directory: ${{ env.ANDROID_TWA_DIR }}
+        run: |
+          FINAL_NAME="alaa-eldin-v${{ inputs.versionName }}.apk"
+          cp "$APK_PATH" "$FINAL_NAME"
+          sha256sum "$FINAL_NAME" > "$FINAL_NAME.sha256"
+          cat "$FINAL_NAME.sha256"
+          echo "FINAL_APK_NAME=$FINAL_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: alaa-eldin-android-apk
+          path: |
+            ${{ env.ANDROID_TWA_DIR }}/${{ env.FINAL_APK_NAME }}
+            ${{ env.ANDROID_TWA_DIR }}/${{ env.FINAL_APK_NAME }}.sha256
+          retention-days: 90
+
+      - name: Create GitHub Release with APK asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ inputs.versionName }}
+          name: "Alaa Eldin Android v${{ inputs.versionName }}"
+          files: |
+            ${{ env.ANDROID_TWA_DIR }}/${{ env.FINAL_APK_NAME }}
+            ${{ env.ANDROID_TWA_DIR }}/${{ env.FINAL_APK_NAME }}.sha256
+          body: |
+            تطبيق أندرويد (TWA) لسوبر ماركت علاء الدين — إصدار ${{ inputs.versionName }} (كود الإصدار ${{ inputs.versionCode }}).
+            التثبيت المباشر بدون Google Play — راجع صفحة `/download` على الموقع.

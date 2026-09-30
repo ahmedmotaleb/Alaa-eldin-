@@ -612,3 +612,23 @@ h1, h2, h3, p { margin: 0; }
 .rewards-ledger-points { font-weight: 900; font-size: 15px; }
 .rewards-ledger-points.positive { color: var(--green-dark); }
 .rewards-ledger-points.negative { color: var(--danger); }
+
+.download-page { display: flex; flex-direction: column; gap: 16px; }
+.download-hero { text-align: center; padding: 12px 0 4px; }
+.download-app-icon { width: 72px; height: 72px; border-radius: 18px; margin: 0 auto 12px; box-shadow: var(--shadow); }
+.download-hero h1 { font-weight: 900; font-size: 21px; margin-bottom: 8px; }
+.download-subtitle { font-weight: 500; font-size: 13.5px; color: var(--muted); line-height: 1.8; max-width: 420px; margin: 0 auto; }
+.download-card { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 18px; box-shadow: var(--card-shadow); display: flex; flex-direction: column; gap: 12px; }
+.download-version-row { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; color: var(--muted); }
+.download-version-row strong { color: #17221a; font-weight: 900; }
+.download-button { text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+.download-hint { text-align: center; font-weight: 500; font-size: 11.5px; color: var(--muted); }
+.download-steps { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
+.download-steps h2 { font-weight: 900; font-size: 15px; margin-bottom: 10px; }
+.download-steps ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 8px; font-weight: 600; font-size: 13px; line-height: 1.7; }
+.download-warning { background: #fff8e5; border: 1px solid #f3df9c; border-radius: 16px; padding: 14px; }
+.download-warning strong { display: block; margin-bottom: 6px; font-size: 13px; color: #70571a; }
+.download-warning p { font-weight: 500; font-size: 12.5px; color: #8a7128; line-height: 1.8; margin: 0; }
+.download-alt { padding: 4px 2px 16px; }
+.download-alt h2 { font-weight: 800; font-size: 14px; margin-bottom: 6px; }
+.download-alt p { font-weight: 500; font-size: 12.5px; color: var(--muted); line-height: 1.8; margin: 0; }

@@ -29,6 +29,7 @@ const CategoryPage = lazy(() => import('./pages/CategoryPage').then(m => ({ defa
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage').then(m => ({ default: m.CheckoutPage })))
 const ConfirmationPage = lazy(() => import('./pages/ConfirmationPage').then(m => ({ default: m.ConfirmationPage })))
 const ContentPage = lazy(() => import('./pages/ContentPage').then(m => ({ default: m.ContentPage })))
+const DownloadPage = lazy(() => import('./pages/DownloadPage').then(m => ({ default: m.DownloadPage })))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })))
@@ -116,6 +117,7 @@ export default function App() {
                         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                         <Route path="/reset-password" element={<ResetPasswordPage />} />
                         <Route path="/refund-exchange-policy" element={<ContentPage slug="refund-exchange-policy" />} />
+                        <Route path="/download" element={<DownloadPage />} />
                         <Route path="*" element={<NotFoundPage />} />
                       </Route>
                     </Routes>
