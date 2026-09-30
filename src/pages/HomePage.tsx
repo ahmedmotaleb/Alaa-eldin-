@@ -26,7 +26,7 @@ export function HomePage() {
   const [buyAgain, setBuyAgain] = useState<ApiProduct[]>([])
 
   useEffect(() => {
-    api.listBanners().then(({ banners }) => setBanners(banners)).catch(() => {})
+    api.listBanners().then(({ banners }) => setBanners(banners.filter(b => b.placement === 'hero'))).catch(() => {})
   }, [])
 
   // "اشتريها تاني" مبني على تاريخ شراء حقيقي، فمتاح بس للعميل المسجّل دخول — الزائر يشوف

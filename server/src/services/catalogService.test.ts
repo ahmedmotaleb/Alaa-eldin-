@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug } from './catalogService.js'
+import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct } from './catalogService.js'
 
 const CATEGORY_A = 'test-cat-catalog-a'
 const CATEGORY_B = 'test-cat-catalog-b'
@@ -203,6 +203,61 @@ describe('getProductBySlug', () => {
     } finally {
       await pool.query(`DELETE FROM product_variants WHERE id IN ('test-variant-visible', 'test-variant-hidden')`)
     }
+  })
+})
+
+describe('product card hasVariants flag (weight/unit bottom sheet trigger)', () => {
+  it('is false for a product with no variants, true once an available variant exists', async () => {
+    const before = await resolveProducts(['cat-p1'])
+    expect(before[0].hasVariants).toBe(false)
+
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, created_at)
+       VALUES ('test-hv-1', 'cat-p1', 'كبير', 30, 15, 5, 1, now())`
+    )
+    try {
+      const after = await resolveProducts(['cat-p1'])
+      expect(after[0].hasVariants).toBe(true)
+    } finally {
+      await pool.query(`DELETE FROM product_variants WHERE id = 'test-hv-1'`)
+    }
+  })
+
+  it('stays false when the product only has a disabled (unavailable) variant', async () => {
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, created_at)
+       VALUES ('test-hv-2', 'cat-p1', 'مسحوب', 30, 15, 5, 0, now())`
+    )
+    try {
+      const { products } = await listProducts({ search: 'طماطم' })
+      expect(products.find(p => p.id === 'cat-p1')?.hasVariants).toBe(false)
+    } finally {
+      await pool.query(`DELETE FROM product_variants WHERE id = 'test-hv-2'`)
+    }
+  })
+})
+
+describe('getPublicVariantsForProduct', () => {
+  it('returns only available variants, in lean shape, for use by the weight/unit bottom sheet', async () => {
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, sort_order, created_at) VALUES
+         ('test-sel-1', 'cat-p1', 'كبير', 30, 15, 5, 1, 1, now()),
+         ('test-sel-2', 'cat-p1', 'صغير', 18, 9, 0, 1, 2, now()),
+         ('test-sel-3', 'cat-p1', 'مسحوب', 30, 15, 5, 0, 3, now())`
+    )
+    try {
+      const variants = await getPublicVariantsForProduct('cat-p1')
+      expect(variants).toEqual([
+        { id: 'test-sel-1', name: 'كبير', price: 30, stock: 5 },
+        { id: 'test-sel-2', name: 'صغير', price: 18, stock: 0 }
+      ])
+    } finally {
+      await pool.query(`DELETE FROM product_variants WHERE id IN ('test-sel-1', 'test-sel-2', 'test-sel-3')`)
+    }
+  })
+
+  it('returns an empty array for a product with no variants', async () => {
+    expect(await getPublicVariantsForProduct('cat-p4')).toEqual([])
   })
 
   it('exposes the exact low-stock count on the detail endpoint only when the setting is enabled', async () => {

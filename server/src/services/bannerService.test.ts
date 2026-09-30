@@ -20,16 +20,18 @@ async function insertBanner(overrides: {
   startsAt?: string | null
   endsAt?: string | null
   sortOrder?: number
+  placement?: 'hero' | 'popup'
 }) {
   await pool.query(
-    `INSERT INTO banners (kicker, title, note, emoji, cta_label, link, active, sort_order, starts_at, ends_at, created_at)
-     VALUES ('', $1, '', '🛍️', 'تسوق', '/', $2, $3, $4, $5, now())`,
+    `INSERT INTO banners (kicker, title, note, emoji, cta_label, link, active, sort_order, starts_at, ends_at, created_at, placement)
+     VALUES ('', $1, '', '🛍️', 'تسوق', '/', $2, $3, $4, $5, now(), $6)`,
     [
       overrides.title,
       overrides.active === false ? 0 : 1,
       overrides.sortOrder ?? 0,
       overrides.startsAt ?? null,
-      overrides.endsAt ?? null
+      overrides.endsAt ?? null,
+      overrides.placement ?? 'hero'
     ]
   )
 }
@@ -71,5 +73,14 @@ describe('listPublicBanners', () => {
     await insertBanner({ title: 'الأول', sortOrder: 1 })
     const banners = await listPublicBanners()
     expect(banners.map(b => b.title)).toEqual(['الأول', 'الثاني'])
+  })
+
+  it('defaults placement to hero for existing rows, and returns an explicit popup placement', async () => {
+    await insertBanner({ title: 'كاروسيل افتراضي' })
+    await insertBanner({ title: 'بوب-أب تسويقي', placement: 'popup' })
+    const banners = await listPublicBanners()
+    const byTitle = Object.fromEntries(banners.map(b => [b.title, b.placement]))
+    expect(byTitle['كاروسيل افتراضي']).toBe('hero')
+    expect(byTitle['بوب-أب تسويقي']).toBe('popup')
   })
 })

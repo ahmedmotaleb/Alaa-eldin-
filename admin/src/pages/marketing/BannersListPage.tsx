@@ -35,8 +35,13 @@ export function BannersListPage() {
               <span className="admin-category-card-sub">{b.note || '—'}</span>
             </span>
           </div>
-          <span className="admin-pill" style={{ alignSelf: 'flex-start', background: b.active ? '#EAF8EF' : '#F1F4F2', color: b.active ? '#12813C' : '#68746B' }}>
-            {b.active ? 'ظاهر للعملاء' : 'مخفي'}
+          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <span className="admin-pill" style={{ background: b.active ? '#EAF8EF' : '#F1F4F2', color: b.active ? '#12813C' : '#68746B' }}>
+              {b.active ? 'ظاهر للعملاء' : 'مخفي'}
+            </span>
+            <span className="admin-pill" style={{ background: b.placement === 'popup' ? '#FFF3E8' : '#EAF1FB', color: b.placement === 'popup' ? '#B45309' : '#06439B' }}>
+              {b.placement === 'popup' ? 'بوب-أب' : 'كاروسيل رئيسي'}
+            </span>
           </span>
           <button className="admin-category-card-btn" onClick={() => navigate(`/marketing/banners/edit/${b.id}`)}>تعديل</button>
         </div>

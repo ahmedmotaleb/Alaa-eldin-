@@ -1220,6 +1220,7 @@ export interface AdminBanner {
   sortOrder: number
   startsAt?: string
   endsAt?: string
+  placement: 'hero' | 'popup'
 }
 
 export type AdminBannerInput = Omit<AdminBanner, 'id' | 'sortOrder' | 'imageUrl' | 'mobileImageUrl'>

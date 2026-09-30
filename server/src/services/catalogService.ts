@@ -46,6 +46,7 @@ export interface ProductCard {
   primaryImage?: string
   primaryImageAlt?: string
   brand: string
+  hasVariants: boolean
 }
 
 interface ProductCardRow {
@@ -67,6 +68,7 @@ interface ProductCardRow {
   primaryImage: string | null
   primaryImageAlt: string | null
   brand: string
+  hasVariants: boolean
   total?: string
 }
 
@@ -97,7 +99,8 @@ function serializeCard(row: ProductCardRow): ProductCard {
     orderCount: row.orderCount,
     primaryImage: row.primaryImage ?? undefined,
     primaryImageAlt: row.primaryImageAlt ?? undefined,
-    brand: row.brand
+    brand: row.brand,
+    hasVariants: row.hasVariants
   }
 }
 
@@ -115,7 +118,8 @@ const CARD_SELECT = `
          p.unit, p.emoji, p.available as "adminAvailable", p.stock, p.alert_threshold as "alertThreshold",
          (SELECT show_exact_low_stock FROM store_settings WHERE id = 1) as "showExactLowStock",
          p.bestseller, p.offer, p.order_count as "orderCount", p.brand,
-         img.image_url as "primaryImage", img.alt_text as "primaryImageAlt"
+         img.image_url as "primaryImage", img.alt_text as "primaryImageAlt",
+         EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.available = 1) as "hasVariants"
 `
 
 function sortClause(sort: SortOption | undefined, hasSearch: boolean, searchParamIndex: number): string {
@@ -198,6 +202,13 @@ export async function listProducts(params: ListProductsParams) {
     products: rows.map(serializeCard),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) }
   }
+}
+
+// متغيرات منتج خفيفة بس (اسم/سعر/مخزون) — لفتح شيت اختيار الوزن/الوحدة من كارت المنتج
+// مباشرة من غير ما نحمّل تفاصيل المنتج الكاملة (وصف/معرض صور/بدائل/منتجات مشابهة) لأجل ده بس.
+export async function getPublicVariantsForProduct(productId: string) {
+  const variants = await listVariantsForProduct(productId)
+  return variants.filter(v => v.available).map(v => ({ id: v.id, name: v.name, price: v.price, stock: v.stock }))
 }
 
 export async function resolveProducts(ids: string[]): Promise<ProductCard[]> {

@@ -2,6 +2,8 @@ import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-rout
 import { useCart } from '../store/CartContext'
 import { useCatalog } from '../store/CatalogContext'
 import { usePageTitle } from '../store/pageTitleStore'
+import { PromoModal } from './PromoModal'
+import { StickyCartBar } from './StickyCartBar'
 import { ar } from '../i18n/ar'
 
 function useSubTitle() {
@@ -91,6 +93,9 @@ export function Layout() {
       <main className="page-content">
         <Outlet />
       </main>
+
+      <StickyCartBar />
+      <PromoModal />
 
       {!hideNav && (
         <nav className="bottom-nav" aria-label={ar.nav.mainNavLabel}>

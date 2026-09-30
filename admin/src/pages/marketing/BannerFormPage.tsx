@@ -4,7 +4,7 @@ import { api, type AdminBannerInput } from '../../utils/api'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const emptyForm: AdminBannerInput = {
-  kicker: '', title: '', note: '', emoji: '🛍️', altText: '', ctaLabel: 'تسوق الآن', link: '/', active: true
+  kicker: '', title: '', note: '', emoji: '🛍️', altText: '', ctaLabel: 'تسوق الآن', link: '/', active: true, placement: 'hero'
 }
 
 // input[type=datetime-local] بياخد/بيرجع بصيغة "YYYY-MM-DDTHH:mm" محلية (من غير timezone)،
@@ -181,6 +181,13 @@ export function BannerFormPage() {
             <button type="button" className={`admin-form-chip ${form.active ? 'active' : ''}`} onClick={() => set('active', true)}>ظاهر للعملاء</button>
             <button type="button" className={`admin-form-chip ${!form.active ? 'active' : ''}`} onClick={() => set('active', false)}>مخفي</button>
           </span>
+        </label>
+        <label>مكان الظهور
+          <span className="admin-form-chips">
+            <button type="button" className={`admin-form-chip ${form.placement === 'hero' ? 'active' : ''}`} onClick={() => set('placement', 'hero')}>كاروسيل الصفحة الرئيسية</button>
+            <button type="button" className={`admin-form-chip ${form.placement === 'popup' ? 'active' : ''}`} onClick={() => set('placement', 'popup')}>بوب-أب تسويقي</button>
+          </span>
+          <span className="admin-form-help">بوب-أب تسويقي بيظهر مرة واحدة بس لكل عميل/جهاز طول ما نفس البانر ده شغّال — مش بيظهر في صفحات الدفع/تسجيل الدخول</span>
         </label>
         <div className="admin-row-2">
           <label>يبدأ العرض (اختياري)

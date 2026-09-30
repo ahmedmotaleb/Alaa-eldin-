@@ -31,6 +31,7 @@ export interface Product {
   primaryImage?: string
   primaryImageAlt?: string
   brand?: string
+  hasVariants?: boolean
 }
 
 export interface ProductGalleryImage {

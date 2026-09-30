@@ -27,13 +27,14 @@ interface BannerRow {
   sortOrder: number
   startsAt: string | null
   endsAt: string | null
+  placement: 'hero' | 'popup'
 }
 
 const SELECT_BANNER = `
   SELECT id, kicker, title, note, emoji, image_url as "imageUrl", image_storage_key as "imageStorageKey",
          mobile_image_url as "mobileImageUrl", mobile_image_storage_key as "mobileImageStorageKey",
          alt_text as "altText", cta_label as "ctaLabel", link, active, sort_order as "sortOrder",
-         starts_at as "startsAt", ends_at as "endsAt"
+         starts_at as "startsAt", ends_at as "endsAt", placement
   FROM banners
 `
 
@@ -42,7 +43,8 @@ function serialize(row: BannerRow) {
     id: row.id, kicker: row.kicker, title: row.title, note: row.note, emoji: row.emoji,
     imageUrl: row.imageUrl ?? undefined, mobileImageUrl: row.mobileImageUrl ?? undefined,
     altText: row.altText, ctaLabel: row.ctaLabel, link: row.link, active: !!row.active,
-    sortOrder: row.sortOrder, startsAt: row.startsAt ?? undefined, endsAt: row.endsAt ?? undefined
+    sortOrder: row.sortOrder, startsAt: row.startsAt ?? undefined, endsAt: row.endsAt ?? undefined,
+    placement: row.placement
   }
 }
 
@@ -69,7 +71,8 @@ function validateBody(body: unknown) {
     typeof b?.link !== 'string' || !b.link.trim() ||
     typeof b?.active !== 'boolean' ||
     (b.startsAt !== undefined && b.startsAt !== null && typeof b.startsAt !== 'string') ||
-    (b.endsAt !== undefined && b.endsAt !== null && typeof b.endsAt !== 'string')
+    (b.endsAt !== undefined && b.endsAt !== null && typeof b.endsAt !== 'string') ||
+    (b.placement !== undefined && b.placement !== 'hero' && b.placement !== 'popup')
   ) return null
 
   return {
@@ -84,7 +87,8 @@ function validateBody(body: unknown) {
     active: b.active as boolean,
     sortOrder: typeof b.sortOrder === 'number' ? b.sortOrder : 0,
     startsAt: typeof b.startsAt === 'string' && b.startsAt ? b.startsAt : null,
-    endsAt: typeof b.endsAt === 'string' && b.endsAt ? b.endsAt : null
+    endsAt: typeof b.endsAt === 'string' && b.endsAt ? b.endsAt : null,
+    placement: (b.placement === 'popup' ? 'popup' : 'hero') as 'hero' | 'popup'
   }
 }
 
@@ -99,9 +103,9 @@ adminBannersRouter.post('/', async (req, res) => {
   const maxOrder = maxRows[0].m
 
   const { rows: insertedRows } = await pool.query<{ id: number }>(
-    `INSERT INTO banners (kicker, title, note, emoji, alt_text, cta_label, link, active, sort_order, starts_at, ends_at, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-    [data.kicker, data.title, data.note, data.emoji, data.altText, data.ctaLabel, data.link, data.active ? 1 : 0, maxOrder + 1, data.startsAt, data.endsAt, new Date().toISOString()]
+    `INSERT INTO banners (kicker, title, note, emoji, alt_text, cta_label, link, active, sort_order, starts_at, ends_at, created_at, placement)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+    [data.kicker, data.title, data.note, data.emoji, data.altText, data.ctaLabel, data.link, data.active ? 1 : 0, maxOrder + 1, data.startsAt, data.endsAt, new Date().toISOString(), data.placement]
   )
 
   const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [insertedRows[0].id])
@@ -124,9 +128,9 @@ adminBannersRouter.patch('/:id', async (req, res) => {
 
   await pool.query(
     `UPDATE banners SET kicker=$1, title=$2, note=$3, emoji=$4, alt_text=$5, cta_label=$6,
-       link=$7, active=$8, sort_order=$9, starts_at=$10, ends_at=$11
-     WHERE id=$12`,
-    [data.kicker, data.title, data.note, data.emoji, data.altText, data.ctaLabel, data.link, data.active ? 1 : 0, data.sortOrder, data.startsAt, data.endsAt, req.params.id]
+       link=$7, active=$8, sort_order=$9, starts_at=$10, ends_at=$11, placement=$12
+     WHERE id=$13`,
+    [data.kicker, data.title, data.note, data.emoji, data.altText, data.ctaLabel, data.link, data.active ? 1 : 0, data.sortOrder, data.startsAt, data.endsAt, data.placement, req.params.id]
   )
 
   const { rows } = await pool.query<BannerRow>(`${SELECT_BANNER} WHERE id = $1`, [req.params.id])

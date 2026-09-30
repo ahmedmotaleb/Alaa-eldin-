@@ -14,6 +14,13 @@
   --danger: #b42318;
   --shadow: 0 8px 28px rgba(18, 52, 29, .08);
   --card-shadow: 0 6px 16px rgba(20, 48, 28, .05);
+  /* هوية العلامة الرسمية (أزرق ملكي/برتقالي/كريمي) — مستخدمة عمداً بس في المكوّنات الجديدة
+     (بوب-أب العروض، شريط ملخص السلة، شيت اختيار الوزن)، من غير ما تغيّر لون الأخضر الأساسي
+     المستخدم في باقي الموقع حالياً، تجنّباً لإعادة تلوين شاملة خارج نطاق هذه الدفعة. */
+  --brand-blue: #06439B;
+  --brand-blue-dark: #053574;
+  --brand-orange: #FB7408;
+  --brand-cream: #FFF9F0;
 }
 
 * { box-sizing: border-box; }
@@ -632,3 +639,81 @@ h1, h2, h3, p { margin: 0; }
 .download-alt { padding: 4px 2px 16px; }
 .download-alt h2 { font-weight: 800; font-size: 14px; margin-bottom: 6px; }
 .download-alt p { font-weight: 500; font-size: 12.5px; color: var(--muted); line-height: 1.8; margin: 0; }
+
+/* ---------- promo modal (بوب-أب العروض) ---------- */
+@keyframes promoModalIn { 0% { opacity: 0; transform: scale(.94) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+.promo-modal-backdrop {
+  position: fixed; inset: 0; z-index: 120; background: rgba(15, 25, 35, .5);
+  display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.promo-modal {
+  position: relative; width: 100%; max-width: 92vw; background: var(--brand-cream); border-radius: 26px;
+  padding: 22px 20px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.28); text-align: center;
+  animation: promoModalIn .22s ease; max-height: 86vh; overflow-y: auto;
+}
+@media (min-width: 420px) { .promo-modal { max-width: 380px; } }
+.promo-modal-close {
+  position: absolute; top: 12px; inset-inline-end: 12px; width: 32px; height: 32px; border-radius: 50%; border: 0;
+  background: rgba(6, 67, 155, .08); color: var(--brand-blue); font-size: 15px; font-weight: 800;
+  display: grid; place-items: center; cursor: pointer;
+}
+.promo-modal-image { width: 100%; max-height: 160px; object-fit: cover; border-radius: 18px; margin-bottom: 12px; }
+.promo-modal-emoji { font-size: 52px; margin-bottom: 8px; }
+.promo-modal-kicker { color: var(--brand-orange); font-weight: 900; font-size: 13px; margin-bottom: 6px; }
+.promo-modal-title { font-weight: 900; font-size: 19px; color: #17221a; line-height: 1.4; margin-bottom: 6px; }
+.promo-modal-note { font-weight: 600; font-size: 13.5px; color: var(--muted); line-height: 1.7; margin-bottom: 18px; }
+.promo-modal-cta {
+  width: 100%; border: 0; background: var(--brand-orange); color: #fff; border-radius: 16px;
+  min-height: 52px; font-weight: 900; font-size: 15px; cursor: pointer;
+}
+.promo-modal-cta:hover { filter: brightness(.95); }
+
+/* ---------- sticky cart bar (شريط ملخص السلة أثناء التصفح) ---------- */
+.sticky-cart-bar {
+  position: fixed; bottom: 70px; inset-inline: 0; z-index: 45;
+  padding: 10px 14px; display: flex; justify-content: center;
+}
+.sticky-cart-bar button {
+  width: 100%; max-width: 720px; border: 0; background: var(--brand-blue); color: #fff; border-radius: 16px;
+  min-height: 54px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between;
+  font-weight: 900; cursor: pointer; box-shadow: 0 10px 24px rgba(6,67,155,.32);
+}
+.sticky-cart-bar button:hover { background: var(--brand-blue-dark); }
+.sticky-cart-bar-cta { font-size: 14.5px; }
+.sticky-cart-bar-total { display: flex; align-items: center; gap: 8px; }
+.sticky-cart-bar-total-label { font-size: 11.5px; font-weight: 700; opacity: .85; }
+.sticky-cart-bar-total-amount { font-size: 16px; font-weight: 900; color: var(--brand-orange); }
+
+/* ---------- weight/unit selection bottom sheet ---------- */
+.add-button.unit-select { width: auto; min-width: 32px; padding: 0 10px; border-radius: 12px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.add-button-badge { font-size: 13px; font-weight: 900; }
+
+@keyframes unitSheetIn { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+.unit-sheet-backdrop { position: fixed; inset: 0; z-index: 130; background: rgba(15, 25, 35, .5); display: flex; align-items: flex-end; }
+.unit-sheet {
+  width: 100%; max-height: 88vh; overflow-y: auto; background: #fff; border-radius: 22px 22px 0 0;
+  padding: 10px 18px calc(16px + env(safe-area-inset-bottom)); position: relative; animation: unitSheetIn .24s ease;
+}
+.unit-sheet-handle { width: 40px; height: 4px; border-radius: 999px; background: var(--border); margin: 2px auto 12px; }
+.unit-sheet-close {
+  position: absolute; top: 14px; inset-inline-end: 16px; width: 30px; height: 30px; border-radius: 50%; border: 0;
+  background: #f2f3f2; color: #17221a; font-size: 13px; display: grid; place-items: center; cursor: pointer;
+}
+.unit-sheet-header { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.unit-sheet-header-body { display: flex; flex-direction: column; gap: 3px; }
+.unit-sheet-header-body strong { font-weight: 900; font-size: 15px; }
+.unit-sheet-header-body span { font-weight: 600; font-size: 12px; color: var(--muted); }
+.unit-sheet-options { display: flex; flex-direction: column; gap: 12px; }
+.unit-sheet-loading { text-align: center; padding: 20px 0; color: var(--muted); font-weight: 700; }
+.unit-sheet-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; }
+.unit-sheet-option.unavailable { opacity: .55; }
+.unit-sheet-option-info { display: flex; flex-direction: column; gap: 5px; }
+.unit-sheet-option-info strong { font-weight: 800; font-size: 14px; }
+.unit-sheet-option-price { font-weight: 900; font-size: 14.5px; color: var(--brand-blue); }
+.unit-sheet-footer { position: sticky; bottom: 0; background: #fff; padding-top: 14px; margin-top: 6px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+.unit-sheet-total { display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 13.5px; color: var(--muted); }
+.unit-sheet-total strong { font-size: 18px; color: var(--brand-orange); font-weight: 900; }
+.unit-sheet-confirm { border: 0; background: var(--brand-blue); color: #fff; border-radius: 16px; min-height: 52px; font-weight: 900; font-size: 15px; cursor: pointer; }
+.unit-sheet-confirm:disabled { background: #b8c4bb; cursor: not-allowed; }
+.unit-sheet-confirm:not(:disabled):hover { background: var(--brand-blue-dark); }

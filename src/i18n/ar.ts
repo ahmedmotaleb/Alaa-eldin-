@@ -88,7 +88,22 @@ export const ar = {
     variantOutOfStock: 'نفد المخزون',
     notifyWhenAvailable: 'أعلمني عند التوفر',
     notifyWhenAvailableSubscribed: 'هنبلغك عند التوفر ✓ (إلغاء)',
-    notifyWhenAvailableConfirmed: 'تمام، هنبلغك أول ما يتوفر'
+    notifyWhenAvailableConfirmed: 'تمام، هنبلغك أول ما يتوفر',
+    chooseWeight: 'اختر الوزن',
+    chooseQuantity: 'اختر الكمية'
+  },
+
+  promo: {
+    closeAriaLabel: 'إغلاق'
+  },
+
+  unitSheet: {
+    selectedTotal: 'الإجمالي المختار',
+    confirm: 'إضافة للسلة',
+    outOfStock: 'غير متوفر',
+    lowStockRemaining: (n: number) => `متبقي ${n} فقط`,
+    available: 'متوفر',
+    close: 'إغلاق'
   },
 
   search: {
@@ -117,6 +132,7 @@ export const ar = {
     discount: 'الخصم',
     total: 'الإجمالي',
     checkout: 'إتمام الطلب',
+    viewCart: 'عرض السلة',
     discountCodeLabel: 'كود الخصم',
     discountCodePlaceholder: 'أدخل كود الخصم',
     discountApply: 'تطبيق',

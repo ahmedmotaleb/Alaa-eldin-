@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { listPublicAlternatives } from '../services/productAlternativeService.js'
-import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, type SortOption } from '../services/catalogService.js'
+import { listProducts, resolveProducts, autocompleteProducts, getProductBySlug, getPublicVariantsForProduct, type SortOption } from '../services/catalogService.js'
 import { resolveVariants } from '../services/productVariantService.js'
 import { setShortPublicCache } from '../publicCache.js'
 import { logEvent } from '../logger.js'
@@ -93,6 +93,13 @@ catalogRouter.post('/product-variants/resolve', async (req, res) => {
 catalogRouter.get('/products/:id/alternatives', async (req, res) => {
   const alternatives = await listPublicAlternatives(String(req.params.id))
   res.json({ alternatives })
+})
+
+// اختيارات الوزن/الوحدة لمنتج (لشيت الاختيار السريع من كارت المنتج) — خفيفة عمداً، بدون
+// تحميل تفاصيل المنتج الكاملة (وصف/معرض صور/بدائل/منتجات مشابهة) لأجل فتح الشيت بس.
+catalogRouter.get('/products/:id/variants', async (req, res) => {
+  const variants = await getPublicVariantsForProduct(String(req.params.id))
+  res.json({ variants })
 })
 
 // تفاصيل منتج كاملة للعميل (وصف، معرض صور، بدائل، منتجات مشابهة) — مفيش تكلفة داخلية

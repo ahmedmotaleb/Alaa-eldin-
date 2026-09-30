@@ -176,6 +176,7 @@ export interface ApiProduct {
   primaryImage?: string
   primaryImageAlt?: string
   brand: string
+  hasVariants: boolean
 }
 
 export interface ShoppingList {
@@ -331,6 +332,7 @@ export interface ApiBanner {
   altText: string
   ctaLabel: string
   link: string
+  placement: 'hero' | 'popup'
 }
 
 export interface ApiDeliveryZone {
@@ -501,6 +503,10 @@ export const api = {
   unsubscribeFromBackInStock: (productId: string, variantId?: string) =>
     request<void>(`/products/notify-when-available/${encodeURIComponent(productId)}${variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''}`, { method: 'DELETE' }),
   autocomplete: (search: string) => request<{ products: ApiProduct[] }>(`/products/autocomplete${buildQuery({ search })}`),
+  // اختيارات الوزن/الوحدة المتاحة لمنتج — لفتح شيت الاختيار من كارت المنتج مباشرة من غير
+  // تحميل تفاصيل المنتج الكاملة (وصف/معرض صور/بدائل) لأجل ده بس.
+  getProductVariantsForSelection: (productId: string) =>
+    request<{ variants: ApiProductVariant[] }>(`/products/${encodeURIComponent(productId)}/variants`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
   getSettings: () => request<{ settings: ApiSettings, captcha: { turnstileSiteKey: string | null } }>('/settings'),
   getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),
