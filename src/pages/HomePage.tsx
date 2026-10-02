@@ -9,6 +9,7 @@ import { hasOnboarded } from '../utils/onboarding'
 import { api, type ApiBanner, type ApiProduct } from '../utils/api'
 import { getSettings } from '../store/settingsStore'
 import { transformImage } from '../utils/image'
+import { formatCutoffTime } from '../utils/format'
 import { setPageMeta } from '../utils/pageMeta'
 import { ar } from '../i18n/ar'
 
@@ -129,7 +130,7 @@ export function HomePage() {
       <div className="info-card">
         <div className="info-card-icon">🕑</div>
         <div>
-          <div className="info-card-title">{ar.home.orderBeforeTitle}</div>
+          <div className="info-card-title">{ar.home.orderBeforeTitle(formatCutoffTime(settings.sameDayCutoffTime))}</div>
           <div className="info-card-note">{ar.home.orderBeforeNote}</div>
         </div>
       </div>

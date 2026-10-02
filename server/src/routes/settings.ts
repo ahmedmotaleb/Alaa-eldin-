@@ -15,7 +15,7 @@ const SELECT_SETTINGS = `
          loyalty_min_order_for_redemption as "loyaltyMinOrderForRedemption",
          loyalty_expiry_enabled as "loyaltyExpiryEnabled", loyalty_expiry_days as "loyaltyExpiryDays",
          referral_enabled as "referralEnabled", referral_referred_bonus_points as "referralReferredBonusPoints",
-         referral_min_qualifying_order as "referralMinQualifyingOrder"
+         referral_min_qualifying_order as "referralMinQualifyingOrder", same_day_cutoff_time as "sameDayCutoffTime"
   FROM store_settings WHERE id = 1
 `
 

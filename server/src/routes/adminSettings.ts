@@ -20,7 +20,7 @@ const SELECT_SETTINGS = `
          loyalty_expiry_enabled as "loyaltyExpiryEnabled", loyalty_expiry_days as "loyaltyExpiryDays",
          loyalty_expiry_warning_days as "loyaltyExpiryWarningDays",
          referral_enabled as "referralEnabled", referral_referred_bonus_points as "referralReferredBonusPoints",
-         referral_min_qualifying_order as "referralMinQualifyingOrder"
+         referral_min_qualifying_order as "referralMinQualifyingOrder", same_day_cutoff_time as "sameDayCutoffTime"
   FROM store_settings WHERE id = 1
 `
 
@@ -80,7 +80,8 @@ adminSettingsRouter.patch('/', async (req, res) => {
     typeof b.loyaltyExpiryWarningDays !== 'number' || !Number.isInteger(b.loyaltyExpiryWarningDays) || b.loyaltyExpiryWarningDays < 0 ||
     typeof b.referralEnabled !== 'boolean' ||
     typeof b.referralReferredBonusPoints !== 'number' || !Number.isInteger(b.referralReferredBonusPoints) || b.referralReferredBonusPoints < 0 ||
-    typeof b.referralMinQualifyingOrder !== 'number' || b.referralMinQualifyingOrder < 0
+    typeof b.referralMinQualifyingOrder !== 'number' || b.referralMinQualifyingOrder < 0 ||
+    typeof b.sameDayCutoffTime !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(b.sameDayCutoffTime)
   ) {
     res.status(400).json({ error: 'missing_fields' })
     return
@@ -94,7 +95,8 @@ adminSettingsRouter.patch('/', async (req, res) => {
        loyalty_enabled=$14, loyalty_point_value_egp=$15, loyalty_min_redeem_points=$16,
        loyalty_max_redemption_percent=$17, loyalty_min_order_for_redemption=$18,
        loyalty_expiry_enabled=$19, loyalty_expiry_days=$20, loyalty_expiry_warning_days=$21,
-       referral_enabled=$22, referral_referred_bonus_points=$23, referral_min_qualifying_order=$24
+       referral_enabled=$22, referral_referred_bonus_points=$23, referral_min_qualifying_order=$24,
+       same_day_cutoff_time=$25
      WHERE id = 1`,
     [
       b.name, b.whatsappNumber, b.currency, b.minimumOrder, b.freeShippingThreshold, b.deliveryFee,
@@ -103,7 +105,8 @@ adminSettingsRouter.patch('/', async (req, res) => {
       b.loyaltyEnabled ? 1 : 0, b.loyaltyPointValueEgp, b.loyaltyMinRedeemPoints,
       b.loyaltyMaxRedemptionPercent, b.loyaltyMinOrderForRedemption,
       b.loyaltyExpiryEnabled ? 1 : 0, b.loyaltyExpiryDays, b.loyaltyExpiryWarningDays,
-      b.referralEnabled ? 1 : 0, b.referralReferredBonusPoints, b.referralMinQualifyingOrder
+      b.referralEnabled ? 1 : 0, b.referralReferredBonusPoints, b.referralMinQualifyingOrder,
+      b.sameDayCutoffTime
     ]
   )
 

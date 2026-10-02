@@ -91,6 +91,10 @@ export function DeliverySettingsPage() {
             <input type="number" value={form.deliveryFee} onChange={e => set('deliveryFee', Number(e.target.value))} />
             <span className="admin-form-help">بتظهر بس كتقدير في سلة العميل قبل ما يختار محافظة — رسوم التوصيل الفعلية وقت الطلب بتتحدد من جدول المحافظات تحت</span>
           </label>
+          <label>آخر ميعاد لطلب توصيل نفس اليوم
+            <input type="time" value={form.sameDayCutoffTime} onChange={e => set('sameDayCutoffTime', e.target.value)} />
+            <span className="admin-form-help">ده نص إعلامي بس بيظهر في بانر الصفحة الرئيسية للعميل (مثلاً "اطلب قبل 12 منتصف الليل") — مش بيوقف استقبال الطلبات فعلياً بعد الميعاد ده، ومواعيد التوصيل الحقيقية بتتحدد من جدول المواعيد تحت</span>
+          </label>
 
           {error && <div className="admin-form-error">{error}</div>}
           {success && <div className="admin-form-success">{success}</div>}

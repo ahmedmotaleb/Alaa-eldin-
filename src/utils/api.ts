@@ -383,6 +383,7 @@ export interface ApiSettings {
   referralEnabled: boolean
   referralReferredBonusPoints: number
   referralMinQualifyingOrder: number
+  sameDayCutoffTime: string
 }
 
 export type ApiLoyaltySourceType =

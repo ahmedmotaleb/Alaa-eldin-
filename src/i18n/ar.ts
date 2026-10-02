@@ -48,7 +48,7 @@ export const ar = {
     offersEndIn: 'تنتهي بعد 4 ساعات',
     allOffers: 'كل العروض',
     bestSellersTitle: 'الأكثر مبيعاً',
-    orderBeforeTitle: 'اطلب قبل 6 مساءً',
+    orderBeforeTitle: (cutoffTime: string) => `اطلب قبل ${cutoffTime}`,
     orderBeforeNote: 'ويوصلك الطلب نفس اليوم داخل المدينة.',
     recentlyViewedTitle: 'شوهد مؤخراً',
     buyAgainTitle: 'اشتريها تاني'

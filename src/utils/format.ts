@@ -49,3 +49,15 @@ export function formatTime(value: string | Date, options?: Intl.DateTimeFormatOp
 export function formatDateTime(value: string | Date): string {
   return `${formatDate(value)} ${formatTime(value)}`
 }
+
+// بيحوّل وقت "HH:MM" (24 ساعة، من إعدادات المتجر) لنص عربي مقروء — مُستخدم في بانر "اطلب
+// قبل" على الصفحة الرئيسية. حالات خاصة لمنتصف الليل والظهر بدل "12 مساءً"/"12 صباحاً" الملتبسة.
+export function formatCutoffTime(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  if (h === 0 && m === 0) return 'منتصف الليل'
+  if (h === 12 && m === 0) return 'الظهر'
+  const period = h < 12 ? 'صباحاً' : 'مساءً'
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  const hourText = formatNumber(hour12)
+  return m === 0 ? `${hourText} ${period}` : `${hourText}:${String(m).padStart(2, '0')} ${period}`
+}

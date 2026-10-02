@@ -22,7 +22,8 @@ const DEFAULT_SETTINGS: ApiSettings = {
   loyaltyExpiryDays: 0,
   referralEnabled: false,
   referralReferredBonusPoints: 0,
-  referralMinQualifyingOrder: 0
+  referralMinQualifyingOrder: 0,
+  sameDayCutoffTime: '18:00'
 }
 
 let current: ApiSettings = DEFAULT_SETTINGS

@@ -1309,6 +1309,7 @@ export interface AdminSettings {
   referralEnabled: boolean
   referralReferredBonusPoints: number
   referralMinQualifyingOrder: number
+  sameDayCutoffTime: string
 }
 
 export interface IntegrationsStatus {
