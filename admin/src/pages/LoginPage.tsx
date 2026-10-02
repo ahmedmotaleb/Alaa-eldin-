@@ -87,7 +87,7 @@ export function LoginPage() {
       <div className="admin-login-page">
         <form className="admin-login-card" onSubmit={submitTwoFactor}>
           <div className="admin-login-brand">
-            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="علاء الدين" />
+            <img src={`${import.meta.env.BASE_URL}images/logo-wordmark.png`} alt="علاء الدين" />
             <h1>التحقق بخطوتين</h1>
             <p>ادخل الكود من تطبيق المصادقة، أو استخدم كود احتياطي</p>
           </div>
@@ -114,7 +114,7 @@ export function LoginPage() {
     <div className="admin-login-page">
       <form className="admin-login-card" onSubmit={submit}>
         <div className="admin-login-brand">
-          <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="علاء الدين" />
+          <img src={`${import.meta.env.BASE_URL}images/logo-wordmark.png`} alt="علاء الدين" />
           <h1>لوحة تحكم علاء الدين</h1>
           <p>تسجيل الدخول لإدارة المتجر</p>
         </div>

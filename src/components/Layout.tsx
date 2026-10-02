@@ -71,7 +71,7 @@ export function Layout() {
         <header className="home-header">
           <div className="home-header-row">
             <button className="home-header-address" onClick={() => setAddressSheetOpen(true)}>
-              <img src="/images/logo.png" alt="" className="home-header-logo" onError={e => (e.currentTarget.style.display = 'none')} />
+              <img src="/images/logo-wordmark.png" alt="" className="home-header-logo" onError={e => (e.currentTarget.style.display = 'none')} />
               <div>
                 <div className="home-header-address-label">{ar.home.deliverTo}</div>
                 <div className="home-header-address-value">{addressLabel(defaultAddress, !user)}
