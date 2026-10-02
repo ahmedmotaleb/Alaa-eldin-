@@ -7,6 +7,7 @@ interface AuthContextValue {
   login: (email: string, password: string, captchaToken?: string) => Promise<AdminUser | { requiresTwoFactor: true, pendingToken: string }>
   verifyTwoFactorLogin: (pendingToken: string, code: string) => Promise<AdminUser>
   logout: () => Promise<void>
+  updateUser: (user: AdminUser) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -42,8 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  // تحديث محلي للمستخدم الحالي بعد إجراء بيغيّر بياناته (زي تغيير كلمة المرور الإجباري)
+  // من غير إعادة تحميل كاملة — السيرفر هو مصدر الحقيقة الفعلي لأي قرار تفويض، ده بس تحديث
+  // واجهة.
+  function updateUser(updated: AdminUser) {
+    setUser(updated)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, verifyTwoFactorLogin, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyTwoFactorLogin, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

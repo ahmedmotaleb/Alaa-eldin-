@@ -20,6 +20,7 @@ export type Permission = typeof ALL_PERMISSIONS[number]
 export interface RoleRow {
   id: string
   name: string
+  description: string | null
   isSystem: boolean
   permissions: Permission[]
 }
@@ -54,8 +55,8 @@ export async function userHasPermission(
 }
 
 export async function listRoles(): Promise<RoleRow[]> {
-  const { rows: roles } = await pool.query<{ id: string; name: string; isSystem: number }>(
-    'SELECT id, name, is_system as "isSystem" FROM roles ORDER BY name'
+  const { rows: roles } = await pool.query<{ id: string; name: string; description: string | null; isSystem: number }>(
+    'SELECT id, name, description, is_system as "isSystem" FROM roles ORDER BY name'
   )
   const { rows: perms } = await pool.query<{ roleId: string; permission: Permission }>(
     'SELECT role_id as "roleId", permission FROM role_permissions'
@@ -65,7 +66,14 @@ export async function listRoles(): Promise<RoleRow[]> {
     if (!permsByRole.has(p.roleId)) permsByRole.set(p.roleId, [])
     permsByRole.get(p.roleId)!.push(p.permission)
   }
-  return roles.map(r => ({ id: r.id, name: r.name, isSystem: !!r.isSystem, permissions: permsByRole.get(r.id) ?? [] }))
+  return roles.map(r => ({ id: r.id, name: r.name, description: r.description, isSystem: !!r.isSystem, permissions: permsByRole.get(r.id) ?? [] }))
+}
+
+// عدد المستخدمين المعيَّن لهم دور معيّن حالياً — بيتستخدم قبل حذف دور مخصص عشان نمنع حذف
+// دور لسه مستخدم فعلياً (بدل ما نسيب المستخدمين دول من غير أي صلاحية فجأة).
+export async function countUsersWithRole(roleId: string): Promise<number> {
+  const { rows } = await pool.query<{ n: string }>('SELECT COUNT(*) as n FROM users WHERE role_id = $1', [roleId])
+  return Number(rows[0].n)
 }
 
 // بيحدد لو المستخدم "مدير كامل" بنفس تعريف countFullAdmins بالظبط — بيتستخدم قبل حفظ أي

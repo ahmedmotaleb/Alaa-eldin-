@@ -154,18 +154,20 @@ export interface AuthedUser {
   isAdmin: boolean
   role: UserRole
   roleId: string | null
+  active: boolean
+  mustChangePassword: boolean
 }
 
 async function getUserBySession(token: string): Promise<{ user: AuthedUser, lastSeenAt: string | null } | null> {
-  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile'> & { isAdmin: number, mobile: string | null, lastSeenAt: string | null }>(`
-    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role", u.role_id as "roleId", s.last_seen_at as "lastSeenAt"
+  const { rows } = await pool.query<Omit<AuthedUser, 'isAdmin' | 'mobile' | 'active' | 'mustChangePassword'> & { isAdmin: number, mobile: string | null, active: number, mustChangePassword: number, lastSeenAt: string | null }>(`
+    SELECT u.id as id, u.email as email, u.full_name as "fullName", u.mobile as "mobile", u.created_at as "createdAt", u.is_admin as "isAdmin", u.role as "role", u.role_id as "roleId", u.active as "active", u.must_change_password as "mustChangePassword", s.last_seen_at as "lastSeenAt"
     FROM sessions s JOIN users u ON u.id = s.user_id
-    WHERE s.token = $1 AND s.expires_at > $2
+    WHERE s.token = $1 AND s.expires_at > $2 AND u.active = 1
   `, [token, new Date().toISOString()])
   const row = rows[0]
   if (!row) return null
   const { lastSeenAt, ...userRow } = row
-  return { user: { ...userRow, mobile: userRow.mobile ?? undefined, isAdmin: !!userRow.isAdmin }, lastSeenAt }
+  return { user: { ...userRow, mobile: userRow.mobile ?? undefined, isAdmin: !!userRow.isAdmin, active: !!userRow.active, mustChangePassword: !!userRow.mustChangePassword }, lastSeenAt }
 }
 
 declare global {
@@ -210,6 +212,13 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     res.status(403).json({ error: 'forbidden' })
     return
   }
+  // حساب إداري اتعمله أدمن بكلمة مرور مؤقتة ولازم يغيّرها — كل مسارات لوحة التحكم الأخرى
+  // محجوبة لحد ما يغيّرها عن طريق POST /auth/change-required-password (المسار ده نفسه بيعدي
+  // عن طريق requireAuth مش requireAdmin، عشان ميقعش في نفس القفلة).
+  if (req.user.mustChangePassword) {
+    res.status(403).json({ error: 'password_change_required' })
+    return
+  }
   next()
 }
 
@@ -233,6 +242,12 @@ export function requireRole(...allowed: UserRole[]) {
 // بوابة صلاحيات دقيقة (RBAC) — بتتحقق من الصلاحية الفعلية للمستخدم (من role_id لو موجود،
 // أو من is_admin/role القديمين كـ fallback) بدل الاكتفاء بـ isAdmin العام. لازم تيجي بعد
 // requireAdmin على نفس المسار (مستخدم مش isAdmin أصلاً هيتوقف قبل ما يوصل هنا).
+//
+// ملاحظة مهمة: getUserPermissions بتاعة permissionService بترجّع LEGACY_ADMIN_PERMISSIONS
+// (كل الصلاحيات) لأي مستخدم legacy (roleId=null) عنده isAdmin=true — بغض النظر عن role
+// النصي القديم ('staff' مقابل 'admin'). يعني requirePermission لوحدها مش كافية لحماية
+// أقسام كانت تاريخياً مقصورة على role='admin' الكامل بس (زي إدارة المستخدمين) من مستخدم
+// legacy بدور 'staff' — استخدم requireUsersManage تحت لو محتاج تحافظ على التفرقة دي.
 export function requirePermission(permission: Permission) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -246,4 +261,28 @@ export function requirePermission(permission: Permission) {
     }
     next()
   }
+}
+
+// بوابة إدارة المستخدمين/الأدوار تحديداً — بتحافظ على نفس سلوك requireRole('admin') القديم
+// بالظبط لحسابات legacy (roleId=null: لازم يكون role='admin' الكامل، مش 'staff')، وفي
+// نفس الوقت بتسمح لأي دور RBAC دقيق (roleId موجود) عنده صلاحية users.manage صراحة —
+// بدون الاعتماد على LEGACY_ADMIN_PERMISSIONS fallback اللي بتفتح كل الصلاحيات لأي
+// legacy isAdmin=true بغض النظر عن role التشغيلي/الكامل (راجع الملاحظة فوق).
+export function requireUsersManage(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: 'unauthorized' })
+    return
+  }
+  if (req.user.roleId) {
+    userHasPermission(req.user, 'users.manage').then(allowed => {
+      if (!allowed) { res.status(403).json({ error: 'forbidden' }); return }
+      next()
+    })
+    return
+  }
+  if (req.user.role !== 'admin') {
+    res.status(403).json({ error: 'forbidden' })
+    return
+  }
+  next()
 }

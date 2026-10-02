@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { CommandPalette } from './CommandPalette'
+import { RequiredPasswordChange } from './RequiredPasswordChange'
 import { useRequireAdmin } from '../hooks/useRequireAdmin'
 import { api } from '../utils/api'
 
@@ -75,6 +76,7 @@ export function AdminLayout() {
   }, [drawerOpen])
 
   if (loading || !user) return null
+  if (user.mustChangePassword) return <RequiredPasswordChange />
 
   return (
     <div className="admin-shell">

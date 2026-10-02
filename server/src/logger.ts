@@ -69,6 +69,9 @@ type BusinessEvent =
   | 'android_apk_download'
   | 'backup_attempt_succeeded' | 'backup_attempt_failed'
   | 'backup_token_created' | 'backup_token_revoked'
+  | 'admin_user_created' | 'user_active_changed' | 'admin_password_reset'
+  | 'login_blocked_disabled_account' | 'required_password_changed'
+  | 'role_created' | 'role_updated' | 'role_deleted'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

@@ -116,7 +116,7 @@ authRouter.post('/register', async (req, res) => {
   const { token, expires } = await createSession(id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   res.status(201).json({
-    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const }
+    user: { id, email: email.toLowerCase(), fullName: fullName.trim(), mobile: undefined, createdAt, isAdmin: false, role: 'staff' as const, roleId: null, active: true, mustChangePassword: false }
   })
 })
 
@@ -128,8 +128,8 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
   }
   const normalizedEmail = email.toLowerCase()
 
-  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin' }>(
-    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role as "role" FROM users WHERE email = $1',
+  const { rows } = await pool.query<{ id: string, email: string, passwordHash: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin', roleId: string | null, active: number, mustChangePassword: number }>(
+    'SELECT id, email, password_hash as "passwordHash", full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role as "role", role_id as "roleId", active, must_change_password as "mustChangePassword" FROM users WHERE email = $1',
     [normalizedEmail]
   )
   const row = rows[0]
@@ -161,6 +161,15 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
 
   if (turnstileConfigured) await clearFailedLoginAttempts(normalizedEmail)
 
+  // حساب موقوف (active=0) بيعدي من فحص كلمة المرور فوق عادي (عشان الرد العام ميكشفش وجود
+  // الحساب من عدمه لحد ما حد يثبت إنه عارف كلمة المرور فعلاً)، بس بعد كده بيترفض برسالة
+  // واضحة إنه موقوف تحديداً، قبل أي محاولة 2FA أو إنشاء جلسة.
+  if (!row.active) {
+    logWarn('login_blocked_disabled_account', { userId: row.id })
+    res.status(403).json({ error: 'account_disabled' })
+    return
+  }
+
   if (await isTwoFactorEnabled(row.id)) {
     const pendingToken = await createPendingTwoFactorLogin(row.id)
     res.json({ requiresTwoFactor: true, pendingToken })
@@ -171,7 +180,7 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role }
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
   })
 })
 
@@ -192,8 +201,8 @@ authRouter.post('/2fa/verify-login', loginRateLimit, async (req, res) => {
     return
   }
 
-  const { rows } = await pool.query<{ id: string, email: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin' }>(
-    'SELECT id, email, full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role FROM users WHERE id = $1',
+  const { rows } = await pool.query<{ id: string, email: string, fullName: string, mobile: string | null, createdAt: string, isAdmin: number, role: 'staff' | 'admin', roleId: string | null, active: number, mustChangePassword: number }>(
+    'SELECT id, email, full_name as "fullName", mobile, created_at as "createdAt", is_admin as "isAdmin", role, role_id as "roleId", active, must_change_password as "mustChangePassword" FROM users WHERE id = $1',
     [result.userId]
   )
   const row = rows[0]
@@ -201,12 +210,17 @@ authRouter.post('/2fa/verify-login', loginRateLimit, async (req, res) => {
     res.status(401).json({ error: 'invalid_or_expired_login' })
     return
   }
+  if (!row.active) {
+    logWarn('login_blocked_disabled_account', { userId: row.id })
+    res.status(403).json({ error: 'account_disabled' })
+    return
+  }
 
   const { token, expires } = await createSession(row.id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id, twoFactor: true })
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role }
+    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
   })
 })
 
@@ -344,6 +358,32 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
   await pool.query('UPDATE users SET full_name = $1, mobile = $2 WHERE id = $3', [fullName, mobile, req.user!.id])
   logEvent('profile_updated', { userId: req.user!.id })
   res.json({ user: { ...req.user, fullName, mobile: mobile ?? undefined } })
+})
+
+// تغيير كلمة مرور إجباري — لحساب لوحة تحكم اتعمله أدمن بكلمة مرور مؤقتة ومطلوب منه يغيّرها
+// أول تسجيل دخول (must_change_password=1). requireAuth هنا بقصد، مش requireAdmin، عشان
+// المستخدم المحجوب (per requireAdmin's password_change_required check) يقدر يوصل للمسار ده
+// تحديداً فك القفلة؛ requireAuth وحده مكفي لأنه بيتحقق إن فيه جلسة صالحة بس.
+authRouter.post('/change-required-password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {}
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    res.status(400).json({ error: 'missing_fields' })
+    return
+  }
+  if (!isStrongPassword(newPassword)) {
+    res.status(400).json({ error: 'weak_password' })
+    return
+  }
+
+  const { rows } = await pool.query<{ passwordHash: string }>('SELECT password_hash as "passwordHash" FROM users WHERE id = $1', [req.user!.id])
+  if (!rows[0] || !verifyPassword(currentPassword, rows[0].passwordHash)) {
+    res.status(401).json({ error: 'invalid_password' })
+    return
+  }
+
+  await pool.query('UPDATE users SET password_hash = $1, must_change_password = 0 WHERE id = $2', [hashPassword(newPassword), req.user!.id])
+  logEvent('required_password_changed', { userId: req.user!.id })
+  res.json({ user: { ...req.user, mustChangePassword: false } })
 })
 
 // إدارة الجلسات/الأجهزة (حسابي → الأمان → أجهزتي) — كل العمليات هنا مقتصرة على جلسات

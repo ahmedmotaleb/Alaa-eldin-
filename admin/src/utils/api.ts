@@ -133,11 +133,14 @@ export interface AdminUser {
   isAdmin: boolean
   role: UserRole
   roleId: string | null
+  active: boolean
+  mustChangePassword: boolean
 }
 
 export interface AdminRole {
   id: string
   name: string
+  description: string | null
   isSystem: boolean
   permissions: string[]
 }
@@ -1838,7 +1841,21 @@ export const api = {
     request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   setUserRoleId: (id: string, roleId: string | null) =>
     request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/role-id`, { method: 'PATCH', body: JSON.stringify({ roleId }) }),
+  createAdminUser: (body: { fullName: string, email: string, temporaryPassword: string, roleId: string, active: boolean, mustChangePassword: boolean }) =>
+    request<{ user: AdminUser }>('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateAdminUser: (id: string, body: { active: boolean }) =>
+    request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/active`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetAdminPassword: (id: string, temporaryPassword: string) =>
+    request<{ user: AdminUser }>(`/admin/users/${encodeURIComponent(id)}/reset-password`, { method: 'POST', body: JSON.stringify({ temporaryPassword }) }),
+  changeRequiredPassword: (currentPassword: string, newPassword: string) =>
+    request<{ user: AdminUser }>('/auth/change-required-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   listRoles: () => request<{ roles: AdminRole[] }>('/admin/roles'),
+  createRole: (body: { name: string, description: string, permissions: string[] }) =>
+    request<{ role: AdminRole }>('/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
+  updateRole: (id: string, body: { name: string, description: string, permissions: string[] }) =>
+    request<{ role: AdminRole }>(`/admin/roles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteRole: (id: string) =>
+    request<void>(`/admin/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   listBanners: () => request<{ banners: AdminBanner[] }>('/admin/banners'),
   getBanner: (id: number) => request<{ banner: AdminBanner }>(`/admin/banners/${id}`),
   createBanner: (body: AdminBannerInput) =>

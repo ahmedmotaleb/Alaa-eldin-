@@ -5,6 +5,8 @@ import { api, ApiError, type AdminUser, type AdminRole } from '../../utils/api'
 import { useAuth } from '../../store/AuthContext'
 import { formatDate } from '../../utils/format'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
+import { CreateAdminUserDrawer } from '../../components/CreateAdminUserDrawer'
+import { ResetAdminPasswordDrawer } from '../../components/ResetAdminPasswordDrawer'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const COLS = '2fr 1fr .9fr 1.3fr'
@@ -28,6 +30,8 @@ export function UsersPage() {
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null)
   const debouncedQuery = useDebouncedValue(query)
 
   // الإحصائيات بتتحسب من كل المستخدمين (بدون ترقيم) عشان تفضل صحيحة بغض النظر عن الصفحة
@@ -109,6 +113,41 @@ export function UsersPage() {
     }
   }
 
+  async function toggleActive(u: AdminUser) {
+    const activating = !u.active
+    const confirmMsg = activating
+      ? `هل تريد تفعيل حساب "${u.fullName}"؟`
+      : `هل تريد إيقاف حساب "${u.fullName}"؟ هيتم إنهاء كل جلساته الحالية فوراً ولن يقدر يسجّل الدخول.`
+    if (!window.confirm(confirmMsg)) return
+
+    setBusyId(u.id)
+    try {
+      const { user: updated } = await api.updateAdminUser(u.id, { active: activating })
+      setUsers(current => current?.map(x => x.id === updated.id ? updated : x) ?? current)
+      loadStats()
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === 'cannot_remove_last_admin'
+        ? 'لا يمكن إيقاف آخر مدير كامل في النظام'
+        : 'تعذر تحديث حالة الحساب، حاول مرة أخرى')
+      loadPage()
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  function handleCreated(user: AdminUser) {
+    setShowCreate(false)
+    setUsers(current => current ? [user, ...current] : [user])
+    setTotal(t => t + 1)
+    loadStats()
+  }
+
+  function handlePasswordReset(user: AdminUser) {
+    setResetPasswordUser(null)
+    setUsers(current => current?.map(x => x.id === user.id ? user : x) ?? current)
+    window.alert(`تم تعيين كلمة مرور مؤقتة جديدة لـ "${user.fullName}" — هيُطلب منه تغييرها عند أول تسجيل دخول.`)
+  }
+
   if (error) return <div className="admin-placeholder-card"><div className="admin-placeholder-note">{error}</div></div>
   if (!users) return null
 
@@ -130,6 +169,7 @@ export function UsersPage() {
             <span style={{ color: '#8A948C', fontSize: 13 }}>🔎</span>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث بالاسم أو البريد..." />
           </div>
+          <button className="admin-form-save" style={{ whiteSpace: 'nowrap' }} onClick={() => setShowCreate(true)}>+ إضافة مسؤول</button>
         </div>
         <div className="admin-table-scroll">
           <div style={{ minWidth: 640 }}>
@@ -148,8 +188,14 @@ export function UsersPage() {
                     </span>
                   </div>
                   <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatDate(u.createdAt)}</div>
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                     <span className="admin-pill" style={{ background: pill.bg, color: pill.fg }}>{pill.label}</span>
+                    {u.isAdmin && !u.active && (
+                      <span className="admin-pill" style={{ background: '#FFF0EF', color: '#B42318', fontSize: 11 }}>موقوف</span>
+                    )}
+                    {u.isAdmin && u.active && u.mustChangePassword && (
+                      <span className="admin-pill" style={{ background: '#FFF3E3', color: '#B4740E', fontSize: 11 }}>بانتظار تغيير كلمة المرور</span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
@@ -160,6 +206,25 @@ export function UsersPage() {
                     >
                       {u.isAdmin ? 'إلغاء صلاحية اللوحة' : 'دخول للوحة التحكم'}
                     </button>
+                    {u.isAdmin && (
+                      <button
+                        className="admin-category-card-btn"
+                        disabled={busyId === u.id || isSelf}
+                        title={isSelf ? 'لا يمكنك إيقاف حسابك الخاص' : undefined}
+                        onClick={() => toggleActive(u)}
+                      >
+                        {u.active ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+                      </button>
+                    )}
+                    {u.isAdmin && (
+                      <button
+                        className="admin-category-card-btn"
+                        disabled={busyId === u.id}
+                        onClick={() => setResetPasswordUser(u)}
+                      >
+                        إعادة تعيين كلمة المرور
+                      </button>
+                    )}
                     {u.isAdmin && (
                       <button
                         className="admin-category-card-btn"
@@ -198,6 +263,11 @@ export function UsersPage() {
           </span>
         </div>
       </div>
+
+      {showCreate && <CreateAdminUserDrawer roles={roles} onClose={() => setShowCreate(false)} onCreated={handleCreated} />}
+      {resetPasswordUser && (
+        <ResetAdminPasswordDrawer user={resetPasswordUser} onClose={() => setResetPasswordUser(null)} onDone={handlePasswordReset} />
+      )}
     </>
   )
 }
