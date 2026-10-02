@@ -5,9 +5,10 @@
 ARG NODE_VERSION=24
 
 # مهم: لازم يتطابق مع إصدار Postgres الفعلي في Railway (Postgres service → image tag، أو
-# سطر بداية التشغيل "PostgreSQL X.Y..."). القيمة هنا افتراض مبدئي بس (مطابق للإصدار
-# المحلي المتاح وقت كتابة الملف ده) — عدّلها قبل أي بناء حقيقي لو مختلفة.
-ARG PG_MAJOR=16
+# سطر بداية التشغيل "PostgreSQL X.Y..."). راجعت القيمة فعلياً مقابل Railway (خدمة Postgres
+# حالياً image: ghcr.io/railwayapp-templates/postgres-ssl:18) — لو الخدمة اترقّت لإصدار
+# تاني يوماً، لازم القيمة هنا تتحدّث معاها.
+ARG PG_MAJOR=18
 
 FROM node:${NODE_VERSION}-slim AS base
 ARG PG_MAJOR
