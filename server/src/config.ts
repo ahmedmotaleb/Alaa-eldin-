@@ -4,6 +4,7 @@
 // (متغير بيئة اتكتب اسمه غلط في Railway) هيفضل مكتشف بس لما مستخدم حقيقي يجرب الميزة ويفشل.
 // مفيش هنا أي قيمة سر بتتقرا أو بتترجع — بس أسماء المتغيرات الموجودة/الناقصة.
 import { logEvent, logWarn } from './logger.js'
+import { checkImageStorageConnection } from './services/imageStorageService.js'
 
 interface IntegrationCheck {
   name: string
@@ -47,4 +48,13 @@ export function logStartupConfigSummary() {
   }
 
   logEvent('startup_config_summary', { configured, notConfigured })
+
+  // فحص اتصال حقيقي (ping مُوثّق) لـ Cloudinary وقت الإقلاع — بخلاف الفحص فوق (وجود متغيرات
+  // البيئة بس)، ده بيتأكد إن المفاتيح فعلاً مقبولة من المزوّد. غير-معطّل (non-blocking) عمداً:
+  // ما بيأخرش بدء السيرفر، ولو فشل (مشكلة شبكة لحظية) ده تشخيص فقط، مش سبب لرفض الإقلاع.
+  if (process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_SECRET) {
+    checkImageStorageConnection()
+      .then(status => { logEvent('startup_cloudinary_connection_check', { status }) })
+      .catch(() => { logWarn('startup_cloudinary_connection_check', { status: 'check_failed' }) })
+  }
 }

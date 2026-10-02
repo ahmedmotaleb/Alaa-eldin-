@@ -1319,7 +1319,7 @@ export interface IntegrationsStatus {
   whatsapp: { configured: boolean }
   push: { configured: boolean, subscriptionCount: number }
   email: { configured: boolean }
-  cloudinary: { configured: boolean }
+  cloudinary: { configured: boolean, connected: boolean, status: 'connected' | 'credentials_invalid' | 'not_configured' | 'provider_unreachable' }
 }
 
 export interface AdminDeliveryZone {

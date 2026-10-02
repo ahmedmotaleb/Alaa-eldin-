@@ -3,10 +3,42 @@ import { api, ApiError, type AdminProductImage } from '../utils/api'
 
 // مُصدّرة عشان PendingProductImages (اختيار صور صفحة "إضافة منتج" قبل ما المنتج يتحفظ
 // أصلاً) تستخدم نفس قواعد النوع/الحجم بالظبط، من غير تكرار الأرقام في مكانين.
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+// 'image/jpg' مُضاف كمرادف لـ JPEG — بعض متصفحات أندرويد بتبعته بدل 'image/jpeg' القياسي.
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_TYPES = ALLOWED_IMAGE_TYPES
 const MAX_SIZE_BYTES = MAX_IMAGE_SIZE_BYTES
+const HEIC_HEIF_TYPES = ['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']
+
+// بعض متصفحات أندرويد بتسيب mimetype فاضي لملفات HEIC/HEIF — بنعتمد كمان على امتداد الملف
+// نفسه كإشارة إضافية (للرسالة بس، التحقق الأمني الحقيقي دايماً على السيرفر بـ magic bytes).
+function looksLikeHeic(file: File): boolean {
+  if (HEIC_HEIF_TYPES.includes(file.type)) return true
+  const name = file.name.toLowerCase()
+  return name.endsWith('.heic') || name.endsWith('.heif')
+}
+
+// رسائل خطأ محددة حسب كود السيرفر — fallback عام واحد بس لأي كود غير متوقع.
+function errorMessageFor(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'image_storage_not_configured': return 'خدمة تخزين الصور غير مفعلة على السيرفر'
+      case 'invalid_file': return 'ملف الصورة غير صالح'
+      case 'no_file_or_invalid_type': return 'صيغة الصورة غير مدعومة — استخدم JPG أو PNG أو WebP'
+      case 'heic_not_supported': return 'صيغة HEIC/HEIF غير مدعومة حالياً — حوّل الصورة إلى JPG من إعدادات الكاميرا ثم أعد المحاولة'
+      case 'file_too_large': return 'حجم الصورة أكبر من 5 ميجابايت'
+      case 'too_many_files': return 'اختر صورة واحدة فقط في كل مرة'
+      case 'malformed_upload': return 'تعذر رفع الصورة، حاول مرة أخرى'
+      case 'upload_failed': return 'فشل رفع الصورة إلى خدمة التخزين'
+      case 'product_not_found': return 'المنتج غير موجود'
+      case 'network_error': return 'تعذر الاتصال بالسيرفر'
+    }
+    if (err.status === 401) return 'انتهت الجلسة — سجّل الدخول من جديد'
+    if (err.status === 403) return 'لا تملك صلاحية رفع صور المنتجات'
+    if (err.status === 429) return 'تم رفع صور كثيرة في وقت قصير، حاول بعد دقيقة'
+  }
+  return 'تعذر رفع الصورة، حاول مرة أخرى'
+}
 
 export function ProductImagesManager({ productId }: { productId: string }) {
   const [images, setImages] = useState<AdminProductImage[]>([])
@@ -24,24 +56,26 @@ export function ProductImagesManager({ productId }: { productId: string }) {
 
   async function handleFile(file: File) {
     setError('')
+    if (looksLikeHeic(file)) {
+      setError('صيغة HEIC/HEIF غير مدعومة حالياً — حوّل الصورة إلى JPG من إعدادات الكاميرا ثم أعد المحاولة')
+      return
+    }
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setError('نوع الملف غير مدعوم — استخدم JPEG أو PNG أو WebP')
+      setError('صيغة الصورة غير مدعومة — استخدم JPG أو PNG أو WebP')
       return
     }
     if (file.size > MAX_SIZE_BYTES) {
-      setError('حجم الصورة أكبر من الحد المسموح (5 ميجابايت)')
+      setError('حجم الصورة أكبر من 5 ميجابايت')
       return
     }
+    // منع نقرة مزدوجة عرضية وقت الرفع — الـ input بالفعل disabled، وده طبقة أمان إضافية.
+    if (uploading) return
     setUploading(true)
     try {
       const { image } = await api.uploadProductImage(productId, file)
       setImages(current => [...current, image].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0) || a.sortOrder - b.sortOrder))
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'image_storage_not_configured') {
-        setError('تخزين الصور غير مُفعّل حالياً على السيرفر — تواصل مع الدعم الفني')
-      } else {
-        setError('تعذر رفع الصورة، حاول مرة أخرى')
-      }
+      setError(errorMessageFor(err))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -136,7 +170,7 @@ export function ProductImagesManager({ productId }: { productId: string }) {
       </div>
 
       <label className="admin-form-chip" style={{ display: 'inline-flex', width: 'fit-content', cursor: uploading ? 'wait' : 'pointer' }}>
-        {uploading ? 'جارِ الرفع...' : 'إضافة صور'}
+        {uploading ? 'جارِ رفع الصورة...' : 'إضافة صور'}
         <input
           ref={fileInputRef}
           type="file"

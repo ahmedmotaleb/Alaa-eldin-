@@ -1,28 +1,50 @@
-import { Router } from 'express'
+import { Router, type Request, type Response, type NextFunction } from 'express'
 import multer from 'multer'
 import rateLimit from 'express-rate-limit'
 import crypto from 'node:crypto'
 import { pool } from '../db.js'
 import { requireAdmin } from '../auth.js'
-import { uploadImage, deleteImage as deleteRemoteImage, imageStorageConfigured } from '../services/imageStorageService.js'
+import { uploadImage, deleteImage as deleteRemoteImage, imageStorageConfigured, CloudinaryUploadError } from '../services/imageStorageService.js'
 import {
   listProductImages, addProductImage, setPrimaryProductImage, updateProductImageAlt,
   reorderProductImages, getProductImage, deleteProductImage
 } from '../services/productImageService.js'
 import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent, logWarn } from '../logger.js'
-import { ALLOWED_IMAGE_MIME, MAX_IMAGE_SIZE_BYTES, isRealImage } from '../imageValidation.js'
+import { ALLOWED_IMAGE_MIME, MAX_IMAGE_SIZE_BYTES, isRealImage, isHeicOrHeif } from '../imageValidation.js'
 
 export const adminProductImagesRouter = Router()
 adminProductImagesRouter.use(requireAdmin)
+
+// HEIC/HEIF (صيغة كاميرا آيفون الافتراضية، وبعض أجهزة أندرويد) مقبولة هنا على مستوى الـ
+// mimetype فقط عشان توصل للـ handler وتترفض برسالة واضحة ومحددة (heic_not_supported) — بدل
+// ما تُرفض بصمت زي أي mimetype غريب تاني وتظهر كـ "صيغة غير مدعومة" عامة بلا تفسير.
+const HEIC_HEIF_MIME = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence'])
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_SIZE_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    cb(null, ALLOWED_IMAGE_MIME.has(file.mimetype))
+    cb(null, ALLOWED_IMAGE_MIME.has(file.mimetype) || HEIC_HEIF_MIME.has(file.mimetype))
   }
 })
+
+// لفّة حول upload.single بدل تمريره مباشرة كـ middleware — عشان نرجّع كود خطأ محدد (deterministic)
+// لكل حالة فشل Multer بذاتها (حجم كبير/عدد ملفات/جسم multipart تالف) بدل ما تقع كلها في معالج
+// الأخطاء العام بكود واحد غامض.
+function handleUpload(req: Request, res: Response, next: NextFunction) {
+  upload.single('image')(req, res, (err: unknown) => {
+    if (!err) { next(); return }
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') { res.status(400).json({ error: 'file_too_large' }); return }
+      if (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT') { res.status(400).json({ error: 'too_many_files' }); return }
+      res.status(400).json({ error: 'upload_error' })
+      return
+    }
+    // أي خطأ تانٍ (busboy) غير MulterError — غالباً جسم multipart ناقص/تالف (boundary غلط...).
+    res.status(400).json({ error: 'malformed_upload' })
+  })
+}
 
 // لا تتداخل مع سير عمل الإدارة العادي — ١٥ رفعة كل دقيقة كافية بالزيادة لأي جلسة تعديل منتج
 // حقيقية، وبتمنع في نفس الوقت إساءة استخدام endpoint الرفع.
@@ -47,15 +69,16 @@ adminProductImagesRouter.get('/:productId/images', async (req, res) => {
   res.json({ images: images.map(serialize) })
 })
 
-adminProductImagesRouter.post('/:productId/images', uploadRateLimit, upload.single('image'), async (req, res) => {
+adminProductImagesRouter.post('/:productId/images', uploadRateLimit, handleUpload, async (req, res) => {
   const productId = String(req.params.productId)
+  const requestId = req.requestId
   const productName = await getProductName(productId)
   if (!productName) {
     res.status(404).json({ error: 'product_not_found' })
     return
   }
   if (!imageStorageConfigured) {
-    logWarn('image_upload_failed', { productId, reason: 'storage_not_configured' })
+    logWarn('image_upload_failed', { productId, requestId, reason: 'storage_not_configured' })
     res.status(503).json({ error: 'image_storage_not_configured' })
     return
   }
@@ -64,14 +87,20 @@ adminProductImagesRouter.post('/:productId/images', uploadRateLimit, upload.sing
     res.status(400).json({ error: 'no_file_or_invalid_type' })
     return
   }
+  if (isHeicOrHeif(file.buffer, file.mimetype)) {
+    logWarn('image_upload_failed', { productId, requestId, reason: 'heic_not_supported' })
+    res.status(415).json({ error: 'heic_not_supported' })
+    return
+  }
   if (!isRealImage(file.buffer, file.mimetype)) {
-    logWarn('image_upload_failed', { productId, reason: 'invalid_file_signature' })
+    logWarn('image_upload_failed', { productId, requestId, reason: 'invalid_file_signature' })
     res.status(400).json({ error: 'invalid_file' })
     return
   }
 
+  let uploaded: { url: string; storageKey: string } | undefined
   try {
-    const uploaded = await uploadImage(file.buffer)
+    uploaded = await uploadImage(file.buffer)
     const id = 'img' + crypto.randomBytes(6).toString('hex')
     const altText = typeof req.body?.altText === 'string' && req.body.altText.trim()
       ? req.body.altText.trim()
@@ -89,8 +118,19 @@ adminProductImagesRouter.post('/:productId/images', uploadRateLimit, upload.sing
     })
 
     res.status(201).json({ image: serialize(image) })
-  } catch {
-    logWarn('image_upload_failed', { productId, reason: 'upload_error' })
+  } catch (err) {
+    // لو الرفع لـ Cloudinary نجح بس إدخال قاعدة البيانات فشل بعده — الملف البعيد أصبح يتيم
+    // (orphan) من غير أي مرجع عندنا؛ نحاول نحذفه فوراً قبل ما نرجّع الفشل، أفضل-جهد (best effort).
+    const dbInsertFailedAfterUpload = !(err instanceof CloudinaryUploadError) && uploaded !== undefined
+    if (dbInsertFailedAfterUpload) {
+      try { await deleteRemoteImage(uploaded!.storageKey) } catch { /* أفضل-جهد — الفشل هنا ما بيغيّرش الاستجابة النهائية */ }
+    }
+
+    if (err instanceof CloudinaryUploadError) {
+      logWarn('image_upload_failed', { productId, requestId, reason: 'cloudinary_error', status: err.status, message: err.cloudinaryMessage })
+    } else {
+      logWarn('image_upload_failed', { productId, requestId, reason: dbInsertFailedAfterUpload ? 'db_insert_failed' : 'upload_error' })
+    }
     res.status(502).json({ error: 'upload_failed' })
   }
 })

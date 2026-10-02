@@ -11,6 +11,21 @@ function StatusBadge({ configured }: { configured: boolean }) {
   )
 }
 
+const CLOUDINARY_STATUS_LABEL: Record<IntegrationsStatus['cloudinary']['status'], string> = {
+  connected: '● متصل',
+  credentials_invalid: '● بيانات الاعتماد غير صحيحة',
+  not_configured: '● غير مُعد',
+  provider_unreachable: '● يوجد خطأ في الاتصال'
+}
+
+function CloudinaryStatusBadge({ status }: { status: IntegrationsStatus['cloudinary']['status'] }) {
+  return (
+    <span className={`admin-form-chip ${status === 'connected' ? 'active' : ''}`} style={{ pointerEvents: 'none' }}>
+      {CLOUDINARY_STATUS_LABEL[status]}
+    </span>
+  )
+}
+
 export function IntegrationsSettingsPage() {
   const { setHeader } = useOutletContext<LayoutContext>()
   const [status, setStatus] = useState<IntegrationsStatus | null>(null)
@@ -98,8 +113,14 @@ export function IntegrationsSettingsPage() {
           <div className="admin-form-card-sub">مستخدم لرفع صور المنتجات</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span>الحالة:</span><StatusBadge configured={status.cloudinary.configured} />
+          <span>الحالة:</span><CloudinaryStatusBadge status={status.cloudinary.status} />
         </div>
+        {status.cloudinary.status === 'credentials_invalid' && (
+          <div className="admin-form-help">المتغيرات موجودة لكن Cloudinary رفضها — راجع CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET في Railway</div>
+        )}
+        {status.cloudinary.status === 'provider_unreachable' && (
+          <div className="admin-form-help">تعذر الوصول لـ Cloudinary حالياً — حاول تحديث الصفحة بعد قليل</div>
+        )}
       </div>
     </div>
   )

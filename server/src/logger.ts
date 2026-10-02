@@ -49,7 +49,7 @@ type BusinessEvent =
   | 'two_factor_enabled' | 'two_factor_disabled' | 'two_factor_login_failed'
   | 'session_revoked' | 'sessions_logout_others'
   | 'integration_test_connection'
-  | 'startup_config_summary' | 'startup_config_partial_warning'
+  | 'startup_config_summary' | 'startup_config_partial_warning' | 'startup_cloudinary_connection_check'
   | 'substitution_proposed' | 'substitution_approved' | 'substitution_rejected'
   | 'back_in_stock_subscribed'
   | 'loyalty_redemption_rejected' | 'loyalty_points_redeemed' | 'loyalty_points_expired'

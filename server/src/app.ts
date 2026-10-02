@@ -96,6 +96,12 @@ logStartupConfigSummary()
 export const app = express()
 app.disable('x-powered-by')
 
+// Railway بيضع التطبيق خلف proxy واحد بالضبط بيضيف X-Forwarded-For — من غير السطر ده،
+// express-rate-limit بيرفض يحدد IP الطلب الحقيقي (ValidationError ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// في كل طلب على أي مسار فيه rate limit)، وهو تحذير أمني صحيح: من غير "trust proxy"، أي عميل
+// يقدر يزوّر X-Forwarded-For ويتحايل على حد المعدل. القيمة 1 تعني "وثّق بالـ hop الأول بس".
+app.set('trust proxy', 1)
+
 // CSP مخصص لطبيعة المشروع الفعلية: خطين ثابتين (المتجر واللوحة) بيتصلوا بالـ API من نفس
 // الأصل، مفيش أي كود inline (كل شيء JS مبني كملفات منفصلة عن طريق Vite)، وصور المنتجات من
 // Cloudinary + خط Tajawal من Google Fonts هما المصدرين الخارجيين الوحيدين المستخدمين فعلياً.

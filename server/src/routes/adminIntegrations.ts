@@ -6,7 +6,7 @@ import { whatsappConfigured, sendWhatsAppMessage } from '../services/whatsappSer
 import { whatsappWebhookConfigured } from '../services/whatsappWebhookService.js'
 import { pushConfigured, countPushSubscriptions } from '../services/pushService.js'
 import { emailConfigured } from '../email.js'
-import { imageStorageConfigured } from '../services/imageStorageService.js'
+import { imageStorageConfigured, checkImageStorageConnection } from '../services/imageStorageService.js'
 import { isValidEgyptianMobile } from '../phone.js'
 
 export const adminIntegrationsRouter = Router()
@@ -16,11 +16,12 @@ adminIntegrationsRouter.use(requireAdmin)
 // true/false محسوبة من وجود متغيرات البيئة، بالإضافة لتشخيصات بسيطة غير حساسة (عدد الاشتراكات).
 adminIntegrationsRouter.get('/', requirePermission('integrations.manage'), async (_req, res) => {
   const pushSubscriptionCount = pushConfigured ? await countPushSubscriptions() : 0
+  const cloudinaryStatus = await checkImageStorageConnection()
   res.json({
     whatsapp: { configured: whatsappConfigured, deliveryWebhookConfigured: whatsappWebhookConfigured },
     push: { configured: pushConfigured, subscriptionCount: pushSubscriptionCount },
     email: { configured: emailConfigured },
-    cloudinary: { configured: imageStorageConfigured }
+    cloudinary: { configured: imageStorageConfigured, connected: cloudinaryStatus === 'connected', status: cloudinaryStatus }
   })
 })
 
