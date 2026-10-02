@@ -1845,6 +1845,8 @@ export const api = {
   createStockMovement: (body: { productId: string, variantId?: string | null, type: StockMovementType, quantityChange: number, note?: string }) =>
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
   exportProductsCsv: () => downloadFile('/admin/products/export', 'products.csv'),
+  downloadProductImportTemplate: (filters: { categoryId?: string, brand?: string, availableOnly?: boolean, outOfStockOnly?: boolean, search?: string } = {}) =>
+    downloadFile(`/admin/products/import/template${buildQuery({ ...filters })}`, `alaa-eldin-products-import-template-${new Date().toISOString().slice(0, 10)}.csv`),
   importProductsCsv: (file: File) => uploadFile<{ updated: number, skipped: { row: number, reason: string }[] }>('/admin/products/import', file),
   previewProductsCsvImport: (file: File) =>
     uploadFile<{ rows: ImportRowPreview[], summary: { total: number, creatable: number, updatable: number, invalid: number } }>('/admin/products/import/preview', file),

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { pool, withTransaction } from '../db.js'
+import { toCsv } from '../csv.js'
 
 // أرقام هندية/فارسية شرقية (٠-٩) مرفوضة صراحة في أي حقل رقمي في ملف الاستيراد — لو انقبلت
 // بصمت وتحوّلت لأرقام غربية، احتمال يبقى في غموض حول الرقم الحقيقي اللي المستخدم قصده (خصوصاً
@@ -286,4 +287,73 @@ export async function importValidatedRows(rows: ImportConfirmRow[], _createdByUs
   }
 
   return { created, updated, skipped: 0, failed }
+}
+
+export interface ImportTemplateFilters {
+  categoryId?: string
+  brand?: string
+  availableOnly?: boolean
+  outOfStockOnly?: boolean
+  search?: string
+}
+
+interface ImportTemplateRow {
+  id: string
+  sku: string | null
+  barcode: string
+  name: string
+  categoryId: string
+  categoryName: string
+  slug: string
+  unit: string
+  price: number
+  oldPrice: number | null
+  cost: number
+  stock: number
+  alertThreshold: number
+  available: number
+  brand: string
+  description: string
+  emoji: string
+}
+
+const IMPORT_TEMPLATE_HEADERS = [
+  'id', 'sku', 'barcode', 'name', 'categoryId', 'categoryName', 'slug', 'unit',
+  'price', 'oldPrice', 'cost', 'stock', 'alertThreshold', 'available', 'brand', 'description', 'emoji'
+]
+
+// القالب بيتولّد من قاعدة البيانات مباشرة (نفس فكرة قوالب bulk pricing/stock/cost) — مش ملف
+// فاضي عام، ده عشان الأدمن يقدر يعدّل على بيانات حقيقية ويرفعها تاني فتتحدّث، أو يمسح id/sku
+// من صف ويضيف صفوف جديدة في الآخر فتتحول تلقائياً لإنشاء منتجات جديدة (نفس محرك /import/preview
+// و /import/confirm الموجود بالفعل). عمود categoryName للمرجعية بس (مش موجود في أعمدة الاستيراد
+// المتوقعة فبيتم تجاهله تلقائياً لو اترفع الملف تاني).
+export async function generateProductImportTemplateCsv(filters: ImportTemplateFilters = {}): Promise<string> {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  if (filters.categoryId) { params.push(filters.categoryId); conditions.push(`p.category_id = $${params.length}`) }
+  if (filters.brand) { params.push(filters.brand); conditions.push(`p.brand = $${params.length}`) }
+  if (filters.availableOnly) conditions.push(`p.available = 1`)
+  if (filters.outOfStockOnly) conditions.push(`p.stock <= 0`)
+  if (filters.search) {
+    params.push(`%${filters.search}%`)
+    conditions.push(`(p.name ILIKE $${params.length} OR p.sku ILIKE $${params.length} OR p.barcode ILIKE $${params.length})`)
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+  const { rows } = await pool.query<ImportTemplateRow>(
+    `SELECT p.id, p.sku, p.barcode, p.name, p.category_id as "categoryId", c.name as "categoryName",
+            p.slug, p.unit, p.price, p.old_price as "oldPrice", p.cost, p.stock,
+            p.alert_threshold as "alertThreshold", p.available, p.brand, p.description, p.emoji
+     FROM products p JOIN categories c ON c.id = p.category_id
+     ${whereClause}
+     ORDER BY p.name`,
+    params
+  )
+
+  const dataRows = rows.map(r => [
+    r.id, r.sku ?? '', r.barcode, r.name, r.categoryId, r.categoryName, r.slug, r.unit,
+    r.price, r.oldPrice ?? '', r.cost, r.stock, r.alertThreshold, r.available ? '1' : '0',
+    r.brand ?? '', r.description ?? '', r.emoji ?? ''
+  ])
+  return '﻿' + toCsv(IMPORT_TEMPLATE_HEADERS, dataRows)
 }

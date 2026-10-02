@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { validateImportRows, importValidatedRows, type ImportConfirmRow } from './productImportService.js'
+import { parseCsv, csvRecords } from '../csv.js'
+import { validateImportRows, importValidatedRows, generateProductImportTemplateCsv, type ImportConfirmRow } from './productImportService.js'
 
 const CATEGORY_ID = 'test-cat-import'
 const EXISTING_PRODUCT_ID = 'test-prod-import-existing'
@@ -186,6 +187,47 @@ describe('productImportService', () => {
       const summary = await importValidatedRows(rows, USER_ID)
       expect(summary.created).toBe(1)
       expect(summary.failed).toEqual([{ rowNumber: 2, reason: 'product_not_found' }])
+    })
+  })
+
+  describe('generateProductImportTemplateCsv', () => {
+    it('includes the existing product with all import columns plus a reference categoryName', async () => {
+      const csv = await generateProductImportTemplateCsv()
+      const records = csvRecords(parseCsv(csv.replace(/^﻿/, '')))
+      const row = records.find(r => r.id === EXISTING_PRODUCT_ID)
+      expect(row).toBeTruthy()
+      expect(row?.sku).toBe('SKU-EXIST-1')
+      expect(row?.barcode).toBe('BC-EXIST-1')
+      expect(row?.name).toBe('منتج موجود')
+      expect(row?.categoryId).toBe(CATEGORY_ID)
+      expect(row?.categoryName).toBe('فئة اختبار الاستيراد')
+      expect(row?.slug).toBe('import-test-existing')
+      expect(row?.unit).toBe('وحدة')
+      expect(row?.price).toBe('10')
+      expect(row?.cost).toBe('5')
+      expect(row?.stock).toBe('20')
+      expect(row?.alertThreshold).toBe('5')
+      expect(row?.available).toBe('1')
+    })
+
+    it('filters by categoryId so only products in that category are included', async () => {
+      const csv = await generateProductImportTemplateCsv({ categoryId: 'no-such-category' })
+      const records = csvRecords(parseCsv(csv.replace(/^﻿/, '')))
+      expect(records.find(r => r.id === EXISTING_PRODUCT_ID)).toBeUndefined()
+    })
+
+    it('filters by search matching name/sku/barcode', async () => {
+      const csv = await generateProductImportTemplateCsv({ search: 'SKU-EXIST-1' })
+      const records = csvRecords(parseCsv(csv.replace(/^﻿/, '')))
+      expect(records.some(r => r.id === EXISTING_PRODUCT_ID)).toBe(true)
+    })
+
+    it('produces a template row that re-validates as an update (round-trip), ignoring the extra categoryName column', async () => {
+      const csv = await generateProductImportTemplateCsv({ search: 'SKU-EXIST-1' })
+      const records = csvRecords(parseCsv(csv.replace(/^﻿/, '')))
+      const [row] = await validateImportRows(records.filter(r => r.id === EXISTING_PRODUCT_ID))
+      expect(row.action).toBe('update')
+      expect(row.productId).toBe(EXISTING_PRODUCT_ID)
     })
   })
 })

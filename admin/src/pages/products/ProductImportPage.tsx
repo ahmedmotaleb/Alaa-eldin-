@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { api, ApiError, type ImportRowPreview, type ImportConfirmRow } from '../../utils/api'
+import { api, ApiError, type AdminCategory, type ImportRowPreview, type ImportConfirmRow } from '../../utils/api'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const ACTION_LABEL: Record<ImportRowPreview['action'], string> = {
@@ -20,9 +20,40 @@ export function ProductImportPage() {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ created: number, updated: number, failed: { rowNumber: number, reason: string }[] } | null>(null)
 
+  const [categories, setCategories] = useState<AdminCategory[]>([])
+  const [templateCategoryId, setTemplateCategoryId] = useState('')
+  const [templateBrand, setTemplateBrand] = useState('')
+  const [templateAvailableOnly, setTemplateAvailableOnly] = useState(false)
+  const [templateOutOfStockOnly, setTemplateOutOfStockOnly] = useState(false)
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateError, setTemplateError] = useState('')
+  const [templateDownloading, setTemplateDownloading] = useState(false)
+
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'استيراد متقدّم من CSV' })
   }, [setHeader])
+
+  useEffect(() => {
+    api.listCategories().then(({ categories }) => setCategories(categories)).catch(() => {})
+  }, [])
+
+  async function downloadTemplate() {
+    setTemplateError('')
+    setTemplateDownloading(true)
+    try {
+      await api.downloadProductImportTemplate({
+        categoryId: templateCategoryId || undefined,
+        brand: templateBrand.trim() || undefined,
+        availableOnly: templateAvailableOnly || undefined,
+        outOfStockOnly: templateOutOfStockOnly || undefined,
+        search: templateSearch.trim() || undefined
+      })
+    } catch {
+      setTemplateError('تعذر تنزيل القالب')
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }
 
   async function handleFile(file: File) {
     setFileName(file.name)
@@ -74,7 +105,47 @@ export function ProductImportPage() {
   const selectedCount = preview ? preview.filter(r => r.action !== 'invalid' && selected[r.rowNumber]).length : 0
 
   return (
-    <div className="admin-table-card">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="admin-table-card">
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="admin-form-card-title">تنزيل قالب الاستيراد</div>
+          <p className="admin-form-help">
+            القالب يحتوي على منتجاتك الحالية فعلاً (بنفس أعمدة الاستيراد) — عدّل أي صف وارفعه تاني وهيتحدّث،
+            أو امسح id/sku من صف واكتب بياناته كمنتج جديد في آخر الملف فيتحول تلقائياً لإنشاء.
+            عمود categoryName مرجعي بس للمساعدة في معرفة اسم القسم مقابل الـ id — هيتم تجاهله تلقائياً عند رفع الملف تاني.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={templateCategoryId} onChange={e => setTemplateCategoryId(e.target.value)}>
+              <option value="">كل الأقسام</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <input placeholder="علامة تجارية" value={templateBrand} onChange={e => setTemplateBrand(e.target.value)} style={{ width: 140 }} />
+            <input placeholder="بحث بالاسم/SKU/الباركود" value={templateSearch} onChange={e => setTemplateSearch(e.target.value)} style={{ width: 180 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={templateAvailableOnly} onChange={e => setTemplateAvailableOnly(e.target.checked)} /> المعروض فقط
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={templateOutOfStockOnly} onChange={e => setTemplateOutOfStockOnly(e.target.checked)} /> نفاذ المخزون فقط
+            </label>
+            <button className="admin-form-save" disabled={templateDownloading} onClick={downloadTemplate}>
+              {templateDownloading ? 'جاري التنزيل...' : 'تنزيل القالب'}
+            </button>
+          </div>
+          {templateError && <div className="admin-form-error">{templateError}</div>}
+          {categories.length > 0 && (
+            <details>
+              <summary className="admin-form-help" style={{ cursor: 'pointer' }}>أقسام المتجر ومعرفاتها (categoryId) لإضافة منتجات جديدة</summary>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {categories.map(c => (
+                  <span key={c.id} className="admin-form-chip" style={{ cursor: 'default' }}>{c.name} — {c.id}</span>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-table-card">
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <p className="admin-form-help">
           يدعم هذا الاستيراد إنشاء منتجات جديدة فعلاً (وليس بس تحديث الموجود) — كل صف بيتفحص لوحده،
@@ -144,6 +215,7 @@ export function ProductImportPage() {
           </div>
         </>
       )}
+      </div>
     </div>
   )
 }

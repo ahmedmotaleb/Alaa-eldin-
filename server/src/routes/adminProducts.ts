@@ -6,7 +6,7 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
-import { validateImportRows, importValidatedRows, type ImportConfirmRow } from '../services/productImportService.js'
+import { validateImportRows, importValidatedRows, generateProductImportTemplateCsv, type ImportConfirmRow } from '../services/productImportService.js'
 import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
 import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
 import { getPriceHistoryForProduct } from '../services/bulkOperationBatchService.js'
@@ -206,6 +206,22 @@ adminProductsRouter.post('/import/confirm', requirePermission('inventory.import'
     newValues: { created: summary.created, updated: summary.updated, failed: summary.failed.length }
   })
   res.json(summary)
+})
+
+// نفس مكان التسجيل اللي /import/preview و /import/confirm مسجلين فيه (قبل '/:id' بمسافة
+// segment-ين، فمش ممكن '/:id' يقفل عليها بالغلط).
+adminProductsRouter.get('/import/template', requirePermission('inventory.import'), async (req, res) => {
+  const filters = {
+    categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
+    brand: typeof req.query.brand === 'string' ? req.query.brand : undefined,
+    availableOnly: req.query.availableOnly === 'true',
+    outOfStockOnly: req.query.outOfStockOnly === 'true',
+    search: typeof req.query.search === 'string' ? req.query.search : undefined
+  }
+  const csv = await generateProductImportTemplateCsv(filters)
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="alaa-eldin-products-import-template-${new Date().toISOString().slice(0, 10)}.csv"`)
+  res.send(csv)
 })
 
 adminProductsRouter.get('/:id', requirePermission('products.view'), async (req, res) => {
