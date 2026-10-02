@@ -7,7 +7,7 @@ import { pool } from '../db.js'
 import { createOrder, cancelOrder } from './orderService.js'
 import { adjustLoyaltyPointsManually, getLoyaltyBalance } from './loyaltyService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
-import { todayInCairo } from '../cairoDate.js'
+import { todayInCairo, addCalendarDays } from '../cairoDate.js'
 
 const CATEGORY_ID = 'promo-var-cat'
 const PRODUCT_ID = 'promo-var-prod'
@@ -81,10 +81,12 @@ function nextKey() {
   return `promo-var-key-${keyCounter}-${Date.now()}`
 }
 
+// "بكرة" كتاريخ توصيل افتراضي، نفس السبب الموجود في orderService.test.ts: عشان الاختبارات
+// دي مش عن كتوف نفس اليوم، فميعاد التوصيل الافتراضي لازم يكون حتمي بغض النظر عن وقت التشغيل.
 function baseInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
     deliverySlot: 'now',
-    deliveryDate: todayInCairo(),
+    deliveryDate: addCalendarDays(todayInCairo(), 1),
     paymentMethod: 'COD',
     customer: { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
     items: [{ productId: PRODUCT_ID, quantity: 20 }], // 20×25 = 500

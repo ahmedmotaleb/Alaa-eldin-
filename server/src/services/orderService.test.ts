@@ -83,10 +83,14 @@ async function getStock(): Promise<number> {
   return rows[0].stock
 }
 
+// "بكرة" (مش النهاردة) كتاريخ توصيل افتراضي لكل الاختبارات اللي مش عن توقيت التوصيل تحديداً —
+// النهاردة ممكن يترفض فعلياً بعد آخر ميعاد طلب توصيل نفس اليوم (راجع describe تحت، وstore_settings
+// الافتراضي same_day_cutoff_time='18:00' اللي resetFixtures() فوق مش بيحدده صراحة)، وده كان
+// هيخلي كل الاختبارات دي "عشوائية" حسب وقت تشغيلها الفعلي بدل ما تبقى حتمية دايماً.
 function baseInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
     deliverySlot: 'now',
-    deliveryDate: todayInCairo(),
+    deliveryDate: addCalendarDays(todayInCairo(), 1),
     paymentMethod: 'COD',
     customer: { fullName: 'عميل اختبار', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
     items: [{ productId: PRODUCT_ID, quantity: 5 }],
@@ -207,7 +211,13 @@ describe('createOrder — server-authoritative delivery zones and slots', () => 
   })
 
   it('capacity is scoped per delivery date — a full day does not block a different date for the same slot', async () => {
+    const { currentMinutesInCairo } = await import('../cairoDate.js')
     await pool.query(`UPDATE delivery_slots SET max_orders_per_day = 1 WHERE id = 'now'`)
+    // الاختبار ده عن سعة التوصيل، مش عن الكتوف — نفتح الكتوف صراحة عشان "النهاردة" ما يترفضش
+    // بسبب same_day_cutoff_passed لو الاختبار اشتغل بعد 18:00 بتوقيت القاهرة.
+    const cutoffMinutes = currentMinutesInCairo() + 10
+    const cutoffHhmm = `${String(Math.floor(cutoffMinutes / 60) % 24).padStart(2, '0')}:${String(cutoffMinutes % 60).padStart(2, '0')}`
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [cutoffHhmm])
     const today = todayInCairo()
     const tomorrow = addCalendarDays(today, 1)
     await createOrder(baseInput({ deliveryDate: today }), null, nextKey())

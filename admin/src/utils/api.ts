@@ -1885,6 +1885,18 @@ export const api = {
     }),
   updateSettings: (body: Partial<AdminSettings>) =>
     request<{ settings: AdminSettings }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  // تغيير whatsappNumber المدعوم الوحيد — updateSettings فوق بيرفض أي قيمة مختلفة عن الرقم
+  // المؤكد حالياً صراحة (whatsapp_number_requires_verification). راجع StoreSettingsPage.tsx.
+  requestWhatsAppNumberVerification: (phone: string) =>
+    request<{ verificationId: string }>('/admin/settings/whatsapp-number/request-verification', {
+      method: 'POST', body: JSON.stringify({ phone })
+    }),
+  verifyWhatsAppNumberCode: (verificationId: string, code: string) =>
+    request<{ settings: AdminSettings }>('/admin/settings/whatsapp-number/verify', {
+      method: 'POST', body: JSON.stringify({ verificationId, code })
+    }),
+  cancelWhatsAppNumberVerification: (verificationId: string) =>
+    request<void>('/admin/settings/whatsapp-number/cancel', { method: 'POST', body: JSON.stringify({ verificationId }) }),
   listDeliveryZones: () => request<{ zones: AdminDeliveryZone[] }>('/admin/delivery/zones'),
   updateDeliveryZone: (governorate: string, body: { deliveryFee: number, isActive: boolean }) =>
     request<{ zone: AdminDeliveryZone }>(`/admin/delivery/zones/${encodeURIComponent(governorate)}`, { method: 'PATCH', body: JSON.stringify(body) }),

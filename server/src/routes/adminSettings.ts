@@ -1,11 +1,21 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { pool } from '../db.js'
-import { requireAdmin } from '../auth.js'
+import { requireAdmin, requirePermission } from '../auth.js'
 import { isValidEgyptianMobile } from '../phone.js'
 import { recordAuditLog } from '../services/auditLogService.js'
+import {
+  requestWhatsAppNumberVerification, verifyWhatsAppNumberCode, cancelWhatsAppNumberVerification
+} from '../services/whatsappNumberVerificationService.js'
 
 export const adminSettingsRouter = Router()
 adminSettingsRouter.use(requireAdmin)
+
+// حماية إضافية ضد إساءة استخدام طلب أكواد تحقق متكررة — فوق كوولداون الـ 60 ثانية
+// للرقم نفسه (راجع whatsappNumberVerificationService.ts)، ده بيحدّ محاولات مختلف الأرقام
+// كمان من نفس IP/جلسة.
+const whatsappVerificationRequestRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false })
+const whatsappVerificationVerifyRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false })
 
 const SELECT_SETTINGS = `
   SELECT name, whatsapp_number as "whatsappNumber", currency, minimum_order as "minimumOrder",
@@ -56,7 +66,19 @@ adminSettingsRouter.get('/', async (_req, res) => {
 adminSettingsRouter.patch('/', async (req, res) => {
   const { rows: existingRows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
   const existing = serialize(existingRows[0])
-  const b = { ...existing, ...(req.body ?? {}) } as Record<string, unknown>
+  const currentWhatsappNumber = String(existingRows[0].whatsappNumber ?? '')
+
+  // whatsappNumber ما ينفعش يتغيّر من هنا خالص — الطريق الوحيد المدعوم هو مسار التحقق
+  // بكود OTP تحت (راجع whatsappNumberVerificationService.ts). أي محاولة تمرير قيمة مختلفة
+  // عن الرقم المؤكد حالياً بترفض صراحة بدل ما تتجاهل بصمت (عشان الأدمن يفهم ليه التغيير
+  // ما حصلش، مش يفتكر إنه اتحفظ غلط).
+  const body = (req.body ?? {}) as Record<string, unknown>
+  if (typeof body.whatsappNumber === 'string' && body.whatsappNumber.trim() !== currentWhatsappNumber) {
+    res.status(400).json({ error: 'whatsapp_number_requires_verification' })
+    return
+  }
+
+  const b = { ...existing, ...body, whatsappNumber: currentWhatsappNumber } as Record<string, unknown>
 
   if (
     typeof b.name !== 'string' || !b.name.trim() ||
@@ -121,4 +143,51 @@ adminSettingsRouter.patch('/', async (req, res) => {
     newValues: settings
   })
   res.json({ settings })
+})
+
+// الطريق المدعوم الوحيد لتغيير whatsappNumber — PATCH / فوق بيرفضه صراحة. settings.manage
+// مطلوبة صراحة هنا (بالإضافة لـ requireAdmin على مستوى الراوتر كله) عشان القدرة على بدء/
+// إكمال تغيير حساس زي ده محصورة في الصلاحية الدقيقة المخصصة لها، مش أي حساب أدمن عنده
+// وصول للوحة التحكم بشكل عام.
+adminSettingsRouter.post('/whatsapp-number/request-verification', whatsappVerificationRequestRateLimit, requirePermission('settings.manage'), async (req, res) => {
+  const result = await requestWhatsAppNumberVerification(req.user!.id, (req.body as Record<string, unknown> | undefined)?.phone)
+  if (!result.ok) {
+    if (result.reason === 'invalid_phone') { res.status(400).json({ error: 'invalid_phone' }); return }
+    if (result.reason === 'whatsapp_verification_not_configured') { res.status(503).json({ error: 'whatsapp_verification_not_configured' }); return }
+    if (result.reason === 'resend_cooldown') { res.status(429).json({ error: 'resend_cooldown', retryAfterSeconds: result.retryAfterSeconds }); return }
+    res.status(502).json({ error: 'send_failed' })
+    return
+  }
+  res.status(201).json({ verificationId: result.verificationId })
+})
+
+adminSettingsRouter.post('/whatsapp-number/verify', whatsappVerificationVerifyRateLimit, requirePermission('settings.manage'), async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const verificationId = typeof body.verificationId === 'string' ? body.verificationId : ''
+  if (!verificationId) { res.status(400).json({ error: 'verification_not_found' }); return }
+
+  const result = await verifyWhatsAppNumberCode(req.user!.id, verificationId, body.code)
+  if ('error' in result) {
+    const statusByError: Record<string, number> = {
+      verification_not_found: 404,
+      verification_code_expired: 410,
+      verification_attempts_exceeded: 429,
+      invalid_verification_code: 400
+    }
+    res.status(statusByError[result.error] ?? 400).json({ error: result.error })
+    return
+  }
+
+  const { rows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
+  res.json({ settings: serialize(rows[0]) })
+})
+
+adminSettingsRouter.post('/whatsapp-number/cancel', requirePermission('settings.manage'), async (req, res) => {
+  const verificationId = typeof (req.body as Record<string, unknown> | undefined)?.verificationId === 'string'
+    ? (req.body as Record<string, unknown>).verificationId as string
+    : ''
+  if (!verificationId) { res.status(400).json({ error: 'verification_not_found' }); return }
+  const cancelled = await cancelWhatsAppNumberVerification(req.user!.id, verificationId)
+  if (!cancelled) { res.status(404).json({ error: 'verification_not_found' }); return }
+  res.status(204).end()
 })

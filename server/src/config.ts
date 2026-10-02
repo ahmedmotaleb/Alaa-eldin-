@@ -23,6 +23,9 @@ const INTEGRATIONS: IntegrationCheck[] = [
   // فرع مستقل تالت — الـ webhook (تأكيد تسليم/قراءة حقيقي من واتساب) مش نفس اتصال الإرسال
   // فوق، ومحتاج متغيرات بيئة مختلفة تماماً (رمز تحقق + سر التطبيق للتوقيع).
   { name: 'whatsapp_delivery_webhook', required: ['WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET'] },
+  // فرع رابع مستقل — كود تحقق تغيير رقم واتساب خدمة العملاء (راجع
+  // whatsappNumberVerificationService.ts) محتاج قالب Meta معتمد منفصل تماماً عن قالب تأكيد الطلب.
+  { name: 'whatsapp_phone_verification', required: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_PHONE_VERIFICATION_TEMPLATE'] },
   { name: 'web_push', required: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'] },
   { name: 'email', required: ['RESEND_API_KEY'] },
   { name: 'turnstile', required: ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'] }

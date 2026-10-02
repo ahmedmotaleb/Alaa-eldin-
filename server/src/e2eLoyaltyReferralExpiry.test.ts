@@ -15,7 +15,7 @@ import {
   getOrCreateReferralCode, recordReferralSignup, getReferralStats,
   listReferralsForAdmin, getReferralDetailForAdmin
 } from './services/referralService.js'
-import { todayInCairo } from './cairoDate.js'
+import { todayInCairo, addCalendarDays } from './cairoDate.js'
 import type { CheckoutInput } from './checkoutValidation.js'
 
 const CATEGORY_ID = 'e2e-cat'
@@ -76,10 +76,12 @@ function nextKey() {
   return `e2e-key-${keyCounter}-${Date.now()}`
 }
 
+// "بكرة" كتاريخ توصيل افتراضي — نفس سبب orderService.test.ts: الاختبارات دي مش عن كتوف
+// نفس اليوم، فلازم تفضل حتمية بغض النظر عن وقت تشغيل السويت.
 function checkoutInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
     deliverySlot: 'now',
-    deliveryDate: todayInCairo(),
+    deliveryDate: addCalendarDays(todayInCairo(), 1),
     paymentMethod: 'COD',
     customer: { fullName: 'عميل e2e', mobile: '01012345678', governorate: 'القاهرة', address: 'شارع 1' },
     items: [{ productId: PRODUCT_ID, quantity: 6 }], // 6×50 = 300

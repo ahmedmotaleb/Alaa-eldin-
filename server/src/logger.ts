@@ -73,6 +73,7 @@ type BusinessEvent =
   | 'login_blocked_disabled_account' | 'required_password_changed'
   | 'role_created' | 'role_updated' | 'role_deleted'
   | 'admin_new_order_push_attempted' | 'admin_notification_preference_changed' | 'admin_test_notification_sent'
+  | 'whatsapp_number_verification_requested' | 'whatsapp_number_verification_send_failed' | 'store_whatsapp_number_changed'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

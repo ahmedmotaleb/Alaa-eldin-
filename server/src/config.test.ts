@@ -8,6 +8,7 @@ const ENV_VARS = [
   'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET',
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ORDER_CONFIRMATION_TEMPLATE',
   'WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET',
+  'WHATSAPP_PHONE_VERIFICATION_TEMPLATE',
   'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY',
   'RESEND_API_KEY',
   'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY'
@@ -24,7 +25,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'web_push', 'email', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'whatsapp_phone_verification', 'web_push', 'email', 'turnstile']
     })
     expect(logWarn).not.toHaveBeenCalled()
   })
@@ -35,7 +36,7 @@ describe('logStartupConfigSummary', () => {
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: ['email'],
-      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'web_push', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'whatsapp_phone_verification', 'web_push', 'turnstile']
     })
   })
 
@@ -51,7 +52,7 @@ describe('logStartupConfigSummary', () => {
     })
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: [],
-      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'web_push', 'email', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'whatsapp_phone_verification', 'web_push', 'email', 'turnstile']
     })
   })
 
@@ -69,7 +70,7 @@ describe('logStartupConfigSummary', () => {
     })
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
       configured: ['whatsapp'],
-      notConfigured: ['cloudinary', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'web_push', 'email', 'turnstile']
+      notConfigured: ['cloudinary', 'whatsapp_order_confirmation', 'whatsapp_delivery_webhook', 'whatsapp_phone_verification', 'web_push', 'email', 'turnstile']
     })
   })
 
@@ -77,10 +78,14 @@ describe('logStartupConfigSummary', () => {
     process.env.WHATSAPP_ACCESS_TOKEN = 'test-token'
     process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-id'
     process.env.WHATSAPP_ORDER_CONFIRMATION_TEMPLATE = 'order_confirmation_ar'
+    // whatsapp_phone_verification بتشارك نفس التوكن/رقم الهاتف — لازم نضبط قالبها كمان
+    // هنا، وإلا الاختبار ده (اللي مركز على whatsapp_order_confirmation) هيجيب تحذير "ناقص"
+    // غير متعلق بالموضوع عن تكامل تاني بالكامل.
+    process.env.WHATSAPP_PHONE_VERIFICATION_TEMPLATE = 'phone_verification_ar'
     const { logStartupConfigSummary } = await import('./config.js')
     logStartupConfigSummary()
     expect(logEvent).toHaveBeenCalledWith('startup_config_summary', {
-      configured: ['whatsapp', 'whatsapp_order_confirmation'],
+      configured: ['whatsapp', 'whatsapp_order_confirmation', 'whatsapp_phone_verification'],
       notConfigured: ['cloudinary', 'whatsapp_delivery_webhook', 'web_push', 'email', 'turnstile']
     })
     expect(logWarn).not.toHaveBeenCalled()

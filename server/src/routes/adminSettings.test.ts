@@ -36,11 +36,12 @@ describe('same-day cutoff time setting', () => {
     expect(res.body.settings.sameDayCutoffTime).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/)
   })
 
-  // store_settings صف واحد مشترك بين كل الاختبارات (id=1) — بنبني الـ payload بالكامل
-  // بقيم صحيحة معروفة هنا بدل ما نعتمد على whatsappNumber الحالي في الصف، اللي ممكن يبقى
-  // غير صالح لو ملف اختبار تاني غيّره وما رجّعوش لحالته الأصلية.
+  // store_settings صف واحد مشترك بين كل الاختبارات (id=1) — بنبني الـ payload بالكامل من
+  // القيم الحالية فعلياً. لازم نسيب whatsappNumber زي ما هو بالظبط: الـ PATCH العام بقى
+  // يرفض أي whatsappNumber مختلف عن الرقم المؤكد حالياً (لازم يتغيّر بس عبر تدفق تأكيد
+  // الكود عبر واتساب — راجع adminSettingsWhatsAppVerification.test.ts).
   function validPayload(existing: Record<string, unknown>, overrides: Record<string, unknown>) {
-    return { ...existing, whatsappNumber: '01012345678', ...overrides }
+    return { ...existing, ...overrides }
   }
 
   it('rejects an admin PATCH with an invalid time format, without changing the stored value', async () => {
