@@ -328,6 +328,8 @@ export interface AdminCategory {
   productCount: number
 }
 
+export type BulkProductActionType = 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand'
+
 export interface AdminProduct {
   id: string
   slug: string
@@ -1845,6 +1847,8 @@ export const api = {
   createStockMovement: (body: { productId: string, variantId?: string | null, type: StockMovementType, quantityChange: number, note?: string }) =>
     request<{ movement: AdminStockMovement, newStock: number }>('/admin/stock-movements', { method: 'POST', body: JSON.stringify(body) }),
   exportProductsCsv: () => downloadFile('/admin/products/export', 'products.csv'),
+  bulkUpdateProducts: (body: { productIds: string[], action: BulkProductActionType, categoryId?: string, brand?: string }) =>
+    request<{ updated: number, failed: { productId: string, reason: string }[] }>('/admin/products/bulk', { method: 'PATCH', body: JSON.stringify(body) }),
   downloadProductImportTemplate: (filters: { categoryId?: string, brand?: string, availableOnly?: boolean, outOfStockOnly?: boolean, search?: string } = {}) =>
     downloadFile(`/admin/products/import/template${buildQuery({ ...filters })}`, `alaa-eldin-products-import-template-${new Date().toISOString().slice(0, 10)}.csv`),
   importProductsCsv: (file: File) => uploadFile<{ updated: number, skipped: { row: number, reason: string }[] }>('/admin/products/import', file),

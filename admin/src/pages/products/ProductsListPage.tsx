@@ -7,7 +7,7 @@ import { formatMoney } from '../../utils/money'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
 import type { LayoutContext } from '../../components/AdminLayout'
 
-const COLS = '2fr 1fr .8fr .8fr .7fr .9fr .8fr'
+const COLS = '36px 2fr 1fr .8fr .8fr .7fr .9fr .8fr'
 const LIMIT = 20
 
 export function ProductsListPage() {
@@ -26,6 +26,12 @@ export function ProductsListPage() {
   const importInputRef = useRef<HTMLInputElement>(null)
   const debouncedQuery = useDebouncedValue(query)
 
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [bulkCategoryId, setBulkCategoryId] = useState('')
+  const [bulkBrand, setBulkBrand] = useState('')
+  const [bulkError, setBulkError] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'جميع المنتجات', action: { label: 'إضافة منتج', onClick: () => navigate('/products/add') } })
   }, [setHeader, navigate])
@@ -39,6 +45,7 @@ export function ProductsListPage() {
   }, [])
 
   useEffect(() => { setPage(1) }, [debouncedQuery, chip])
+  useEffect(() => { setSelected({}) }, [page, debouncedQuery, chip])
 
   useEffect(() => {
     const categoryId = chip === 'الكل' ? undefined : categories.find(c => c.name === chip)?.id
@@ -68,6 +75,50 @@ export function ProductsListPage() {
       setCsvNotice('تعذر استيراد الملف')
     } finally {
       if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+
+  function toggleRow(id: string, checked: boolean) {
+    setSelected(current => ({ ...current, [id]: checked }))
+  }
+
+  function toggleAllOnPage(checked: boolean) {
+    if (!products) return
+    const next: Record<string, boolean> = {}
+    if (checked) for (const p of products) next[p.id] = true
+    setSelected(next)
+  }
+
+  async function applyBulkAction(action: 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand') {
+    const productIds = Object.keys(selected).filter(id => selected[id])
+    if (productIds.length === 0) return
+
+    const confirmMessage =
+      action === 'set_available' ? `سيتم إظهار ${productIds.length} منتج للعملاء. هل تريد المتابعة؟`
+      : action === 'set_unavailable' ? `سيتم إخفاء ${productIds.length} منتج عن العملاء. هل تريد المتابعة؟`
+      : action === 'set_category' ? `سيتم نقل ${productIds.length} منتج إلى هذا القسم. هل تريد المتابعة؟`
+      : `سيتم تعيين "${bulkBrand.trim()}" كعلامة تجارية لـ ${productIds.length} منتج. هل تريد المتابعة؟`
+    if (!window.confirm(confirmMessage)) return
+
+    setBulkError('')
+    setBulkBusy(true)
+    try {
+      const result = await api.bulkUpdateProducts({
+        productIds, action,
+        categoryId: action === 'set_category' ? bulkCategoryId : undefined,
+        brand: action === 'set_brand' ? bulkBrand.trim() : undefined
+      })
+      if (result.failed.length > 0) {
+        setBulkError(`تم تحديث ${result.updated} وفشل ${result.failed.length} (${result.failed.map(f => f.reason).join('، ')})`)
+      }
+      setSelected({})
+      const categoryId = chip === 'الكل' ? undefined : categories.find(c => c.name === chip)?.id
+      const refreshed = await api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId })
+      setProducts(refreshed.products)
+    } catch {
+      setBulkError('تعذر تنفيذ الإجراء الجماعي')
+    } finally {
+      setBulkBusy(false)
     }
   }
 
@@ -109,9 +160,35 @@ export function ProductsListPage() {
           </div>
         </div>
         {csvNotice && <div className="admin-form-success" style={{ margin: '0 16px' }}>{csvNotice}</div>}
+
+        {Object.values(selected).some(Boolean) && (
+          <div className="admin-bulk-select-bar" style={{ margin: '0 16px 12px', padding: 12, background: '#EAF2FF', borderRadius: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <strong>تم تحديد {Object.values(selected).filter(Boolean).length} منتج</strong>
+            <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_available')}>إظهار المحدد</button>
+            <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_unavailable')}>إخفاء المحدد</button>
+            <select value={bulkCategoryId} onChange={e => setBulkCategoryId(e.target.value)}>
+              <option value="">نقل إلى قسم...</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="admin-form-chip" disabled={bulkBusy || !bulkCategoryId} onClick={() => applyBulkAction('set_category')}>تطبيق نقل القسم</button>
+            <input placeholder="علامة تجارية جديدة" value={bulkBrand} onChange={e => setBulkBrand(e.target.value)} style={{ width: 160 }} />
+            <button className="admin-form-chip" disabled={bulkBusy || !bulkBrand.trim()} onClick={() => applyBulkAction('set_brand')}>تطبيق العلامة التجارية</button>
+            <button className="admin-form-chip" disabled={bulkBusy} onClick={() => setSelected({})}>إلغاء التحديد</button>
+          </div>
+        )}
+        {bulkError && <div className="admin-form-error" style={{ margin: '0 16px 12px' }}>{bulkError}</div>}
+
         <div className="admin-table-scroll">
           <div style={{ minWidth: 900 }}>
             <div className="admin-table-head" style={{ gridTemplateColumns: COLS }}>
+              <div>
+                <input
+                  type="checkbox"
+                  checked={products.length > 0 && products.every(p => selected[p.id])}
+                  onChange={e => toggleAllOnPage(e.target.checked)}
+                  aria-label="تحديد كل المنتجات في هذه الصفحة"
+                />
+              </div>
               <div>المنتج</div><div>القسم</div><div>سعر البيع</div><div>التكلفة</div><div>الهامش</div><div>المخزون</div><div>الحالة</div>
             </div>
             {products.map(p => {
@@ -120,6 +197,14 @@ export function ProductsListPage() {
               const categoryName = categories.find(c => c.id === p.categoryId)?.name ?? ''
               return (
                 <div key={p.id} className="admin-table-row clickable" style={{ gridTemplateColumns: COLS }} onClick={() => navigate(`/products/edit/${p.id}`)}>
+                  <div onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={!!selected[p.id]}
+                      onChange={e => toggleRow(p.id, e.target.checked)}
+                      aria-label={`تحديد ${p.name}`}
+                    />
+                  </div>
                   <div className="admin-cell-product">
                     <span className="admin-cell-product-icon" style={{ background: p.primaryImage ? '#fff' : categories.find(c => c.id === p.categoryId)?.tint, overflow: 'hidden' }}>
                       <SafeImage sources={[p.primaryImage]} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} fallback={p.emoji} />

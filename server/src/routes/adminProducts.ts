@@ -7,6 +7,7 @@ import { logEvent } from '../logger.js'
 import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../services/productSkuService.js'
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, generateProductImportTemplateCsv, type ImportConfirmRow } from '../services/productImportService.js'
+import { applyBulkProductAction, type BulkProductActionType } from '../services/bulkProductActionsService.js'
 import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
 import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
 import { getPriceHistoryForProduct } from '../services/bulkOperationBatchService.js'
@@ -455,6 +456,37 @@ adminProductsRouter.post('/', requirePermission('products.create'), async (req, 
     newValues: product
   })
   res.status(201).json({ product })
+})
+
+// مسجّلة عمداً قبل '/:id' — '/bulk' segment واحد زي ':id'، فلو اتسجلت بعده كان هيبلعها
+// '/:id' باعتبار id='bulk' وميوصلوش الطلب هنا أبداً.
+const BULK_PRODUCT_ACTIONS: BulkProductActionType[] = ['set_available', 'set_unavailable', 'set_category', 'set_brand']
+
+adminProductsRouter.patch('/bulk', requirePermission('products.edit'), async (req, res) => {
+  const body = req.body as { productIds?: unknown, action?: unknown, categoryId?: unknown, brand?: unknown }
+  if (!Array.isArray(body.productIds) || body.productIds.length === 0 || body.productIds.some(id => typeof id !== 'string')) {
+    res.status(400).json({ error: 'missing_product_ids' })
+    return
+  }
+  if (typeof body.action !== 'string' || !BULK_PRODUCT_ACTIONS.includes(body.action as BulkProductActionType)) {
+    res.status(400).json({ error: 'invalid_action' })
+    return
+  }
+  const action = body.action as BulkProductActionType
+  const productIds = body.productIds as string[]
+  const categoryId = typeof body.categoryId === 'string' ? body.categoryId : undefined
+  const brand = typeof body.brand === 'string' ? body.brand : undefined
+
+  const result = await applyBulkProductAction(productIds, action, { categoryId, brand })
+  logEvent('admin_product_updated', { source: 'bulk_select_action', action, updated: result.updated, failedCount: result.failed.length })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: `product_bulk_${action}`,
+    entityType: 'product',
+    entityId: 'bulk',
+    newValues: { action, productIds, categoryId, brand, updated: result.updated, failed: result.failed }
+  })
+  res.json(result)
 })
 
 adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req, res) => {
