@@ -2,11 +2,12 @@
 // vitest.config.ts) وبتنفّذ نفس منطق orderService الحقيقي بمعاملاته وأقفاله، مش نسخة
 // مُقلَّدة. هي الطريقة الوحيدة اللي تثبت فعلياً إن قفل الصفوف (FOR UPDATE) وحماية السباق
 // على الخصومات والمخزون بيشتغلوا صح تحت تزامن حقيقي.
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pool, withTransaction } from '../db.js'
 import { createOrder, cancelOrder, getOrderByNumberForGuestToken } from './orderService.js'
 import { listOrderStatusHistory, recordOrderStatusChange } from './orderStatusHistoryService.js'
 import { adjustLoyaltyPointsManually, getLoyaltyBalance } from './loyaltyService.js'
+import * as pushService from './pushService.js'
 import type { CheckoutInput } from '../checkoutValidation.js'
 import { todayInCairo, addCalendarDays } from '../cairoDate.js'
 
@@ -703,6 +704,39 @@ describe('createOrder — WhatsApp order confirmation hook', () => {
     await createOrder(baseInput(), null, key)
     const { rows } = await pool.query('SELECT count(*) as n FROM whatsapp_messages WHERE order_id = $1', [first.order.id])
     expect(Number(rows[0].n)).toBe(0)
+  })
+})
+
+describe('createOrder — admin new-order push hook', () => {
+  it('attempts the admin push notification exactly once for a genuinely new order', async () => {
+    const spy = vi.spyOn(pushService, 'notifyAdminsOfNewOrder').mockResolvedValue(undefined)
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ id: order.id, orderNumber: order.orderNumber }))
+    spy.mockRestore()
+  })
+
+  // المتطلب الصريح: نفس idempotency key مرتين (محاكاة إعادة محاولة checkout من العميل)
+  // لازم يبعت بوش الأدمن مرة واحدة بس، مش مرتين — الطلب التاني "replay" بيرجع من غير
+  // ما يوصل لمسار الإشعار أصلاً (راجع createOrder: replay:true بيرجع قبل الـ Promise.allSettled).
+  it('a replayed idempotency-key request does NOT trigger a second admin push attempt', async () => {
+    const spy = vi.spyOn(pushService, 'notifyAdminsOfNewOrder').mockResolvedValue(undefined)
+    const key = nextKey()
+    const first = await createOrder(baseInput(), null, key)
+    expect(first.replay).toBe(false)
+    const second = await createOrder(baseInput(), null, key)
+    expect(second.replay).toBe(true)
+    expect(second.order.id).toBe(first.order.id)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('order creation still succeeds even when the admin push hook itself throws (best effort, never blocks checkout)', async () => {
+    const spy = vi.spyOn(pushService, 'notifyAdminsOfNewOrder').mockRejectedValue(new Error('push provider unreachable'))
+    const { order } = await createOrder(baseInput(), null, nextKey())
+    expect(order.status).toBe('placed')
+    spy.mockRestore()
   })
 })
 

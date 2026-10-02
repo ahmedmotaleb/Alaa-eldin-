@@ -72,6 +72,7 @@ type BusinessEvent =
   | 'admin_user_created' | 'user_active_changed' | 'admin_password_reset'
   | 'login_blocked_disabled_account' | 'required_password_changed'
   | 'role_created' | 'role_updated' | 'role_deleted'
+  | 'admin_new_order_push_attempted' | 'admin_notification_preference_changed' | 'admin_test_notification_sent'
 
 export function logEvent(event: BusinessEvent, data: Record<string, unknown> = {}) {
   logger.info({ event, ...data })

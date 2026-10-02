@@ -2,7 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
 import {
   saveSubscription, removeSubscription, getNotificationPreferences, setNotificationPreferences,
-  sendPushToUser, notifyOrderStatusChange, getVapidPublicKey, pushConfigured, countPushSubscriptions
+  sendPushToUser, notifyOrderStatusChange, getVapidPublicKey, pushConfigured, countPushSubscriptions,
+  getAdminNewOrdersPreference, setAdminNewOrdersPreference, selectAdminNewOrderRecipients, notifyAdminsOfNewOrder
 } from './pushService.js'
 
 const USER_ID = 'test-user-push'
@@ -93,5 +94,87 @@ describe('pushService', () => {
     await saveSubscription(USER_ID, { endpoint: ENDPOINT, keys: { p256dh: 'key1', auth: 'auth1' } })
     const after = await countPushSubscriptions()
     expect(after - before).toBe(1)
+  })
+})
+
+// استهداف إشعار "طلب جديد" الإداري: RBAC (orders.view) + تفضيل admin_new_orders صراحة —
+// نفس منطق permissionService.userHasPermission بالظبط، مش أي قائمة أدوار مكتوبة يدوياً هنا.
+// بيئة الاختبار دي من غير VAPID حقيقي عمداً — selectAdminNewOrderRecipients بتحدد *مين*
+// هيستقبل من غير ما تحتاج إرسال فعلي (راجع pushServiceConfigured.test.ts لاختبارات التسليم
+// الفعلي زي أجهزة متعددة والاشتراكات الميتة).
+describe('selectAdminNewOrderRecipients / notifyAdminsOfNewOrder (RBAC targeting)', () => {
+  const ADMIN_FULL = 'test-push-admin-full' // legacy full admin: role_id=null, role='admin' — عنده orders.view عن طريق LEGACY_ADMIN_PERMISSIONS
+  const ADMIN_NO_ORDERS_VIEW = 'test-push-admin-no-orders-view' // role-purchasing-officer: مفيهوش orders.view أصلاً
+  const ADMIN_PREF_OFF = 'test-push-admin-pref-off' // عنده orders.view، بس مفعّلش التفضيل
+  const ADMIN_PICKER = 'test-push-admin-picker' // role-picker: عنده orders.view كمان (دور مختلف تماماً عن ADMIN_FULL)
+  const NON_ADMIN = 'test-push-non-admin' // is_admin=0 أصلاً — مش موظف لوحة تحكم خالص
+
+  const ALL_IDS = [ADMIN_FULL, ADMIN_NO_ORDERS_VIEW, ADMIN_PREF_OFF, ADMIN_PICKER, NON_ADMIN]
+
+  async function resetRbacFixtures() {
+    await pool.query('DELETE FROM push_subscriptions WHERE user_id = ANY($1::text[])', [ALL_IDS])
+    await pool.query('DELETE FROM notification_preferences WHERE user_id = ANY($1::text[])', [ALL_IDS])
+    await pool.query('DELETE FROM users WHERE id = ANY($1::text[])', [ALL_IDS])
+
+    async function makeUser(id: string, isAdmin: number, role: string, roleId: string | null) {
+      await pool.query(
+        `INSERT INTO users (id, email, password_hash, full_name, created_at, is_admin, role, role_id)
+         VALUES ($1, $1 || '@test.local', 'x', 'مستخدم اختبار استهداف', now(), $2, $3, $4)`,
+        [id, isAdmin, role, roleId]
+      )
+    }
+    await makeUser(ADMIN_FULL, 1, 'admin', null)
+    await makeUser(ADMIN_NO_ORDERS_VIEW, 1, 'staff', 'role-purchasing-officer')
+    await makeUser(ADMIN_PREF_OFF, 1, 'admin', null)
+    await makeUser(ADMIN_PICKER, 1, 'staff', 'role-picker')
+    await makeUser(NON_ADMIN, 0, 'staff', null)
+  }
+
+  beforeEach(resetRbacFixtures)
+  afterAll(async () => {
+    await pool.query('DELETE FROM push_subscriptions WHERE user_id = ANY($1::text[])', [ALL_IDS])
+    await pool.query('DELETE FROM notification_preferences WHERE user_id = ANY($1::text[])', [ALL_IDS])
+    await pool.query('DELETE FROM users WHERE id = ANY($1::text[])', [ALL_IDS])
+  })
+
+  it('a legacy full admin with orders.view and the preference enabled is selected', async () => {
+    await setAdminNewOrdersPreference(ADMIN_FULL, true)
+    const recipients = await selectAdminNewOrderRecipients()
+    expect(recipients).toContain(ADMIN_FULL)
+  })
+
+  it('an admin whose RBAC role lacks orders.view is NEVER selected, even with the preference enabled', async () => {
+    await setAdminNewOrdersPreference(ADMIN_NO_ORDERS_VIEW, true)
+    const recipients = await selectAdminNewOrderRecipients()
+    expect(recipients).not.toContain(ADMIN_NO_ORDERS_VIEW)
+  })
+
+  it('an admin with orders.view but the preference left at its default (off) is NOT selected', async () => {
+    // مفيش setAdminNewOrdersPreference هنا عمداً — الافتراضي admin_new_orders=0 (راجع migration 0070).
+    const recipients = await selectAdminNewOrderRecipients()
+    expect(recipients).not.toContain(ADMIN_PREF_OFF)
+    expect(await getAdminNewOrdersPreference(ADMIN_PREF_OFF)).toBe(false)
+  })
+
+  it('a non-admin user is never selected regardless of any preference row', async () => {
+    await setAdminNewOrdersPreference(NON_ADMIN, true)
+    const recipients = await selectAdminNewOrderRecipients()
+    expect(recipients).not.toContain(NON_ADMIN)
+  })
+
+  it('multiple eligible admins with different roles are ALL selected — not just one arbitrarily', async () => {
+    await setAdminNewOrdersPreference(ADMIN_FULL, true)
+    await setAdminNewOrdersPreference(ADMIN_PICKER, true)
+    await setAdminNewOrdersPreference(ADMIN_NO_ORDERS_VIEW, true) // هيترفض برضه رغم التفضيل — RBAC الأول
+    await setAdminNewOrdersPreference(ADMIN_PREF_OFF, false)
+
+    const recipients = (await selectAdminNewOrderRecipients()).sort()
+    expect(recipients).toEqual([ADMIN_FULL, ADMIN_PICKER].sort())
+  })
+
+  it('notifyAdminsOfNewOrder resolves without throwing even when zero admins are eligible', async () => {
+    await expect(
+      notifyAdminsOfNewOrder({ id: 'order-x', orderNumber: 'ALA-900002', customerFullName: 'عميل اختبار', total: 100 })
+    ).resolves.toBeUndefined()
   })
 })

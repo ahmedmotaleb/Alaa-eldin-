@@ -1915,6 +1915,15 @@ export const api = {
   getPurchasingInventoryAnalytics: (params: { days?: number, fromDate?: string, toDate?: string, supplierId?: string, categoryId?: string, limit?: number } = {}) =>
     request<PurchasingInventoryAnalytics>(`/admin/analytics/purchasing-inventory${buildQuery(params)}`),
   getAlerts: () => request<{ alerts: Alert[], count: number }>('/admin/alerts'),
+  getVapidPublicKey: () => request<{ publicKey: string | null, configured: boolean }>('/notifications/vapid-public-key'),
+  subscribePush: (subscription: { endpoint: string, keys: { p256dh: string, auth: string } }) =>
+    request<void>('/notifications/subscribe', { method: 'POST', body: JSON.stringify(subscription) }),
+  unsubscribePush: (endpoint: string) =>
+    request<void>('/notifications/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
+  getAdminNotificationPreference: () => request<{ newOrders: boolean }>('/notifications/admin-preferences'),
+  setAdminNotificationPreference: (newOrders: boolean) =>
+    request<{ newOrders: boolean }>('/notifications/admin-preferences', { method: 'PATCH', body: JSON.stringify({ newOrders }) }),
+  sendTestNotification: () => request<void>('/notifications/admin-test', { method: 'POST' }),
   getAnalyticsHomeSummary: () => request<AnalyticsHomeSummary>('/admin/analytics/home-summary'),
   listRiders: () => request<{ riders: AdminRider[] }>('/admin/riders'),
   createRider: (body: { name: string, phone?: string }) =>

@@ -4,6 +4,8 @@
 import crypto from 'node:crypto'
 import webpush from 'web-push'
 import { pool } from '../db.js'
+import { userHasPermission } from './permissionService.js'
+import { logEvent } from '../logger.js'
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
@@ -68,6 +70,25 @@ export async function setNotificationPreferences(userId: string, prefs: Notifica
      VALUES ($1, $2, $3, now())
      ON CONFLICT (user_id) DO UPDATE SET order_updates = $2, promotions = $3, updated_at = now()`,
     [userId, prefs.orderUpdates ? 1 : 0, prefs.promotions ? 1 : 0]
+  )
+}
+
+// تفضيل إداري منفصل تماماً عن تفضيلات العميل فوق (order_updates/promotions) — افتراضياً
+// متوقف لأي حساب، حتى لو عنده تفضيلات عميل أخرى مفعّلة بالفعل. راجع migration 0070.
+export async function getAdminNewOrdersPreference(userId: string): Promise<boolean> {
+  const { rows } = await pool.query<{ adminNewOrders: number }>(
+    'SELECT admin_new_orders as "adminNewOrders" FROM notification_preferences WHERE user_id = $1',
+    [userId]
+  )
+  return !!rows[0]?.adminNewOrders
+}
+
+export async function setAdminNewOrdersPreference(userId: string, enabled: boolean): Promise<void> {
+  await pool.query(
+    `INSERT INTO notification_preferences (user_id, admin_new_orders, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id) DO UPDATE SET admin_new_orders = $2, updated_at = now()`,
+    [userId, enabled ? 1 : 0]
   )
 }
 
@@ -141,4 +162,50 @@ export async function notifySupportTicketUpdate(
 // (تذكرة غير مُسندة بتظهر في تنبيه لوحة التحكم "تذاكر دعم مفتوحة" بدل ما نرسل بوش لكل مدير).
 export async function notifyAssignedAdminOfReply(assignedAdminId: string, ticketNumber: string): Promise<void> {
   await sendPushToUser(assignedAdminId, { title: `تذكرة الدعم ${ticketNumber}`, body: 'رد جديد من العميل', url: '/support/tickets' })
+}
+
+export interface NewOrderNotificationInput {
+  id: string
+  orderNumber: string
+  customerFullName: string
+  total: number
+}
+
+// مُستخرَجة كدالة مستقلة قابلة للاختبار بمعزل عن webpush نفسه — بترجع فعلياً مين هيستقبل
+// بوش "طلب جديد" (ids) من غير ما تبعت أي حاجة، عشان اختبارات RBAC/التفضيل تقدر تتأكد من
+// منطق الاستهداف الصحيح حتى في بيئة من غير مفاتيح VAPID حقيقية (راجع pushConfigured).
+export async function selectAdminNewOrderRecipients(): Promise<string[]> {
+  const { rows: admins } = await pool.query<{ id: string; role: string; roleId: string | null }>(
+    'SELECT id, role, role_id as "roleId" FROM users WHERE is_admin = 1'
+  )
+  if (!admins.length) return []
+
+  const withOrdersView = (await Promise.all(
+    admins.map(async a => ({ id: a.id, allowed: await userHasPermission({ isAdmin: true, role: a.role, roleId: a.roleId }, 'orders.view') }))
+  )).filter(a => a.allowed).map(a => a.id)
+  if (!withOrdersView.length) return []
+
+  const { rows: prefRows } = await pool.query<{ userId: string }>(
+    'SELECT user_id as "userId" FROM notification_preferences WHERE user_id = ANY($1::text[]) AND admin_new_orders = 1',
+    [withOrdersView]
+  )
+  return prefRows.map(r => r.userId)
+}
+
+// بوش فوري لكل أدمن/موظف عنده (1) صلاحية orders.view فعلية (RBAC دقيق أو legacy fallback،
+// نفس منطق permissionService بالظبط — مش كل is_admin=1 عنده بالضرورة orders.view)، و(2)
+// فعّل تفضيل "إشعارات الطلبات الجديدة" صراحة على جهازه (admin_new_orders=1). أفضل-جهد بالكامل
+// (راجع sendPushToUser) — فشل إرسال لجهاز/مستخدم واحد أبداً ما بيوقفش إنشاء الطلب نفسه، لأنها
+// بتتنادى دايماً بعد commit الطلب بنجاح (راجع orderService.createOrder).
+export async function notifyAdminsOfNewOrder(order: NewOrderNotificationInput): Promise<void> {
+  const recipients = await selectAdminNewOrderRecipients()
+  logEvent('admin_new_order_push_attempted', { orderId: order.id, orderNumber: order.orderNumber, recipientCount: recipients.length })
+  if (!recipients.length) return
+
+  const payload = {
+    title: 'طلب جديد 🛒',
+    body: `${order.orderNumber} · ${order.customerFullName} · ${order.total.toFixed(2)} ج.م`,
+    url: `/admin/orders/all?highlight=${order.id}`
+  }
+  await Promise.allSettled(recipients.map(userId => sendPushToUser(userId, payload)))
 }
