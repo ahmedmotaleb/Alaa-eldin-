@@ -1,6 +1,7 @@
 import type { Product } from '../types/models'
 import { useCatalog } from '../store/CatalogContext'
 import { transformImage, type ImageSize } from '../utils/image'
+import { SafeImage } from './SafeImage'
 import { ar } from '../i18n/ar'
 
 export function discountPercent(product: Product) {
@@ -41,26 +42,26 @@ export function ProductArt({
   const tint = categories.find(c => c.id === product.categoryId)?.tint ?? '#F1F4F2'
   const discount = discountPercent(product)
   const numericHeight = typeof height === 'number' ? height : 100
-  const imageUrl = transformImage(product.primaryImage, sizeForHeight(numericHeight))
+  const transformedUrl = transformImage(product.primaryImage, sizeForHeight(numericHeight))
+  // الخلفية بتتحدد من وجود صورة مخزّنة فعلاً (مش من نجاح تحميلها فعلياً) — عشان الكارت
+  // مايقفزش لون الخلفية وقت التحميل أو لو الصورة فشلت وظهر الإيموجي الاحتياطي بدلها.
+  const hasStoredImage = !!product.primaryImage
   return (
     <div
       className="product-art"
-      style={{ height, width, flex: typeof width === 'number' ? 'none' : undefined, fontSize, background: imageUrl ? '#fff' : tint, borderRadius: radius, position: 'relative', overflow: 'hidden' }}
+      style={{ height, width, flex: typeof width === 'number' ? 'none' : undefined, fontSize, background: hasStoredImage ? '#fff' : tint, borderRadius: radius, position: 'relative', overflow: 'hidden' }}
     >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={product.primaryImageAlt || `صورة منتج ${product.name}`}
-          loading={priority ? 'eager' : 'lazy'}
-          // @ts-expect-error fetchpriority مش لسه في تعريفات React، لكنه attribute حقيقي مدعوم
-          fetchpriority={priority ? 'high' : undefined}
-          width={numericHeight}
-          height={numericHeight}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', aspectRatio: '1 / 1' }}
-        />
-      ) : (
-        product.emoji || '🛍️'
-      )}
+      <SafeImage
+        sources={[transformedUrl, product.primaryImage]}
+        alt={product.primaryImageAlt || `صورة منتج ${product.name}`}
+        loading={priority ? 'eager' : 'lazy'}
+        // @ts-expect-error fetchpriority مش لسه في تعريفات React، لكنه attribute حقيقي مدعوم
+        fetchpriority={priority ? 'high' : undefined}
+        width={numericHeight}
+        height={numericHeight}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', aspectRatio: '1 / 1' }}
+        fallback={product.emoji || '🛍️'}
+      />
       {showBadge && discount > 0 && <span className="discount-badge">−{discount}%</span>}
       {showBadge && product.available && product.stockState === 'low_stock' && (
         <span className="low-stock-chip">{typeof product.lowStockRemaining === 'number' ? ar.product.lowStockRemaining(product.lowStockRemaining) : ar.product.lowStock}</span>

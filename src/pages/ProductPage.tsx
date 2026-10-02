@@ -14,6 +14,8 @@ import { api, type ApiProductDetail } from '../utils/api'
 import { formatMoney } from '../utils/money'
 import { recordProductView } from '../utils/recentlyViewed'
 import { ProductGrid } from '../components/ProductGrid'
+import { SafeImage } from '../components/SafeImage'
+import { transformImage } from '../utils/image'
 import { ar } from '../i18n/ar'
 
 export function ProductPage() {
@@ -147,7 +149,7 @@ export function ProductPage() {
   return (
     <div className="product-page">
       {product.gallery.length > 0 ? (
-        <ProductGallery images={product.gallery} productName={product.name} />
+        <ProductGallery images={product.gallery} productName={product.name} fallbackEmoji={product.emoji} />
       ) : (
         <ProductArt product={artProduct} height={250} fontSize={120} priority />
       )}
@@ -220,7 +222,12 @@ export function ProductPage() {
               {product.alternatives.map(p => (
                 <button key={p.id} className="related-card" onClick={() => navigate(`/product/${p.slug}`)}>
                   <span className="related-card-art">
-                    {p.primaryImage ? <img src={p.primaryImage} alt="" loading="lazy" /> : <span className="related-card-emoji">{p.emoji}</span>}
+                    <SafeImage
+                      sources={[transformImage(p.primaryImage, 'thumbnail'), p.primaryImage]}
+                      alt=""
+                      loading="lazy"
+                      fallback={<span className="related-card-emoji">{p.emoji}</span>}
+                    />
                   </span>
                   <span className="related-card-body">
                     <span className="related-card-name">{p.name}</span>

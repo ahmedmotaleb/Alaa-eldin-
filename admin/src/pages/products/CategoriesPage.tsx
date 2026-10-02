@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, ApiError, type AdminCategory } from '../../utils/api'
+import { SafeImage } from '../../components/SafeImage'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const TINTS = ['#E8F7EC', '#EAF2FF', '#FFF3E3', '#FBF0DC', '#FFECEC', '#EAF6FA', '#E8F4FA', '#F3EEFB', '#FCEDED']
@@ -120,7 +121,7 @@ export function CategoriesPage() {
           <div className="admin-category-card" key={c.id}>
             <div className="admin-category-card-head">
               <span className="admin-category-card-icon" style={{ background: c.image ? undefined : c.tint, padding: 0, overflow: 'hidden' }}>
-                {c.image ? <img src={c.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : c.emoji}
+                <SafeImage sources={[c.image]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={c.emoji} />
               </span>
               <span>
                 <span className="admin-category-card-title">{c.name}</span>

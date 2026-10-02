@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { api, type AdminBannerInput } from '../../utils/api'
+import { SafeImage } from '../../components/SafeImage'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const emptyForm: AdminBannerInput = {
@@ -139,7 +140,14 @@ export function BannerFormPage() {
           <input ref={mobileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => onImagePicked(e, 'mobile')} />
 
           <label>الصورة الرئيسية
-            {imageUrl && <img src={imageUrl} alt="" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 12, marginBottom: 8 }} />}
+            {imageUrl && (
+              <SafeImage
+                sources={[imageUrl]}
+                alt=""
+                style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 12, marginBottom: 8 }}
+                fallback={<div className="admin-form-error" style={{ marginBottom: 8 }}>تعذر تحميل الصورة الحالية — يُفضل إعادة رفعها</div>}
+              />
+            )}
             <span className="admin-form-chips">
               <button type="button" className="admin-form-chip" disabled={uploading === 'desktop'} onClick={() => desktopInputRef.current?.click()}>
                 {uploading === 'desktop' ? 'جارِ الرفع...' : imageUrl ? 'تغيير الصورة' : 'رفع صورة'}
@@ -149,7 +157,14 @@ export function BannerFormPage() {
           </label>
 
           <label>صورة الموبايل (اختياري)
-            {mobileImageUrl && <img src={mobileImageUrl} alt="" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 12, marginBottom: 8 }} />}
+            {mobileImageUrl && (
+              <SafeImage
+                sources={[mobileImageUrl]}
+                alt=""
+                style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 12, marginBottom: 8 }}
+                fallback={<div className="admin-form-error" style={{ marginBottom: 8 }}>تعذر تحميل الصورة الحالية — يُفضل إعادة رفعها</div>}
+              />
+            )}
             <span className="admin-form-chips">
               <button type="button" className="admin-form-chip" disabled={uploading === 'mobile'} onClick={() => mobileInputRef.current?.click()}>
                 {uploading === 'mobile' ? 'جارِ الرفع...' : mobileImageUrl ? 'تغيير الصورة' : 'رفع صورة'}

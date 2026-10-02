@@ -239,6 +239,7 @@ h1, h2, h3, p { margin: 0; }
 .product-gallery-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
 .product-gallery-slide { flex: 0 0 100%; scroll-snap-align: center; border: 0; padding: 0; background: #fff; height: 250px; cursor: zoom-in; }
 .product-gallery-slide img { width: 100%; height: 100%; object-fit: contain; }
+.product-gallery-fallback { cursor: default; background: var(--brand-cream); display: grid; place-items: center; font-size: 72px; }
 .product-gallery-dots { display: flex; justify-content: center; gap: 6px; padding: 10px 0 2px; }
 .product-gallery-dot { width: 6px; height: 6px; border-radius: 999px; border: 0; background: #DCD3C4; padding: 0; }
 .product-gallery-dot.active { background: var(--brand-blue); width: 16px; }

@@ -3,6 +3,8 @@ import { api, type ApiAlternativeProduct } from '../utils/api'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
 import { formatMoney } from '../utils/money'
+import { transformImage } from '../utils/image'
+import { SafeImage } from './SafeImage'
 import { ar } from '../i18n/ar'
 
 // بدائل مشابهة مُدارة يدوياً من الإدارة لمنتج غير متوفر داخل السلة — العميل لازم يختار
@@ -33,7 +35,12 @@ export function CartItemAlternatives({ productId }: { productId: string }) {
             onClick={() => { addItem(alt.id); flash(ar.common.addedToCart) }}
           >
             <span className="cart-item-alternative-emoji">
-              {alt.primaryImage ? <img src={alt.primaryImage} alt="" loading="lazy" /> : alt.emoji}
+              <SafeImage
+                sources={[transformImage(alt.primaryImage, 'thumbnail'), alt.primaryImage]}
+                alt=""
+                loading="lazy"
+                fallback={alt.emoji}
+              />
             </span>
             <span className="cart-item-alternative-name">{alt.name}</span>
             <span className="cart-item-alternative-price">{formatMoney(alt.price)}</span>

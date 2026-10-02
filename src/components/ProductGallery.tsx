@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ProductGalleryImage } from '../types/models'
 import { transformImage } from '../utils/image'
+import { SafeImage } from './SafeImage'
 import { ar } from '../i18n/ar'
 
 // معرض صور منتج حقيقي: سحب أفقي (scroll-snap أصلي، بدون مكتبة) على الموبايل، شرائط
@@ -9,12 +10,25 @@ import { ar } from '../i18n/ar'
 // الأساسية بتتحمّل أول حاجة (priority)، والباقي بيتحمّل lazy.
 // بيُستخدم بس لما فيه صورة واحدة على الأقل — لو مفيش صور خالص، ProductPage بيرجع
 // لعرض ProductArt (الإيموجي بخلفية ملوّنة حسب القسم) زي ما كان بالظبط.
-export function ProductGallery({ images, productName }: { images: ProductGalleryImage[], productName: string }) {
+export function ProductGallery({ images, productName, fallbackEmoji }: { images: ProductGalleryImage[], productName: string, fallbackEmoji?: string }) {
   const [active, setActive] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  // صور فشلت تحميلها فعلياً (بعد محاولتين: محوّلة + أصلية) — بتتشال من المعرض الظاهر
+  // تماماً (مش بس تتخفى بصرياً) عشان النقط والصور المصغّرة تفضل متوافقة مع العدد الحقيقي
+  // الظاهر. لو كل الصور فشلت، المعرض بيعرض placeholder واحد بدل carousel فاضي.
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set())
   const trackRef = useRef<HTMLDivElement>(null)
 
-  const sorted = [...images].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sortOrder - b.sortOrder)
+  const sortedAll = [...images].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sortOrder - b.sortOrder)
+  const sorted = sortedAll.filter(img => !failedIds.has(img.id))
+
+  function markFailed(id: string) {
+    setFailedIds(current => (current.has(id) ? current : new Set(current).add(id)))
+  }
+
+  useEffect(() => {
+    if (sorted.length > 0 && active >= sorted.length) setActive(sorted.length - 1)
+  }, [sorted.length, active])
 
   useEffect(() => {
     if (!lightboxOpen) return
@@ -53,6 +67,18 @@ export function ProductGallery({ images, productName }: { images: ProductGallery
     setActive(closest)
   }
 
+  // كل صور المعرض فشلت تحميلها فعلياً (بعد محاولتين لكل واحدة) — بدل carousel فاضي، نعرض
+  // placeholder واحد بنفس ارتفاع الشريحة بالظبط (مفيش قفزة تخطيط).
+  if (sorted.length === 0) {
+    return (
+      <div className="product-gallery">
+        <div className="product-gallery-slide product-gallery-fallback">
+          <span>{fallbackEmoji || '🛍️'}</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="product-gallery">
       <div className="product-gallery-track" ref={trackRef} onScroll={onTrackScroll}>
@@ -63,14 +89,15 @@ export function ProductGallery({ images, productName }: { images: ProductGallery
             onClick={() => setLightboxOpen(true)}
             aria-label={ar.product.viewImageLarger}
           >
-            <img
-              src={transformImage(img.url, 'detail')}
+            <SafeImage
+              sources={[transformImage(img.url, 'detail'), img.url]}
               alt={img.altText || productName}
               loading={i === 0 ? 'eager' : 'lazy'}
               // @ts-expect-error fetchpriority غير مدعوم رسمياً في تعريفات React لسه، لكنه attribute حقيقي مدعوم في المتصفحات
               fetchpriority={i === 0 ? 'high' : undefined}
               width={1000}
               height={1000}
+              onAllFailed={() => markFailed(img.id)}
             />
           </button>
         ))}
@@ -95,7 +122,14 @@ export function ProductGallery({ images, productName }: { images: ProductGallery
                 className={`product-gallery-thumb ${i === active ? 'active' : ''}`}
                 onClick={() => scrollToIndex(i)}
               >
-                <img src={transformImage(img.url, 'thumbnail')} alt="" loading="lazy" width={64} height={64} />
+                <SafeImage
+                  sources={[transformImage(img.url, 'thumbnail'), img.url]}
+                  alt=""
+                  loading="lazy"
+                  width={64}
+                  height={64}
+                  onAllFailed={() => markFailed(img.id)}
+                />
               </button>
             ))}
           </div>
@@ -106,7 +140,11 @@ export function ProductGallery({ images, productName }: { images: ProductGallery
         <div className="product-gallery-lightbox" onClick={() => setLightboxOpen(false)} role="dialog" aria-modal="true">
           <button className="product-gallery-lightbox-close" onClick={() => setLightboxOpen(false)} aria-label={ar.common.close}>×</button>
           <div className="product-gallery-lightbox-scroll" onClick={e => e.stopPropagation()}>
-            <img src={transformImage(sorted[active]?.url, 'detail')} alt={sorted[active]?.altText || productName} />
+            <SafeImage
+              sources={[transformImage(sorted[active]?.url, 'detail'), sorted[active]?.url]}
+              alt={sorted[active]?.altText || productName}
+              onAllFailed={() => { const id = sorted[active]?.id; if (id) markFailed(id) }}
+            />
           </div>
         </div>
       )}

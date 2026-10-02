@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, ApiError, type AdminBanner } from '../../utils/api'
+import { SafeImage } from '../../components/SafeImage'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 export function BannersListPage() {
@@ -28,7 +29,7 @@ export function BannersListPage() {
         <div className="admin-category-card" key={b.id}>
           <div className="admin-category-card-head">
             <span className="admin-category-card-icon" style={{ background: b.imageUrl ? '#fff' : '#F1F4F2', overflow: 'hidden' }}>
-              {b.imageUrl ? <img src={b.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : b.emoji}
+              <SafeImage sources={[b.imageUrl]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} fallback={b.emoji} />
             </span>
             <span style={{ minWidth: 0 }}>
               <span className="admin-category-card-title">{b.title}</span>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { StatsGrid } from '../../components/StatsGrid'
+import { SafeImage } from '../../components/SafeImage'
 import { api, ApiError, type AdminCategory, type AdminProduct } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
 import { useDebouncedValue } from '../../utils/useDebouncedValue'
@@ -121,7 +122,7 @@ export function ProductsListPage() {
                 <div key={p.id} className="admin-table-row clickable" style={{ gridTemplateColumns: COLS }} onClick={() => navigate(`/products/edit/${p.id}`)}>
                   <div className="admin-cell-product">
                     <span className="admin-cell-product-icon" style={{ background: p.primaryImage ? '#fff' : categories.find(c => c.id === p.categoryId)?.tint, overflow: 'hidden' }}>
-                      {p.primaryImage ? <img src={p.primaryImage} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.emoji}
+                      <SafeImage sources={[p.primaryImage]} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} fallback={p.emoji} />
                     </span>
                     <span style={{ minWidth: 0 }}>
                       <span className="admin-cell-product-text">{p.name}</span>

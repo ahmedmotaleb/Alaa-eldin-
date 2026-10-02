@@ -10,12 +10,24 @@ const SIZE_WIDTH: Record<ImageSize, number> = {
   detail: 1000
 }
 
+// تحقق حقيقي بالـ URL parsing (host فعلي)، مش مجرد substring على "/upload/" زي قبل كده —
+// رابط خارجي غريب (أو مستورد قديم) ممكن يحتوي "/upload/" في مساره بالصدفة من غير ما يكون
+// رابط Cloudinary أصلاً، وكان بيتحقن فيه تحويل Cloudinary بالغلط فينتج رابط مكسور تماماً.
+export function isCloudinaryDeliveryUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' && (parsed.hostname === 'res.cloudinary.com' || parsed.hostname.endsWith('.cloudinary.com'))
+  } catch {
+    return false
+  }
+}
+
 export function transformImage(url: string | undefined, size: ImageSize): string | undefined {
   if (!url) return undefined
+  // مش رابط Cloudinary حقيقي — نرجّع الرابط الأصلي كما هو بدل ما نكسره بمحاولة تعديل غير آمنة.
+  if (!isCloudinaryDeliveryUrl(url)) return url
   const marker = '/upload/'
   const idx = url.indexOf(marker)
-  // مش رابط Cloudinary متوقع الشكل (أو رابط مختلف تماماً) — نرجّع الرابط الأصلي كما هو
-  // بدل ما نكسره بمحاولة تعديل غير آمنة.
   if (idx === -1) return url
   const transform = `w_${SIZE_WIDTH[size]},c_limit,f_auto,q_auto`
   return url.slice(0, idx + marker.length) + transform + '/' + url.slice(idx + marker.length)

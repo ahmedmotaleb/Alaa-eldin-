@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api, type ApiBanner } from '../utils/api'
 import { transformImage } from '../utils/image'
+import { SafeImage } from './SafeImage'
 import { isPromoBannerDismissed, markPromoBannerDismissed } from '../utils/promoDismissal'
 import { ar } from '../i18n/ar'
 
@@ -76,11 +77,16 @@ export function PromoModal() {
         <button ref={closeButtonRef} type="button" className="promo-modal-close" onClick={close} aria-label={ar.promo.closeAriaLabel}>
           ✕
         </button>
-        {banner.imageUrl ? (
-          <img className="promo-modal-image" src={transformImage(banner.imageUrl, 'card')} alt={banner.altText || banner.title} />
-        ) : banner.emoji ? (
-          <div className="promo-modal-emoji">{banner.emoji}</div>
-        ) : null}
+        <SafeImage
+          className="promo-modal-image"
+          sources={
+            typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches && banner.mobileImageUrl
+              ? [transformImage(banner.mobileImageUrl, 'card'), transformImage(banner.imageUrl, 'card')]
+              : [transformImage(banner.imageUrl, 'card')]
+          }
+          alt={banner.altText || banner.title}
+          fallback={banner.emoji ? <div className="promo-modal-emoji">{banner.emoji}</div> : null}
+        />
         {banner.kicker && <div className="promo-modal-kicker">{banner.kicker}</div>}
         <div className="promo-modal-title">{banner.title}</div>
         {banner.note && <div className="promo-modal-note">{banner.note}</div>}
