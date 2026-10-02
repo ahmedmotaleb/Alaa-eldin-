@@ -7,9 +7,8 @@ import { useCatalog } from '../store/CatalogContext'
 import { useAuth } from '../store/AuthContext'
 import { hasOnboarded } from '../utils/onboarding'
 import { api, type ApiBanner, type ApiProduct } from '../utils/api'
-import { getSettings } from '../store/settingsStore'
 import { transformImage } from '../utils/image'
-import { formatCutoffTime } from '../utils/format'
+import { formatCutoffTime, isPastCairoCutoff } from '../utils/format'
 import { setPageMeta } from '../utils/pageMeta'
 import { ar } from '../i18n/ar'
 
@@ -17,9 +16,8 @@ const HOME_SECTION_LIMIT = 6
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { categories } = useCatalog()
+  const { categories, settings } = useCatalog()
   const { user } = useAuth()
-  const settings = getSettings()
   const [banners, setBanners] = useState<ApiBanner[]>([])
   const [bannerIndex, setBannerIndex] = useState(0)
   const [offers, setOffers] = useState<ApiProduct[]>([])
@@ -131,7 +129,7 @@ export function HomePage() {
         <div className="info-card-icon">🕑</div>
         <div>
           <div className="info-card-title">{ar.home.orderBeforeTitle(formatCutoffTime(settings.sameDayCutoffTime))}</div>
-          <div className="info-card-note">{ar.home.orderBeforeNote}</div>
+          <div className="info-card-note">{isPastCairoCutoff(settings.sameDayCutoffTime) ? ar.home.orderBeforeNotePassed : ar.home.orderBeforeNote}</div>
         </div>
       </div>
     </>

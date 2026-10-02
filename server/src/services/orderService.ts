@@ -15,7 +15,8 @@ import {
 import { lockVariantForOrder, deductVariantStock, type LockedVariant } from './productVariantService.js'
 import { fetchItemsForOrders, type OrderItemDTO } from '../orderItems.js'
 import { canTransitionOrderStatus, type OrderStatus } from '../orderStatus.js'
-import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen } from './deliveryService.js'
+import { getActiveDeliveryZoneFee, isActiveDeliverySlot, checkDeliverySlotCapacityForDate, isDeliveryDateOpen, isSameDayCutoffPassed } from './deliveryService.js'
+import { todayInCairo } from '../cairoDate.js'
 import { recordOrderStatusChange, listOrderStatusHistory, type OrderStatusHistoryEntry } from './orderStatusHistoryService.js'
 import { lockAndValidateLoyaltyRedemption, commitLoyaltyRedemption, restoreRedeemedPointsForOrder, reverseEarnedPointsForOrder } from './loyaltyService.js'
 import { listActivePromotions, computePromotionApplications, recordPromotionApplications, listPromotionApplicationsForOrder, type PromotionApplicationResult } from './promotionService.js'
@@ -213,6 +214,11 @@ export async function createOrder(input: CheckoutInput, userId: string | null, i
       // معطّل بتاريخه بالذات من الأدمن) وليه سعة متاحة لنفس الميعاد في نفس التاريخ ده تحديداً —
       // مش سعة "النهاردة" العامة زي التصميم القديم.
       if (!(await isDeliveryDateOpen(client, input.deliveryDate))) throw new OrderError(400, 'delivery_date_unavailable')
+      // لازم يتفحص هنا كمان (مش بس في /api/delivery/availability للعرض) — عميل بتطبيق قديم
+      // محفوظ، أو عميل غيّر تاريخ التسليم يدوياً بعد تحميل الصفحة، ممكن يبعت تاريخ النهاردة
+      // بعد ما آخر ميعاد طلب توصيل نفس اليوم يكون عدّى فعلاً. 409 (مش 400) لأن التوفر اتغيّر
+      // بعد ما العميل حمّل الصفحة، نفس منطق delivery_slot_full تحت.
+      if (await isSameDayCutoffPassed(client, input.deliveryDate, todayInCairo())) throw new OrderError(409, 'same_day_cutoff_passed')
       if (!(await checkDeliverySlotCapacityForDate(client, input.deliverySlot, input.deliveryDate))) throw new OrderError(409, 'delivery_slot_full')
 
       const discount = input.discountCode ? await findDiscountForUpdate(client, input.discountCode) : undefined

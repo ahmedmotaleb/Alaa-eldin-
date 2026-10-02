@@ -50,6 +50,7 @@ export const ar = {
     bestSellersTitle: 'الأكثر مبيعاً',
     orderBeforeTitle: (cutoffTime: string) => `اطلب قبل ${cutoffTime}`,
     orderBeforeNote: 'ويوصلك الطلب نفس اليوم داخل المدينة.',
+    orderBeforeNotePassed: 'اطلب الآن واختر أقرب موعد توصيل متاح.',
     recentlyViewedTitle: 'شوهد مؤخراً',
     buyAgainTitle: 'اشتريها تاني'
   },
@@ -161,6 +162,7 @@ export const ar = {
     deliveryDateTomorrow: 'بكرة',
     deliveryDateClosed: 'مقفول',
     deliveryDateFullyBooked: 'محجوز بالكامل',
+    deliveryDateCutoffPassed: 'انتهى الوقت',
     deliveryDateWeekdayShort: ['اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت', 'حد'] as string[],
     deliveryDateLoadError: 'تعذر تحميل مواعيد التوصيل المتاحة، حاول تاني',
     deliveryDateRequired: 'اختر يوم توصيل متاح',
@@ -554,6 +556,7 @@ export const ar = {
       customer_address_required: 'العنوان مطلوب',
       invalid_delivery_slot: 'يرجى اختيار موعد توصيل صحيح',
       delivery_slot_full: 'للأسف الميعاد ده امتلأ النهاردة، اختر ميعاد تاني وحاول تاني',
+      same_day_cutoff_passed: 'انتهى موعد طلب التوصيل لليوم. اختر موعداً من الأيام المتاحة.',
       payment_method_not_supported: 'طريقة الدفع غير مدعومة حالياً',
       invalid_items: 'السلة غير صالحة، يرجى إعادة المحاولة',
       invalid_discount_code: 'كود الخصم غير صحيح',

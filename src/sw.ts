@@ -28,7 +28,9 @@ registerRoute(
 )
 
 registerRoute(
-  ({ url }) => ['/api/categories', '/api/banners', '/api/settings'].includes(url.pathname),
+  // settings مستبعد عمداً — إعدادات تشغيلية (زي آخر ميعاد توصيل نفس اليوم) لازم تفضل
+  // طازة دايماً، مش فيها أي تخزين مؤقت حتى StaleWhileRevalidate (راجع server/src/routes/settings.ts).
+  ({ url }) => ['/api/categories', '/api/banners'].includes(url.pathname),
   new StaleWhileRevalidate({
     cacheName: 'catalog-config',
     plugins: [new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 60 * 60 })]

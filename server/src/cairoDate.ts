@@ -22,6 +22,27 @@ export function todayInCairo(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
+// دقائق منذ منتصف الليل بتوقيت القاهرة دلوقتي (مثال: 18:30 => 1110) — بيستخدم
+// Intl.DateTimeFormat مع timeZone صريح بدل أي حساب يدوي UTC+2/+3، عشان قاعدة التوقيت
+// الصيفي المصرية (اللي اتغيّرت تاريخياً أكتر من مرة) تتطبّق صح دايماً من غير ما الكود
+// يعرف تفاصيلها بنفسه.
+export function currentMinutesInCairo(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: CAIRO_TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find(p => p.type === 'minute')?.value ?? '0')
+  return hour * 60 + minute
+}
+
+// بيحوّل نص "HH:MM" (زي إعداد آخر ميعاد توصيل نفس اليوم) لعدد دقائق منذ منتصف الليل —
+// null لو النص مش بصيغة صحيحة، عشان الاستدعاء يقدر يتعامل مع قيمة فاسدة بدفاعية (من غير
+// NaN بيتسرب لمقارنات لاحقة).
+export function hhmmToMinutes(value: unknown): number | null {
+  if (typeof value !== 'string') return null
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
 // يوم الأسبوع بمعيار ISO (1=الاثنين ... 7=الأحد) لتاريخ تقويمي معين — بيتحسب من غير أي
 // تحويل منطقة زمنية (التاريخ نص صريح زي "2026-09-17"، مفيش وقت أو منطقة زمنية فيه أصلاً).
 export function isoWeekdayOf(dateStr: string): number {

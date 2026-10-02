@@ -9,7 +9,6 @@ import { formatMoney } from '../utils/money'
 import { buildWhatsAppUrl } from '../utils/order'
 import { api, ApiError, type ApiAddress, type ApiDeliveryDayAvailability } from '../utils/api'
 import { formatNumber } from '../utils/format'
-import { getSettings } from '../store/settingsStore'
 import { isValidEgyptianMobile } from '../utils/phone'
 import { ar } from '../i18n/ar'
 
@@ -52,8 +51,7 @@ export function CheckoutPage() {
   const navigate = useNavigate()
   const { detailedItems, hasBlockingIssues, subtotal, deliveryFee, discount, promotions, promotionsDiscount, clearCart } = useCart()
   const { user } = useAuth()
-  const { deliveryZones, deliverySlots } = useCatalog()
-  const settings = getSettings()
+  const { deliveryZones, deliverySlots, settings } = useCatalog()
   const [customer, setCustomer] = useState(initialCustomer)
   const [deliveryInstructions, setDeliveryInstructions] = useState('')
   const [substitutionPreference, setSubstitutionPreference] = useState<'replace_similar' | 'contact_me' | 'remove_item'>('contact_me')
@@ -169,20 +167,25 @@ export function CheckoutPage() {
   // بنجيب تقويم مواعيد التوصيل الحقيقي من السيرفر مرة واحدة عند فتح الصفحة — الأيام المقفولة
   // أو الممتلئة بالكامل بتوصل هنا بنفس الحالة، والسيرفر برضه هو اللي بيتأكد فعلياً وقت الدفع
   // (العرض هنا تجربة استخدام بس، مش مصدر الحقيقة).
-  useEffect(() => {
-    let cancelled = false
-    api.getDeliveryAvailability().then(({ days }) => {
-      if (cancelled) return
+  function loadAvailabilityAndSelectFirstOpen() {
+    return api.getDeliveryAvailability().then(({ days }) => {
       setAvailability(days)
       const firstOpenDay = days.find(d => d.open && d.slots.some(s => s.available))
       if (firstOpenDay) {
         setSelectedDate(firstOpenDay.date)
         setSlot(firstOpenDay.slots.find(s => s.available)!.id)
       }
-    }).catch(() => {
+      return days
+    })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    loadAvailabilityAndSelectFirstOpen().catch(() => {
       if (!cancelled) setAvailabilityError(ar.checkout.deliveryDateLoadError)
     })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // لو العميل غيّر يوم التوصيل، أو التقويم لسه بيتحمّل، بنعيد اختيار الميعاد المناسب لليوم
@@ -243,6 +246,13 @@ export function CheckoutPage() {
         const freshBalance = err.data.balance
         if (typeof freshBalance === 'number') setLoyaltyBalance(freshBalance)
         else loadLoyaltyBalance()
+      }
+      // انتهى آخر ميعاد طلب توصيل نفس اليوم بين ما العميل حمّل الصفحة ولحظة إرسال الطلب
+      // (مثلاً حمّل الـ checkout الساعة 5:59 وضغط إرسال الساعة 6:01) — بنعيد تحميل التوفر
+      // فوراً عشان "النهاردة" تختفي ويتحدد أول يوم متاح تاني تلقائياً، من غير ما نلمس السلة
+      // أو بيانات العميل المكتوبة، ومن غير أي طلب تكرار (الطلب الأصلي فشل، مفيش حاجة اتسجلت).
+      if (err instanceof ApiError && err.code === 'same_day_cutoff_passed') {
+        loadAvailabilityAndSelectFirstOpen().catch(() => {})
       }
       setApiError(err instanceof ApiError ? ar.errors.forCode(err.code) : ar.errors.generic)
       setSubmitting(false)
@@ -382,7 +392,11 @@ export function CheckoutPage() {
               <span className="date-chip-weekday">{dateChipLabel(day.date, i)}</span>
               <span className="date-chip-day">{dayNumberOf(day.date)}</span>
               {(!day.open || !day.slots.some(s => s.available)) && (
-                <span className="date-chip-note">{!day.open ? ar.checkout.deliveryDateClosed : ar.checkout.deliveryDateFullyBooked}</span>
+                <span className="date-chip-note">
+                  {day.reason === 'same_day_cutoff_passed'
+                    ? ar.checkout.deliveryDateCutoffPassed
+                    : !day.open ? ar.checkout.deliveryDateClosed : ar.checkout.deliveryDateFullyBooked}
+                </span>
               )}
             </button>
           ))}

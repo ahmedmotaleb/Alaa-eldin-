@@ -6,9 +6,16 @@ import {
   checkDeliverySlotCapacityForDate, getDeliverySlotUsageForDate, listActiveDeliverySlotsWithAvailability,
   getEffectiveSlotCapacity, getDeliveryCalendarSettings, updateDeliveryCalendarSettings,
   upsertDateOverride, deleteDateOverride, listDateOverridesInRange, isDeliveryDateOpen,
-  setSlotDateCapacity, listSlotDateCapacityOverridesInRange
+  setSlotDateCapacity, listSlotDateCapacityOverridesInRange, isSameDayCutoffPassed
 } from './deliveryService.js'
-import { todayInCairo, addCalendarDays, isoWeekdayOf } from '../cairoDate.js'
+import { todayInCairo, addCalendarDays, isoWeekdayOf, currentMinutesInCairo } from '../cairoDate.js'
+
+function minutesToHhmm(totalMinutes: number): string {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440
+  const h = Math.floor(normalized / 60)
+  const m = normalized % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
 
 const TEST_SLOT_ID = 'test-slot-1'
 const TEST_ORDER_ID_1 = 'test-order-capacity-1'
@@ -31,7 +38,7 @@ async function resetFixtures() {
   await pool.query(`UPDATE delivery_slots SET is_active = 1, max_orders_per_day = NULL WHERE id IN ('now', 'evening', 'tomorrow')`)
   await pool.query('DELETE FROM delivery_date_overrides')
   await pool.query('DELETE FROM delivery_slot_date_capacity')
-  await pool.query(`UPDATE store_settings SET delivery_days_ahead = 7, delivery_closed_weekdays = '' WHERE id = 1`)
+  await pool.query(`UPDATE store_settings SET delivery_days_ahead = 7, delivery_closed_weekdays = '', same_day_cutoff_time = '18:00' WHERE id = 1`)
 }
 
 async function insertOrderForSlot(id: string, slotId: string, status = 'placed', deliveryDate = TEST_DATE) {
@@ -303,5 +310,55 @@ describe('isDeliveryDateOpen / date overrides', () => {
     await setSlotDateCapacity(outOfRange, TEST_SLOT_ID, 5)
     const overrides = await listSlotDateCapacityOverridesInRange(TEST_DATE, addCalendarDays(TEST_DATE, 10))
     expect(overrides).toEqual([{ date: TEST_DATE, slotId: TEST_SLOT_ID, maxOrders: 3 }])
+  })
+})
+
+describe('isSameDayCutoffPassed (same-day delivery cutoff, Cairo time)', () => {
+  const nowCairo = currentMinutesInCairo()
+
+  it('today is NOT past cutoff when the cutoff is a few minutes in the future', async () => {
+    const cutoff = minutesToHhmm(nowCairo + 10)
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [cutoff])
+    expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(false)
+  })
+
+  it('today IS past cutoff exactly at the cutoff minute (>=, not >)', async () => {
+    const cutoff = minutesToHhmm(nowCairo)
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [cutoff])
+    expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(true)
+  })
+
+  it('today IS past cutoff when the cutoff is a few minutes in the past', async () => {
+    const cutoff = minutesToHhmm(nowCairo - 10)
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [cutoff])
+    expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(true)
+  })
+
+  it('tomorrow is never affected by the same-day cutoff, regardless of how far in the past it is', async () => {
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', ['00:00'])
+    const tomorrow = addCalendarDays(TEST_DATE, 1)
+    expect(await isSameDayCutoffPassed(pool, tomorrow, TEST_DATE)).toBe(false)
+  })
+
+  it('a date that already is not "today" is unaffected by the cutoff even if it equals today\'s string elsewhere', async () => {
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', ['00:00'])
+    const yesterday = addCalendarDays(TEST_DATE, -1)
+    expect(await isSameDayCutoffPassed(pool, yesterday, TEST_DATE)).toBe(false)
+  })
+
+  it('a cutoff of 00:00 closes same-day delivery for the entire day', async () => {
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', ['00:00'])
+    expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(true)
+  })
+
+  it('a cutoff of 23:59 keeps same-day delivery open until the very end of the day', async () => {
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', ['23:59'])
+    // أي لحظة فعلية في اليوم (ما عدا آخر دقيقة بالظبط) لازم تكون قبل الكتوف ده.
+    if (nowCairo < 1439) expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(false)
+  })
+
+  it('a malformed stored cutoff value defensively does not block same-day delivery', async () => {
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', ['not-a-time'])
+    expect(await isSameDayCutoffPassed(pool, TEST_DATE, TEST_DATE)).toBe(false)
   })
 })

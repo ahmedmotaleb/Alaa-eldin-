@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
-import { setShortPublicCache } from '../publicCache.js'
 import { turnstileSiteKey } from '../services/turnstileService.js'
 
 export const settingsRouter = Router()
@@ -19,8 +18,9 @@ const SELECT_SETTINGS = `
   FROM store_settings WHERE id = 1
 `
 
+// بدون أي كاش (no-store الافتراضي لكل الـ API — راجع app.ts) — إعدادات تشغيلية زي آخر
+// ميعاد توصيل نفس اليوم لازم تترجع فورية بعد أي تعديل من الأدمن، من غير أي تأخير دقيقة.
 settingsRouter.get('/settings', async (_req, res) => {
-  setShortPublicCache(res, 60)
   const { rows } = await pool.query<Record<string, unknown>>(SELECT_SETTINGS)
   const row = rows[0]
   res.json({

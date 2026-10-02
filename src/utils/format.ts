@@ -61,3 +61,19 @@ export function formatCutoffTime(hhmm: string): string {
   const hourText = formatNumber(hour12)
   return m === 0 ? `${hourText} ${period}` : `${hourText}:${String(m).padStart(2, '0')} ${period}`
 }
+
+// فحص تقريبي من جوه المتصفح بس (لعرض نص إرشادي زي بانر الصفحة الرئيسية) — مش المرجع الفعلي
+// لقبول/رفض طلب. المرجع الحقيقي الوحيد لإتاحة توصيل نفس اليوم هو السيرفر (GET
+// /api/delivery/availability وقت الإنشاء الفعلي للطلب)، اللي بيستخدم توقيت القاهرة من
+// Intl.DateTimeFormat بدل أي حساب يدوي UTC+2/+3 — نفس المنطق هنا لتجنب اختلاف يدوي عن
+// السيرفر، لكن بيفضل بس تلميح واجهة، مش بوابة أمنية.
+export function isPastCairoCutoff(hhmm: string): boolean {
+  const [cutoffH, cutoffM] = hhmm.split(':').map(Number)
+  if (!Number.isFinite(cutoffH) || !Number.isFinite(cutoffM)) return false
+  const cutoffMinutes = cutoffH * 60 + cutoffM
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+  const nowH = Number(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const nowM = Number(parts.find(p => p.type === 'minute')?.value ?? '0')
+  const nowMinutes = nowH * 60 + nowM
+  return nowMinutes >= cutoffMinutes
+}

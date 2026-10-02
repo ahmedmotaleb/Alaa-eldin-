@@ -244,6 +244,52 @@ describe('createOrder — server-authoritative delivery zones and slots', () => 
   })
 })
 
+describe('createOrder — same-day delivery cutoff (server-side, Cairo time, not just a frontend hint)', () => {
+  function minutesToHhmm(totalMinutes: number): string {
+    const normalized = ((totalMinutes % 1440) + 1440) % 1440
+    const h = Math.floor(normalized / 60)
+    const m = normalized % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
+  it('a direct order for today is rejected with same_day_cutoff_passed once the cutoff has passed', async () => {
+    const { currentMinutesInCairo } = await import('../cairoDate.js')
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [minutesToHhmm(currentMinutesInCairo() - 1)])
+    await expect(createOrder(baseInput({ deliveryDate: todayInCairo() }), null, nextKey()))
+      .rejects.toMatchObject({ status: 409, code: 'same_day_cutoff_passed' })
+  })
+
+  it('a direct order for today still succeeds before the cutoff', async () => {
+    const { currentMinutesInCairo } = await import('../cairoDate.js')
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [minutesToHhmm(currentMinutesInCairo() + 10)])
+    const { order } = await createOrder(baseInput({ deliveryDate: todayInCairo() }), null, nextKey())
+    expect(order.status).toBe('placed')
+  })
+
+  // القاعدة بتغلق "النهاردة" بس — الطلب نفسه (لباقي الأيام) لازم يستمر عادي بعد الكتوف،
+  // مش يوقف استقبال الطلبات كلها (راجع القسم 14 من الطلب الأصلي).
+  it('a future delivery date still succeeds even after today\'s cutoff has passed', async () => {
+    const { currentMinutesInCairo } = await import('../cairoDate.js')
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [minutesToHhmm(currentMinutesInCairo() - 1)])
+    const tomorrow = addCalendarDays(todayInCairo(), 1)
+    const { order } = await createOrder(baseInput({ deliveryDate: tomorrow }), null, nextKey())
+    expect(order.status).toBe('placed')
+    expect(order.deliveryDate).toBe(tomorrow)
+  })
+
+  it('changing the cutoff in store_settings takes effect immediately, with no deploy/restart needed', async () => {
+    const { currentMinutesInCairo } = await import('../cairoDate.js')
+    const now = currentMinutesInCairo()
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [minutesToHhmm(now + 10)])
+    const { order: before } = await createOrder(baseInput({ deliveryDate: todayInCairo() }), null, nextKey())
+    expect(before.status).toBe('placed')
+
+    await pool.query('UPDATE store_settings SET same_day_cutoff_time = $1 WHERE id = 1', [minutesToHhmm(now - 10)])
+    await expect(createOrder(baseInput({ deliveryDate: todayInCairo() }), null, nextKey()))
+      .rejects.toMatchObject({ status: 409, code: 'same_day_cutoff_passed' })
+  })
+})
+
 describe('createOrder — stock validation and atomic deduction', () => {
   it('deducts exactly the ordered quantity and records a sale movement', async () => {
     await setStock(20)

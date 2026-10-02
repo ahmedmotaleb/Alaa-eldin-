@@ -359,6 +359,9 @@ export interface ApiDeliveryDayAvailability {
   date: string
   weekday: number
   open: boolean
+  // موجود بس لما سبب إغلاق اليوم تحديداً هو انتهاء آخر ميعاد توصيل نفس اليوم (مش يوم مقفول
+  // أصلاً أو استثناء إداري) — عشان الواجهة تقدر تعرض توضيح أدق من "غير متاح" عام.
+  reason?: 'same_day_cutoff_passed'
   slots: { id: string, label: string, note: string, available: boolean, remainingCapacity: number | null }[]
 }
 
@@ -521,7 +524,10 @@ export const api = {
   getProductVariantsForSelection: (productId: string) =>
     request<{ variants: ApiProductVariant[] }>(`/products/${encodeURIComponent(productId)}/variants`),
   listBanners: () => request<{ banners: ApiBanner[] }>('/banners'),
-  getSettings: () => request<{ settings: ApiSettings, captcha: { turnstileSiteKey: string | null } }>('/settings'),
+  // إعدادات تشغيلية (زي آخر ميعاد توصيل نفس اليوم) لازم تفضل طازة دايماً — cache: 'no-store'
+  // صريح هنا عشان حتى الـ browser HTTP cache الافتراضي ما يسترجعش نسخة قديمة من service worker
+  // أو من الجهاز لو الـ PWA اتفتحت تاني بعد ما كانت في الخلفية.
+  getSettings: () => request<{ settings: ApiSettings, captcha: { turnstileSiteKey: string | null } }>('/settings', { cache: 'no-store' }),
   getPage: (slug: string) => request<{ page: ApiContentPage }>(`/pages/${encodeURIComponent(slug)}`),
   getAlternatives: (productId: string) => request<{ alternatives: ApiAlternativeProduct[] }>(`/products/${encodeURIComponent(productId)}/alternatives`),
   listOrders: () => request<{ orders: ApiOrder[], pagination: { page: number, limit: number, total: number, pages: number } }>('/orders'),

@@ -93,7 +93,7 @@ export function DeliverySettingsPage() {
           </label>
           <label>آخر ميعاد لطلب توصيل نفس اليوم
             <input type="time" value={form.sameDayCutoffTime} onChange={e => set('sameDayCutoffTime', e.target.value)} />
-            <span className="admin-form-help">ده نص إعلامي بس بيظهر في بانر الصفحة الرئيسية للعميل (مثلاً "اطلب قبل 12 منتصف الليل") — مش بيوقف استقبال الطلبات فعلياً بعد الميعاد ده، ومواعيد التوصيل الحقيقية بتتحدد من جدول المواعيد تحت</span>
+            <span className="admin-form-help">بعد هذا الموعد لن يكون التوصيل في نفس اليوم متاحاً للطلبات الجديدة، وسيتم توجيه العميل لأقرب يوم متاح تلقائياً. الطلبات نفسها تستمر عادي لباقي الأيام المتاحة — ده بيوقف توصيل "النهاردة" بس، مش استقبال الطلبات. التغيير بيتفعّل فوراً بتوقيت القاهرة من غير أي نشر جديد.</span>
           </label>
 
           {error && <div className="admin-form-error">{error}</div>}

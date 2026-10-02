@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg'
 import { pool } from '../db.js'
-import { isoWeekdayOf, parseClosedWeekdays, serializeClosedWeekdays } from '../cairoDate.js'
+import { isoWeekdayOf, parseClosedWeekdays, serializeClosedWeekdays, currentMinutesInCairo, hhmmToMinutes } from '../cairoDate.js'
 
 // دوال السعة/التقويم بتحت بتقبل Pool أو PoolClient سوا — بعضها بيتنادى جوه معاملة إنشاء
 // الطلب (لازم client عشان يشوف قفل الصفوف/القراءات الحالية جوه نفس المعاملة)، وبعضها
@@ -172,6 +172,21 @@ export async function isDeliveryDateOpen(db: Queryable, date: string): Promise<b
   )
   const closedWeekdays = parseClosedWeekdays(settingsRows[0].closedWeekdays)
   return !closedWeekdays.includes(isoWeekdayOf(date))
+}
+
+// قاعدة توصيل فعلية (مش بانر إعلامي بس): لو التاريخ المطلوب هو النهاردة بتوقيت القاهرة،
+// وبقى الوقت الحالي بتوقيت القاهرة وصل أو عدّى آخر ميعاد طلب توصيل نفس اليوم (same_day_
+// cutoff_time)، التاريخ ده يبقى مقفول لطلبات جديدة. أي تاريخ تاني (بكرة أو بعده) ما بيتأثرش
+// خالص، حتى لو بعد الكتوف. بتتنادى من مسار التوفر (للعرض) ومن orderService (للتحقق الفعلي
+// وقت إنشاء الطلب) — نفس الدالة، مصدر واحد للحقيقة.
+export async function isSameDayCutoffPassed(db: Queryable, date: string, todayStr: string): Promise<boolean> {
+  if (date !== todayStr) return false
+  const { rows } = await db.query<{ cutoff: string }>(
+    'SELECT same_day_cutoff_time as "cutoff" FROM store_settings WHERE id = 1'
+  )
+  const cutoffMinutes = hhmmToMinutes(rows[0]?.cutoff)
+  if (cutoffMinutes === null) return false
+  return currentMinutesInCairo() >= cutoffMinutes
 }
 
 export interface SlotDateCapacityOverride {

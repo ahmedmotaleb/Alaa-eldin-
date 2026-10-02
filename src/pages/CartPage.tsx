@@ -5,7 +5,7 @@ import { StickyActionBar } from '../components/StickyActionBar'
 import { CartUpsell } from '../components/CartUpsell'
 import { CartItemAlternatives } from '../components/CartItemAlternatives'
 import { EmptyState } from '../components/EmptyState'
-import { getSettings } from '../store/settingsStore'
+import { useCatalog } from '../store/CatalogContext'
 import { useCart } from '../store/CartContext'
 import { useToast } from '../store/ToastContext'
 import { formatMoney } from '../utils/money'
@@ -38,7 +38,7 @@ export function CartPage() {
     }
   }
 
-  const settings = getSettings()
+  const { settings } = useCatalog()
   const belowMinimum = subtotal > 0 && subtotal < settings.minimumOrder
   const remainingForFree = Math.max(0, settings.freeShippingThreshold - subtotal)
   const freeProgress = Math.min(100, Math.round((subtotal / settings.freeShippingThreshold) * 100))

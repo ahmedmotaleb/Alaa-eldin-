@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import {
   listActiveDeliveryZones, listActiveDeliverySlotsWithAvailability,
-  getDeliveryCalendarSettings, isDeliveryDateOpen
+  getDeliveryCalendarSettings, isDeliveryDateOpen, isSameDayCutoffPassed
 } from '../services/deliveryService.js'
 import { pool } from '../db.js'
 import { todayInCairo, nextCalendarDates, isoWeekdayOf } from '../cairoDate.js'
@@ -30,14 +30,20 @@ deliveryRouter.get('/availability', async (req, res) => {
   const requestedDays = Number(req.query.days)
   const days = Number.isInteger(requestedDays) && requestedDays > 0 ? Math.min(requestedDays, MAX_REQUESTABLE_DAYS) : daysAhead
 
-  const dates = nextCalendarDates(todayInCairo(), days)
+  const today = todayInCairo()
+  const dates = nextCalendarDates(today, days)
   const result = await Promise.all(dates.map(async date => {
-    const open = await isDeliveryDateOpen(pool, date)
+    const weekdayOpen = await isDeliveryDateOpen(pool, date)
+    const cutoffPassed = weekdayOpen && await isSameDayCutoffPassed(pool, date, today)
+    const open = weekdayOpen && !cutoffPassed
     const slots = open ? await listActiveDeliverySlotsWithAvailability(date) : []
     return {
       date,
       weekday: isoWeekdayOf(date),
       open,
+      // بيتحط بس لما سبب الإغلاق تحديداً هو كتوف نفس اليوم (مش يوم مقفول أصلاً أو استثناء
+      // إداري) — عشان الواجهة تقدر تعرض توضيح أدق من "غير متاح" عام.
+      ...(cutoffPassed ? { reason: 'same_day_cutoff_passed' as const } : {}),
       slots: slots.map(s => ({ id: s.id, label: s.label, note: s.note, available: s.available, remainingCapacity: s.remainingCapacity }))
     }
   }))
