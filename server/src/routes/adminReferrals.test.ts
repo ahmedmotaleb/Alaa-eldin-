@@ -9,6 +9,10 @@ const PREFIX = 'adminref-'
 
 async function cleanup() {
   await pool.query('DELETE FROM referrals WHERE referral_code LIKE $1', [`${PREFIX}%`])
+  // POST /loyalty-adjustments (تحت) بيكتب صف loyalty_ledger بـ created_by_admin_id بيشاور
+  // على المدير اللي نفّذ التعديل — لازم يتشال الأول، وإلا DELETE FROM users تحت هيفشل بـ
+  // foreign key violation لو المدير ده من مستخدمي الملف ده نفسه.
+  await pool.query('DELETE FROM loyalty_ledger WHERE created_by_admin_id IN (SELECT id FROM users WHERE email LIKE $1)', [`${PREFIX}%`])
   await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`])
 }
 
