@@ -353,6 +353,35 @@ export interface AdminProduct {
   sku: string | null
 }
 
+export interface ScannedBarcodeVariant {
+  id: string
+  name: string
+  sku: string | null
+  barcode: string
+  price: number
+  stock: number
+  available: boolean
+}
+
+// نتيجة صفحة "مسح الباركود" — موجودة لو الباركود اتطابق مع باركود منتج أساسي مباشرة، أو
+// باركود متغيّر (`variant` موجودة في الحالة الثانية بس؛ السعر/المخزون فوق في الحالتين
+// بيكونوا الصحيحين بالفعل لما اتطابق عليه — المنتج أو المتغيّر، راجع السيرفر).
+export interface ScannedBarcodeProduct {
+  id: string
+  slug: string
+  name: string
+  barcode: string
+  sku: string | null
+  stock: number
+  price: number
+  oldPrice?: number
+  unit: string
+  available: boolean
+  emoji: string
+  primaryImage?: string
+  variant?: ScannedBarcodeVariant
+}
+
 export type AdminProductInput = Omit<AdminProduct, 'orderCount'>
 
 export type ImportRowAction = 'create' | 'update' | 'invalid'
@@ -1774,7 +1803,7 @@ export const api = {
   generateProductSku: (id: string) =>
     request<{ id: string, sku: string | null }>(`/admin/products/${encodeURIComponent(id)}/generate-sku`, { method: 'POST' }),
   findProductByBarcode: (barcode: string) =>
-    request<{ product: { id: string, name: string, barcode: string, sku: string | null, stock: number, price: number, emoji: string } }>(`/admin/products/by-barcode/${encodeURIComponent(barcode)}`),
+    request<{ product: ScannedBarcodeProduct }>(`/admin/products/by-barcode/${encodeURIComponent(barcode)}`),
   writeOffStock: (body: { productId: string, quantity: number, reason: WriteOffReason, note?: string, batchId?: string }) =>
     request<{ newStock: number }>('/admin/stock-write-offs', { method: 'POST', body: JSON.stringify(body) }),
   listSupplierReturns: (params: { status?: SupplierReturnStatus, supplierId?: string } = {}) =>

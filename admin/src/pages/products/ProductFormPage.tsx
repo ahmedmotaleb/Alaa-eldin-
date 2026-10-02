@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { api, ApiError, type AdminCategory, type AdminProductInput } from '../../utils/api'
 import { ProductImagesManager } from '../../components/ProductImagesManager'
 import { PendingProductImages, type StagedProductImage } from '../../components/PendingProductImages'
@@ -37,9 +37,16 @@ export function ProductFormPage() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const location = useLocation()
   const { setHeader } = useOutletContext<LayoutContext>()
   const [categories, setCategories] = useState<AdminCategory[]>([])
-  const [form, setForm] = useState<AdminProductInput>(emptyForm)
+  // لو جاي من صفحة "مسح الباركود" بعد باركود غير مسجّل ("إضافة منتج جديد بهذا الباركود")،
+  // الباركود بيتوصّل عبر router state (navigate state)، مش query param — عشان ميتسجّلش في
+  // الـ history/الرابط نفسه. بيتطبّق بس لمنتج جديد (مش تعديل منتج موجود).
+  const [form, setForm] = useState<AdminProductInput>(() => {
+    const prefillBarcode = !isEdit && (location.state as { prefillBarcode?: unknown } | null)?.prefillBarcode
+    return typeof prefillBarcode === 'string' && prefillBarcode ? { ...emptyForm, barcode: prefillBarcode } : emptyForm
+  })
   const [loading, setLoading] = useState(isEdit)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')

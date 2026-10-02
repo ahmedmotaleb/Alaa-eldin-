@@ -87,4 +87,48 @@ describe('productSkuService', () => {
     const found = await findProductByBarcode('0000000000000')
     expect(found).toBeNull()
   })
+
+  it('includes unit/available/primaryImage on a product-barcode match', async () => {
+    const found = await findProductByBarcode('6221031001234')
+    expect(found?.unit).toBe('وحدة')
+    expect(found?.available).toBe(true)
+    expect(found?.variant).toBeUndefined()
+  })
+
+  it('finds a product by an exact variant barcode, returning the variant’s own price/stock (not the parent’s)', async () => {
+    const variantId = 'test-variant-sku-1'
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [variantId])
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, cost, stock, available, sort_order, created_at)
+       VALUES ($1, $2, 'كبير', 'VAR-SKU-1', '6221031009999', 99, 50, 3, 1, 0, now())`,
+      [variantId, PRODUCT_ID]
+    )
+    try {
+      const found = await findProductByBarcode('6221031009999')
+      expect(found?.id).toBe(PRODUCT_ID)
+      // منتج 1 (fixture) مخزونه 20 وسعره 10 — لازم الرد يرجّع بيانات المتغيّر، مش دول.
+      expect(found?.stock).toBe(20)
+      expect(found?.price).toBe(10)
+      expect(found?.variant).toEqual({
+        id: variantId, name: 'كبير', sku: 'VAR-SKU-1', barcode: '6221031009999', price: 99, stock: 3, available: true
+      })
+    } finally {
+      await pool.query('DELETE FROM product_variants WHERE id = $1', [variantId])
+    }
+  })
+
+  it('does not match a variant with an empty barcode', async () => {
+    const variantId = 'test-variant-sku-2'
+    await pool.query('DELETE FROM product_variants WHERE id = $1', [variantId])
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, price, cost, stock, available, barcode, sort_order, created_at)
+       VALUES ($1, $2, 'صغير', 15, 7, 5, 1, '', 0, now())`,
+      [variantId, PRODUCT_ID]
+    )
+    try {
+      expect(await findProductByBarcode('')).toBeNull()
+    } finally {
+      await pool.query('DELETE FROM product_variants WHERE id = $1', [variantId])
+    }
+  })
 })
