@@ -117,6 +117,19 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: 0 12px 26px rgba(0,0,0,.25); white-space: nowrap; animation: toastin .22s ease;
 }
 
+/* ---------- زرار واتساب العائم ---------- */
+.whatsapp-float-btn {
+  position: fixed; left: 16px; bottom: calc(70px + env(safe-area-inset-bottom));
+  z-index: 9999; width: 56px; height: 56px; border-radius: 50%;
+  background: #25D366; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,.28); text-decoration: none;
+}
+/* صفحات فيها شريط سفلي عريض آخر شغال فعلاً (sticky-cart-bar أو sticky-action-bar) —
+   الزرار بيرتفع فوقه بدل ما يتكدّس عليه. راجع hasFullWidthStickyBar في WhatsAppFloatingButton.tsx */
+.whatsapp-float-btn.raised { bottom: calc(150px + env(safe-area-inset-bottom)); }
+.whatsapp-float-btn:hover { filter: brightness(.96); }
+.whatsapp-float-btn:active { transform: scale(.96); }
+
 /* ---------- sticky action bar ---------- */
 .sticky-action-bar {
   position: fixed; bottom: 70px; inset-inline: 0; z-index: 45;

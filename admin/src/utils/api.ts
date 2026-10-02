@@ -1350,7 +1350,7 @@ export interface AdminSettings {
 }
 
 export interface IntegrationsStatus {
-  whatsapp: { configured: boolean }
+  whatsapp: { configured: boolean, phoneVerification: { apiConfigured: boolean, templateConfigured: boolean } }
   push: { configured: boolean, subscriptionCount: number }
   email: { configured: boolean }
   cloudinary: { configured: boolean, connected: boolean, status: 'connected' | 'credentials_invalid' | 'not_configured' | 'provider_unreachable' }

@@ -162,6 +162,43 @@ describe('POST /api/admin/settings/whatsapp-number/request-verification', () => 
     process.env.WHATSAPP_PHONE_VERIFICATION_TEMPLATE = originalTemplate
     vi.resetModules()
   })
+
+  it('returns send_failed (502) when the WhatsApp provider itself rejects the message, without touching the number', async () => {
+    fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: { message: 'simulated meta failure' } }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { agent } = await fullAdminAgent('providerfail')
+    const res = await requestVerification(agent, NEW_NUMBER)
+    expect(res.status).toBe(502)
+    expect(res.body.error).toBe('send_failed')
+    expect(res.body.otp).toBeUndefined()
+
+    const { rows } = await pool.query<{ whatsappNumber: string }>('SELECT whatsapp_number as "whatsappNumber" FROM store_settings WHERE id = 1')
+    expect(rows[0].whatsappNumber).toBe(ORIGINAL_NUMBER)
+  })
+
+  it('blocks further OTP requests once the rate limit (30 per 15 minutes) is exceeded', async () => {
+    // استيراد تطبيق منفصل بعدّاد rate-limit خاص بيه (في الذاكرة) — عشان العدّاد ده ميتأثرش
+    // بكل الطلبات التانية اللي حصلت فوق في باقي اختبارات هذا الملف على نفس التطبيق المشترك.
+    vi.resetModules()
+    const { app: freshApp } = await import('../app.js')
+    const agent = request.agent(freshApp)
+    const email = uniqueEmail('ratelimit')
+    const r = await agent.post('/api/auth/register').send({ email, password: STRONG_PASSWORD, fullName: 'مسؤول اختبار' })
+    await pool.query("UPDATE users SET is_admin = 1, role = 'admin', role_id = NULL WHERE id = $1", [r.body.user.id])
+
+    let lastRes: Awaited<ReturnType<typeof agent.post>> | null = null
+    for (let i = 0; i < 31; i++) {
+      lastRes = await agent.post('/api/admin/settings/whatsapp-number/request-verification').send({ phone: NEW_NUMBER })
+    }
+    // أول طلب نجح (201)، والباقي لحد الطلب الثلاثين رجعوا resend_cooldown (429 من منطق العمل
+    // نفسه) — الطلب الحادي والثلاثين لازم يُرفض من middleware الـ rate-limit نفسه، مش من
+    // منطق العمل (مفيش body.error بالشكل المعروف بتاعنا).
+    expect(lastRes!.status).toBe(429)
+    expect(lastRes!.body?.error).not.toBe('resend_cooldown')
+
+    vi.resetModules()
+  })
 })
 
 describe('POST /api/admin/settings/whatsapp-number/verify', () => {

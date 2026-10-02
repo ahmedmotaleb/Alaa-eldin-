@@ -4,6 +4,7 @@ import { recordAuditLog } from '../services/auditLogService.js'
 import { logEvent, maskPhone } from '../logger.js'
 import { whatsappConfigured, sendWhatsAppMessage } from '../services/whatsappService.js'
 import { whatsappWebhookConfigured } from '../services/whatsappWebhookService.js'
+import { getPhoneVerificationConfigStatus } from '../services/whatsappNumberVerificationService.js'
 import { pushConfigured, countPushSubscriptions } from '../services/pushService.js'
 import { emailConfigured } from '../email.js'
 import { imageStorageConfigured, checkImageStorageConnection } from '../services/imageStorageService.js'
@@ -18,7 +19,7 @@ adminIntegrationsRouter.get('/', requirePermission('integrations.manage'), async
   const pushSubscriptionCount = pushConfigured ? await countPushSubscriptions() : 0
   const cloudinaryStatus = await checkImageStorageConnection()
   res.json({
-    whatsapp: { configured: whatsappConfigured, deliveryWebhookConfigured: whatsappWebhookConfigured },
+    whatsapp: { configured: whatsappConfigured, deliveryWebhookConfigured: whatsappWebhookConfigured, phoneVerification: getPhoneVerificationConfigStatus() },
     push: { configured: pushConfigured, subscriptionCount: pushSubscriptionCount },
     email: { configured: emailConfigured },
     cloudinary: { configured: imageStorageConfigured, connected: cloudinaryStatus === 'connected', status: cloudinaryStatus }

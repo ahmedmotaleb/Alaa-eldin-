@@ -73,6 +73,19 @@ export function IntegrationsSettingsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>الحالة:</span><StatusBadge configured={status.whatsapp.configured} />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>تحقق تغيير رقم خدمة العملاء (OTP):</span>
+          <StatusBadge configured={status.whatsapp.phoneVerification.apiConfigured && status.whatsapp.phoneVerification.templateConfigured} />
+        </div>
+        {status.whatsapp.phoneVerification.apiConfigured && !status.whatsapp.phoneVerification.templateConfigured && (
+          <div className="admin-form-help">
+            الاتصال بواتساب شغال، لكن قالب التحقق (WHATSAPP_PHONE_VERIFICATION_TEMPLATE) غير مُعد في متغيرات بيئة السيرفر —
+            لازم يتم إنشاء واعتماد قالب AUTHENTICATION في Meta Business Manager ثم ضبط اسمه هنا قبل ما "تغيير رقم واتساب خدمة العملاء" يقدر يبعت أي كود تحقق.
+          </div>
+        )}
+        {!status.whatsapp.phoneVerification.apiConfigured && (
+          <div className="admin-form-help">واتساب (WhatsApp Business Cloud API) نفسه غير متصل — راجع حالة "واتساب" أعلى هذه البطاقة أولاً.</div>
+        )}
         {status.whatsapp.configured && (
           <>
             <label>رقم لاختبار الاتصال (اختياري — بيتبعتله رسالة اختبار فعلية)

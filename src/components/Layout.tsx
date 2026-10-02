@@ -7,6 +7,7 @@ import { useAuth } from '../store/AuthContext'
 import { usePageTitle } from '../store/pageTitleStore'
 import { PromoModal } from './PromoModal'
 import { StickyCartBar } from './StickyCartBar'
+import { WhatsAppFloatingButton } from './WhatsAppFloatingButton'
 import { AddressSheet } from './AddressSheet'
 import { ar } from '../i18n/ar'
 
@@ -109,6 +110,7 @@ export function Layout() {
       </main>
 
       <StickyCartBar />
+      <WhatsAppFloatingButton />
       <PromoModal />
       {addressSheetOpen && <AddressSheet onClose={() => setAddressSheetOpen(false)} />}
 
