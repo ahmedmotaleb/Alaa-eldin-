@@ -135,6 +135,9 @@ export interface AdminUser {
   roleId: string | null
   active: boolean
   mustChangePassword: boolean
+  // السيرفر بيضيفها بس لحساب إداري (isAdmin=true) — راجع GET/PATCH /api/auth/me وroutes
+  // تسجيل الدخول. مفيش هنا لحساب عميل عادي، وAdminLayout أصلاً بيرفض أي user مش isAdmin.
+  permissions?: string[]
 }
 
 export interface AdminRole {

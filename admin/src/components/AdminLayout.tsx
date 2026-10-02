@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { CommandPalette } from './CommandPalette'
 import { RequiredPasswordChange } from './RequiredPasswordChange'
+import { AdminPushActivationCta } from './AdminPushActivationCta'
 import { useRequireAdmin } from '../hooks/useRequireAdmin'
 import { api } from '../utils/api'
 
@@ -122,6 +123,7 @@ export function AdminLayout() {
           <Outlet context={{ setHeader } satisfies LayoutContext} />
         </div>
       </main>
+      <AdminPushActivationCta />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )

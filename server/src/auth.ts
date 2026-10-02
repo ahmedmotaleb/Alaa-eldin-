@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import type { Request, Response, NextFunction } from 'express'
 import { pool } from './db.js'
-import { userHasPermission, type Permission } from './services/permissionService.js'
+import { userHasPermission, getUserPermissions, type Permission } from './services/permissionService.js'
 
 export const SESSION_COOKIE = 'session_token'
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days

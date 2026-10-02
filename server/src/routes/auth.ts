@@ -12,6 +12,7 @@ import { isValidEgyptianMobile } from '../phone.js'
 import { isStrongPassword } from '../passwordPolicy.js'
 import { publicOrigin } from '../publicUrl.js'
 import { logEvent, logWarn } from '../logger.js'
+import { getUserPermissions } from '../services/permissionService.js'
 import {
   isTwoFactorEnabled,
   createPendingTwoFactorLogin,
@@ -179,8 +180,9 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
   const { token, expires } = await createSession(row.id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id })
+  const loggedInUser = { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
+    user: loggedInUser.isAdmin ? { ...loggedInUser, permissions: [...await getUserPermissions(loggedInUser)] } : loggedInUser
   })
 })
 
@@ -219,8 +221,9 @@ authRouter.post('/2fa/verify-login', loginRateLimit, async (req, res) => {
   const { token, expires } = await createSession(row.id, sessionMetaFrom(req))
   setSessionCookie(res, token, expires)
   logEvent('login_success', { userId: row.id, twoFactor: true })
+  const loggedInUser = { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
   res.json({
-    user: { id: row.id, email: row.email, fullName: row.fullName, mobile: row.mobile ?? undefined, createdAt: row.createdAt, isAdmin: !!row.isAdmin, role: row.role, roleId: row.roleId, active: !!row.active, mustChangePassword: !!row.mustChangePassword }
+    user: loggedInUser.isAdmin ? { ...loggedInUser, permissions: [...await getUserPermissions(loggedInUser)] } : loggedInUser
   })
 })
 
@@ -333,12 +336,16 @@ authRouter.post('/logout', async (req, res) => {
   res.status(204).end()
 })
 
-authRouter.get('/me', (req, res) => {
+authRouter.get('/me', async (req, res) => {
   if (!req.user) {
     res.status(401).json({ error: 'unauthorized' })
     return
   }
-  res.json({ user: req.user })
+  // permissions بس لحساب إداري (isAdmin) — getUserPermissions بترجع fallback كامل/تشغيلي
+  // لأي مستخدم legacy (roleId=null)، وده مش صحيح لعميل عادي مش أدمن أصلاً؛ عميل عادي بيستلم
+  // نفس شكل الاستجابة القديم بالظبط من غير حقل permissions خالص.
+  const permissions = req.user.isAdmin ? [...await getUserPermissions(req.user)] : undefined
+  res.json({ user: permissions ? { ...req.user, permissions } : req.user })
 })
 
 // تعديل بيانات الحساب — الاسم والموبايل بس (نفس قاعدة الموبايل المصري الصارمة). تغيير
@@ -357,7 +364,8 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
   const mobile = b.mobile.trim() || null
   await pool.query('UPDATE users SET full_name = $1, mobile = $2 WHERE id = $3', [fullName, mobile, req.user!.id])
   logEvent('profile_updated', { userId: req.user!.id })
-  res.json({ user: { ...req.user, fullName, mobile: mobile ?? undefined } })
+  const updatedProfile = { ...req.user!, fullName, mobile: mobile ?? undefined }
+  res.json({ user: updatedProfile.isAdmin ? { ...updatedProfile, permissions: [...await getUserPermissions(updatedProfile)] } : updatedProfile })
 })
 
 // تغيير كلمة مرور إجباري — لحساب لوحة تحكم اتعمله أدمن بكلمة مرور مؤقتة ومطلوب منه يغيّرها
@@ -383,7 +391,8 @@ authRouter.post('/change-required-password', requireAuth, async (req, res) => {
 
   await pool.query('UPDATE users SET password_hash = $1, must_change_password = 0 WHERE id = $2', [hashPassword(newPassword), req.user!.id])
   logEvent('required_password_changed', { userId: req.user!.id })
-  res.json({ user: { ...req.user, mustChangePassword: false } })
+  const unlockedUser = { ...req.user!, mustChangePassword: false }
+  res.json({ user: unlockedUser.isAdmin ? { ...unlockedUser, permissions: [...await getUserPermissions(unlockedUser)] } : unlockedUser })
 })
 
 // إدارة الجلسات/الأجهزة (حسابي → الأمان → أجهزتي) — كل العمليات هنا مقتصرة على جلسات
