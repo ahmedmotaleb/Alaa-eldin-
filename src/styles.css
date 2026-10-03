@@ -709,6 +709,24 @@ h1, h2, h3, p { margin: 0; }
 .sticky-cart-bar-total-label { font-size: 11.5px; font-weight: 700; opacity: .85; }
 .sticky-cart-bar-total-amount { font-size: 16px; font-weight: 900; color: var(--brand-orange); }
 
+/* ---------- بانر تثبيت التطبيق (PWA) ---------- */
+.install-app-banner {
+  position: fixed; bottom: 70px; inset-inline: 0; z-index: 45;
+  margin: 0 14px; max-width: 692px; margin-inline: auto;
+  background: #fff; border-radius: 16px; box-shadow: 0 10px 24px rgba(15,25,35,.18);
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+}
+.install-app-banner-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+.install-app-banner-text { flex: 1; min-width: 0; }
+.install-app-banner-title { font-weight: 900; font-size: 13.5px; color: #1A1A1A; }
+.install-app-banner-note { font-weight: 600; font-size: 11.5px; color: var(--muted); }
+.install-app-banner-cta {
+  flex: none; border: 0; background: var(--brand-blue); color: #fff; border-radius: 12px;
+  padding: 0 16px; height: 36px; font-weight: 800; font-size: 13px; cursor: pointer;
+}
+.install-app-banner-cta:hover { background: var(--brand-blue-dark); }
+.install-app-banner-close { flex: none; border: 0; background: none; color: var(--muted); font-size: 15px; padding: 6px; cursor: pointer; }
+
 /* ---------- weight/unit selection bottom sheet ---------- */
 .add-button.unit-select { width: auto; min-width: 32px; padding: 0 10px; border-radius: 12px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
 .add-button-badge { font-size: 13px; font-weight: 900; }

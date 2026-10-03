@@ -98,6 +98,13 @@ export const ar = {
     closeAriaLabel: 'إغلاق'
   },
 
+  installPrompt: {
+    title: 'ثبّت تطبيق علاء الدين',
+    note: 'تسوق أسرع من الشاشة الرئيسية، حتى بدون نت',
+    iosNote: 'من قائمة المشاركة اختر "إضافة للشاشة الرئيسية"',
+    installCta: 'تثبيت'
+  },
+
   unitSheet: {
     selectedTotal: 'الإجمالي المختار',
     confirm: 'إضافة للسلة',

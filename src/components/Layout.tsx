@@ -8,6 +8,7 @@ import { usePageTitle } from '../store/pageTitleStore'
 import { PromoModal } from './PromoModal'
 import { StickyCartBar } from './StickyCartBar'
 import { WhatsAppFloatingButton } from './WhatsAppFloatingButton'
+import { InstallAppBanner } from './InstallAppBanner'
 import { AddressSheet } from './AddressSheet'
 import { ar } from '../i18n/ar'
 
@@ -111,6 +112,7 @@ export function Layout() {
 
       <StickyCartBar />
       <WhatsAppFloatingButton />
+      <InstallAppBanner />
       <PromoModal />
       {addressSheetOpen && <AddressSheet onClose={() => setAddressSheetOpen(false)} />}
 
