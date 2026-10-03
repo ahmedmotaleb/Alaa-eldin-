@@ -9,7 +9,7 @@ import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, generateProductImportTemplateCsv, type ImportConfirmRow } from '../services/productImportService.js'
 import { applyBulkProductAction, type BulkProductActionType } from '../services/bulkProductActionsService.js'
 import {
-  SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, softDeleteProduct, restoreProduct,
+  SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, softDeleteProduct, restoreProduct, endProductOffer,
   type ProductRow, type ProductWriteInput
 } from '../services/productService.js'
 import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
@@ -60,6 +60,9 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
   const status = typeof req.query.status === 'string' ? req.query.status : 'active'
   if (status === 'deleted') conditions.push(`p.deleted_at IS NOT NULL`)
   else if (status !== 'all') conditions.push(`p.deleted_at IS NULL`)
+  // صفحة "عروض المنتجات" الإدارية — offer عمود GENERATED حقيقي (old_price > price، راجع
+  // migration 0073) فمفيش خطر إنه يرجّع منتج عرضه قديم/وهمي فعلياً.
+  if (req.query.offerOnly === 'true' || req.query.offerOnly === '1') conditions.push(`p.offer = 1`)
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   if (!paginationRequested) {
@@ -439,7 +442,6 @@ async function validateBody(body: unknown): Promise<ValidateBodyResult> {
       emoji: (b.emoji as string).trim(),
       available: b.available as boolean,
       bestseller: !!b.bestseller,
-      offer: !!b.offer,
       stock: b.stock as number,
       alertThreshold: b.alertThreshold as number,
       barcode: typeof b.barcode === 'string' ? b.barcode.trim() : '',
@@ -541,6 +543,26 @@ adminProductsRouter.post('/:id/restore', requirePermission('products.delete'), a
     entityType: 'product',
     entityId: String(req.params.id),
     newValues: { name: product.name, sku: product.sku }
+  })
+  res.json({ product })
+})
+
+// "إنهاء العرض" — بيمسح old_price بس (بدون حذف المنتج ولا تغيير سعره الحالي)، فيختفي من
+// صفحة العروض فوراً (offer عمود GENERATED من old_price/price، راجع productService.endProductOffer).
+// idempotent: منتج من غير عرض فعلاً بيرجع برضه 200 بنفس بياناته (مفيش حاجة تتغيّر).
+adminProductsRouter.post('/:id/end-offer', requirePermission('products.edit'), async (req, res) => {
+  const product = await endProductOffer(String(req.params.id), req.user!.id)
+  if (!product) {
+    res.status(404).json({ error: 'product_not_found' })
+    return
+  }
+  logEvent('admin_product_updated', { source: 'end_offer', productId: req.params.id })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_offer_ended',
+    entityType: 'product',
+    entityId: String(req.params.id),
+    newValues: { name: product.name, price: product.price }
   })
   res.json({ product })
 })

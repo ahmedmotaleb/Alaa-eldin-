@@ -341,6 +341,28 @@ describe('confirmPricingRows — apply + cost history + audit + rollback data', 
     expect(rows[0].oldPrice).toBeNull()
   })
 
+  // offer عمود GENERATED من السيرفر (oldPrice > price) — bulk pricing بيعدّل price/old_price
+  // بس، ومفيش حاجة تانية مطلوبة عشان offer يفضل متزامن مع أي تحديث جماعي للأسعار.
+  it('a bulk price row that gives a product a real oldPrice > price turns the offer on', async () => {
+    const before = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_B]) // price=200, oldPrice=null أصلاً
+    expect(before.rows[0].offer).toBe(0)
+
+    await confirmPricingRows([toConfirmRow(2, baseRecord({ product_id: PRODUCT_B, new_old_price: '250' }))], ADMIN_ID)
+
+    const after = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_B])
+    expect(after.rows[0].offer).toBe(1)
+  })
+
+  it('a bulk price row that raises price above the existing oldPrice turns the offer off', async () => {
+    const before = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_A]) // price=100, oldPrice=120 أصلاً عرض
+    expect(before.rows[0].offer).toBe(1)
+
+    await confirmPricingRows([toConfirmRow(2, baseRecord({ new_price: '130' }))], ADMIN_ID) // أكبر من oldPrice=120
+
+    const after = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_A])
+    expect(after.rows[0].offer).toBe(0)
+  })
+
   it('skips a no-change row without writing any history', async () => {
     const result = await confirmPricingRows([toConfirmRow(2, baseRecord())], ADMIN_ID)
     expect(result.updated).toBe(0)

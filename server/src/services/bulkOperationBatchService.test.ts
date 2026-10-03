@@ -155,6 +155,23 @@ describe('rollbackBatch', () => {
     expect(batch!.status).toBe('rolled_back')
   })
 
+  // offer عمود GENERATED من السيرفر (oldPrice > price) — rollback بيستعيد price/old_price
+  // بس زي ما كانوا قبل الدفعة، ومفيش حاجة تانية لازم تتحدّث عشان offer يفضل متزامن.
+  it('rolling back a price change that had created an offer removes the offer again', async () => {
+    const batchId = await createBatch('bulk_price_csv', ADMIN_ID)
+    await writePriceChange(batchId, PRODUCT_B, null, 200, 180, null, 220) // قبل: 200/بدون عرض، بعد الدفعة: 180/220 (عرض فعلي)
+    await pool.query('UPDATE products SET price = 180, old_price = 220 WHERE id = $1', [PRODUCT_B])
+
+    const beforeRollback = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_B])
+    expect(beforeRollback.rows[0].offer).toBe(1)
+
+    const result = await rollbackBatch(batchId, ADMIN_ID)
+    expect(result).toEqual({ rolledBackPrice: 1, rolledBackCost: 0, rolledBackStock: 0, conflicts: 0 })
+
+    const afterRollback = await pool.query('SELECT price, old_price as "oldPrice", offer FROM products WHERE id = $1', [PRODUCT_B])
+    expect(afterRollback.rows[0]).toEqual({ price: 200, oldPrice: null, offer: 0 })
+  })
+
   it('rolls back a variant price change cleanly', async () => {
     const batchId = await createBatch('bulk_price_csv', ADMIN_ID)
     await writePriceChange(batchId, PRODUCT_A, VARIANT_A, 60, 90, 70, 100)

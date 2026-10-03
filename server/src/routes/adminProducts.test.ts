@@ -46,10 +46,23 @@ async function createTestProduct(idSuffix: string): Promise<string> {
   return id
 }
 
+async function createTestProductWithPrice(idSuffix: string, price: number, oldPrice: number | null): Promise<string> {
+  const id = `${PREFIX}p-${idSuffix}`
+  await pool.query(
+    `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, stock, brand, sku, barcode, created_at)
+     VALUES ($1, $1, $2, 'منتج اختبار عرض', 'وصف', $3, $4, 5, 'قطعة', '🧪', 1, 20, '', $5, '', now())`,
+    [id, CATEGORY_ID, price, oldPrice, `SKU-${id}`]
+  )
+  return id
+}
+
 async function cleanupFixtures() {
-  await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`])
+  // لازم نمسح المنتجات (بتشيل product_price_history كاسكيد معاها — راجع /end-offer اللي بيكتب
+  // فيه) قبل المستخدمين، وإلا DELETE FROM users يفشل بقيد مفتاح خارجي (admin_user_id) لو فيه
+  // صف تاريخ سعر لسه موجود بيشاور على مستخدم اختبار هنا.
   await pool.query('DELETE FROM audit_logs WHERE entity_id LIKE $1 OR entity_id = $2', [`${PREFIX}%`, 'bulk'])
   await pool.query('DELETE FROM products WHERE category_id = $1', [CATEGORY_ID])
+  await pool.query('DELETE FROM users WHERE email LIKE $1', [`${PREFIX}%`])
   await pool.query('DELETE FROM role_permissions WHERE role_id = $1', [EDIT_ONLY_ROLE_ID])
   await pool.query('DELETE FROM roles WHERE id = $1', [EDIT_ONLY_ROLE_ID])
   await pool.query('DELETE FROM categories WHERE id = $1', [CATEGORY_ID])
@@ -217,5 +230,86 @@ describe('product soft delete (/api/admin/products)', () => {
     const res = await agent.patch('/api/admin/products/bulk').send({ productIds: [productId], action: 'set_unavailable' })
     expect(res.status).toBe(200)
     expect(res.body.updated).toBe(1)
+  })
+})
+
+// offer عمود GENERATED من السيرفر (old_price > price، راجع migration 0073) — الاختبارات دي
+// بتتأكد إن /admin/products?offerOnly=true و POST /:id/end-offer بيتعاملوا صح مع العمود ده.
+describe('product offers (/api/admin/products offerOnly + end-offer)', () => {
+  it('offerOnly=true returns only products with a real oldPrice > price', async () => {
+    const agent = await fullAdminAgent()
+    const withOffer = await createTestProductWithPrice('offer-list-yes', 50, 70)
+    const withoutOffer = await createTestProductWithPrice('offer-list-no', 50, null)
+    const staleOldPrice = await createTestProductWithPrice('offer-list-stale', 50, 40) // oldPrice < price، مش عرض حقيقي
+
+    const res = await agent.get('/api/admin/products?offerOnly=true')
+    expect(res.status).toBe(200)
+    const ids = res.body.products.map((p: { id: string }) => p.id)
+    expect(ids).toContain(withOffer)
+    expect(ids).not.toContain(withoutOffer)
+    expect(ids).not.toContain(staleOldPrice)
+  })
+
+  it('end-offer clears oldPrice, keeps the product and its current price, and offer becomes false', async () => {
+    const agent = await fullAdminAgent()
+    const productId = await createTestProductWithPrice('end-offer-1', 50, 70)
+
+    const res = await agent.post(`/api/admin/products/${productId}/end-offer`)
+    expect(res.status).toBe(200)
+    expect(res.body.product.oldPrice).toBeUndefined()
+    expect(res.body.product.price).toBe(50)
+    expect(res.body.product.offer).toBe(false)
+
+    const { rows } = await pool.query('SELECT id, old_price as "oldPrice" FROM products WHERE id = $1', [productId])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].oldPrice).toBeNull()
+  })
+
+  it('a product with an ended offer no longer appears under offerOnly=true', async () => {
+    const agent = await fullAdminAgent()
+    const productId = await createTestProductWithPrice('end-offer-filtered', 50, 70)
+    await agent.post(`/api/admin/products/${productId}/end-offer`)
+
+    const res = await agent.get('/api/admin/products?offerOnly=true')
+    expect(res.body.products.map((p: { id: string }) => p.id)).not.toContain(productId)
+  })
+
+  it('is idempotent: ending an offer on a product with no oldPrice succeeds as a no-op', async () => {
+    const agent = await fullAdminAgent()
+    const productId = await createTestProductWithPrice('end-offer-noop', 50, null)
+
+    const res = await agent.post(`/api/admin/products/${productId}/end-offer`)
+    expect(res.status).toBe(200)
+    expect(res.body.product.offer).toBe(false)
+  })
+
+  it('returns 404 for ending an offer on a non-existent product', async () => {
+    const agent = await fullAdminAgent()
+    const res = await agent.post('/api/admin/products/does-not-exist/end-offer')
+    expect(res.status).toBe(404)
+  })
+
+  it('rejects ending an offer for a user with only products.view (no products.edit)', async () => {
+    const viewOnlyRoleId = `${PREFIX}role-view-only`
+    await pool.query('DELETE FROM role_permissions WHERE role_id = $1', [viewOnlyRoleId])
+    await pool.query('DELETE FROM roles WHERE id = $1', [viewOnlyRoleId])
+    await pool.query(`INSERT INTO roles (id, name, is_system) VALUES ($1, $2, 0)`, [viewOnlyRoleId, `${PREFIX}دور عرض بس`])
+    await pool.query(`INSERT INTO role_permissions (role_id, permission) VALUES ($1, 'products.view')`, [viewOnlyRoleId])
+
+    const agent = request.agent(app)
+    const email = uniqueEmail('viewonly')
+    const registerRes = await agent.post('/api/auth/register').send({ email, password: STRONG_PASSWORD, fullName: 'موظف عرض بس' })
+    await pool.query('UPDATE users SET is_admin = 1, role_id = $2 WHERE id = $1', [registerRes.body.user.id, viewOnlyRoleId])
+
+    const productId = await createTestProductWithPrice('end-offer-perm', 50, 70)
+    const res = await agent.post(`/api/admin/products/${productId}/end-offer`)
+    expect(res.status).toBe(403)
+
+    const { rows } = await pool.query('SELECT old_price as "oldPrice" FROM products WHERE id = $1', [productId])
+    expect(rows[0].oldPrice).toBe(70)
+
+    await pool.query('DELETE FROM users WHERE id = $1', [registerRes.body.user.id])
+    await pool.query('DELETE FROM role_permissions WHERE role_id = $1', [viewOnlyRoleId])
+    await pool.query('DELETE FROM roles WHERE id = $1', [viewOnlyRoleId])
   })
 })

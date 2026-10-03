@@ -104,6 +104,32 @@ describe('runApplyScheduledBatch', () => {
     expect(schedule.appliedAt).not.toBeNull()
   })
 
+  // offer عمود GENERATED من السيرفر (oldPrice > price) — تنفيذ الجدولة بيعدّل price/old_price
+  // بس عن طريق كرون منفصل (npm run pricing:apply-scheduled)، ومفيش حاجة تانية مطلوبة عشان
+  // offer يفضل متزامن مع نتيجة التنفيذ التلقائي ده.
+  it('a schedule that gives the product a real oldPrice > price turns the offer on', async () => {
+    const before = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_ID])
+    expect(before.rows[0].offer).toBe(0)
+
+    await insertDueSchedule({ productId: PRODUCT_ID, newPrice: 45, newOldPrice: 55, expectedCurrentPrice: 50 })
+    await runApplyScheduledBatch(50)
+
+    const after = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_ID])
+    expect(after.rows[0].offer).toBe(1)
+  })
+
+  it('a schedule that raises price above the existing oldPrice turns the offer off', async () => {
+    await pool.query('UPDATE products SET old_price = 70 WHERE id = $1', [PRODUCT_ID]) // price=50, فعلاً عرض
+    const before = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_ID])
+    expect(before.rows[0].offer).toBe(1)
+
+    await insertDueSchedule({ productId: PRODUCT_ID, newPrice: 90, expectedCurrentPrice: 50 }) // أكبر من oldPrice=70
+    await runApplyScheduledBatch(50)
+
+    const after = await pool.query('SELECT offer FROM products WHERE id = $1', [PRODUCT_ID])
+    expect(after.rows[0].offer).toBe(0)
+  })
+
   it('never applies a schedule before its starts_at time', async () => {
     await createPriceSchedule({ productId: PRODUCT_ID, variantId: null, newPrice: 45, newOldPrice: null, startsAt: futureDate(60) }, ADMIN_ID)
     const { applied } = await runApplyScheduledBatch(50)

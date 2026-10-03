@@ -22,17 +22,19 @@ async function resetFixtures() {
     `INSERT INTO categories (id, name, emoji, tint, sort_order) VALUES ($1, 'خضروات', '🥦', '#fff', 1), ($2, 'مخبوزات', '🍞', '#eee', 2)`,
     [CATEGORY_A, CATEGORY_B]
   )
+  // offer عمود GENERATED حقيقي (old_price > price، راجع migration 0073) — مش بيتكتب فيه
+  // صراحة هنا أبداً، cat-p2 بس عنده old_price حقيقي أكبر من السعر عشان يبقى "عرض" فعلي.
   const products = [
-    { id: 'cat-p1', slug: 'cat-p1', name: 'طماطم طازجة', brand: 'بلدي', barcode: '1111111', price: 20, category: CATEGORY_A, order: 50, stock: 30, alert: 5, offer: false, bestseller: true },
-    { id: 'cat-p2', slug: 'cat-p2', name: 'جبنة بيضاء', brand: 'دومتي', barcode: '2222222', price: 60, category: CATEGORY_A, order: 10, stock: 3, alert: 5, offer: true, bestseller: false },
-    { id: 'cat-p3', slug: 'cat-p3', name: 'عيش بلدي', brand: 'المخبز', barcode: '3333333', price: 10, category: CATEGORY_B, order: 5, stock: 0, alert: 5, offer: false, bestseller: false },
-    { id: 'cat-p4', slug: 'cat-p4', name: 'زبادي يوناني', brand: 'دومتي', barcode: '', price: 35, category: CATEGORY_B, order: 90, stock: 20, alert: 5, offer: false, bestseller: true }
+    { id: 'cat-p1', slug: 'cat-p1', name: 'طماطم طازجة', brand: 'بلدي', barcode: '1111111', price: 20, oldPrice: null, category: CATEGORY_A, order: 50, stock: 30, alert: 5, bestseller: true },
+    { id: 'cat-p2', slug: 'cat-p2', name: 'جبنة بيضاء', brand: 'دومتي', barcode: '2222222', price: 60, oldPrice: 75, category: CATEGORY_A, order: 10, stock: 3, alert: 5, bestseller: false },
+    { id: 'cat-p3', slug: 'cat-p3', name: 'عيش بلدي', brand: 'المخبز', barcode: '3333333', price: 10, oldPrice: null, category: CATEGORY_B, order: 5, stock: 0, alert: 5, bestseller: false },
+    { id: 'cat-p4', slug: 'cat-p4', name: 'زبادي يوناني', brand: 'دومتي', barcode: '', price: 35, oldPrice: null, category: CATEGORY_B, order: 90, stock: 20, alert: 5, bestseller: true }
   ]
   for (const p of products) {
     await pool.query(
-      `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand, created_at)
-       VALUES ($1, $2, $3, $4, 'وصف تجريبي', $5, 1, 'قطعة', '🧪', 1, $6, $7, $8, $9, $10, $11, $12, now())`,
-      [p.id, p.slug, p.category, p.name, p.price, p.bestseller ? 1 : 0, p.offer ? 1 : 0, p.order, p.stock, p.alert, p.barcode, p.brand]
+      `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, order_count, stock, alert_threshold, barcode, brand, created_at)
+       VALUES ($1, $2, $3, $4, 'وصف تجريبي', $5, $6, 1, 'قطعة', '🧪', 1, $7, $8, $9, $10, $11, $12, now())`,
+      [p.id, p.slug, p.category, p.name, p.price, p.oldPrice, p.bestseller ? 1 : 0, p.order, p.stock, p.alert, p.barcode, p.brand]
     )
   }
 }
@@ -72,6 +74,25 @@ describe('listProducts', () => {
     expect(offers.products.map(p => p.id)).toEqual(['cat-p2'])
     const bestsellers = await listProducts({ bestseller: true, limit: 100 })
     expect(bestsellers.products.map(p => p.id).sort()).toEqual(['cat-p1', 'cat-p4'])
+  })
+
+  // عروض شبح (phantom offers): offer عمود GENERATED من old_price/price بس — مستحيل منتج
+  // يظهر في عروض اليوم من غير خصم حقيقي فعلي، بغض النظر عن أي قيمة تاريخية قديمة.
+  it('never returns a product with no oldPrice at all when filtering by offer=true', async () => {
+    const { products } = await listProducts({ offer: true, limit: 100 })
+    expect(products.map(p => p.id)).not.toContain('cat-p1')
+  })
+
+  it('never returns a product once its oldPrice drops to no longer exceed the current price', async () => {
+    await pool.query('UPDATE products SET old_price = 55 WHERE id = $1', ['cat-p2']) // كان 75، بقى 55 < 60
+    const { products } = await listProducts({ offer: true, limit: 100 })
+    expect(products.map(p => p.id)).not.toContain('cat-p2')
+  })
+
+  it('still returns a product once a real oldPrice > price exists, even if it never had one before', async () => {
+    await pool.query('UPDATE products SET old_price = 30 WHERE id = $1', ['cat-p3']) // السعر 10
+    const { products } = await listProducts({ offer: true, limit: 100 })
+    expect(products.map(p => p.id).sort()).toEqual(['cat-p2', 'cat-p3'])
   })
 
   it('computes customer availability as adminAvailable && stock > 0, never just the admin flag', async () => {

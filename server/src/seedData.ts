@@ -22,7 +22,8 @@ export interface SeedProduct {
   emoji: string
   available: boolean
   bestseller: boolean
-  offer: boolean
+  // عمود offer في قاعدة البيانات GENERATED حقيقي من oldPrice/price (راجع migration 0073) —
+  // مش جزء من بيانات البذر هنا تاني، عشان ميبقاش فيه قيمة منفصلة ممكن تتعارض مع السعرين.
   orderCount: number
   stock: number
   alertThreshold: number
@@ -82,6 +83,6 @@ const RAW: [string, string, string, string, string, number, number, string, stri
 export const SEED_PRODUCTS: SeedProduct[] = RAW.map(r => ({
   id: r[0], slug: r[1], categoryId: r[2], name: r[3], description: r[4],
   price: r[5], oldPrice: r[6] || null, cost: Math.round(r[5] * 0.74 * 100) / 100,
-  unit: r[7], emoji: r[8], available: r[9], bestseller: r[10], offer: r[11],
+  unit: r[7], emoji: r[8], available: r[9], bestseller: r[10],
   orderCount: r[12], stock: r[13], alertThreshold: r[14], barcode: r[15], brand: r[16]
 }))

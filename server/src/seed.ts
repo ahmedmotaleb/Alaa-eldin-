@@ -21,11 +21,11 @@ async function seedCategoriesAndProducts() {
     const now = new Date().toISOString()
     for (const p of SEED_PRODUCTS) {
       await client.query(
-        `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+        `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, order_count, stock, alert_threshold, barcode, brand, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           p.id, p.slug, p.categoryId, p.name, p.description, p.price, p.oldPrice ?? null, p.cost, p.unit, p.emoji,
-          p.available ? 1 : 0, p.bestseller ? 1 : 0, p.offer ? 1 : 0, p.orderCount, p.stock, p.alertThreshold, p.barcode, p.brand, now
+          p.available ? 1 : 0, p.bestseller ? 1 : 0, p.orderCount, p.stock, p.alertThreshold, p.barcode, p.brand, now
         ]
       )
     }

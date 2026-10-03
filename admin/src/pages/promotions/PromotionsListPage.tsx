@@ -37,7 +37,7 @@ export function PromotionsListPage() {
   const debouncedQuery = useDebouncedValue(query)
 
   useEffect(() => {
-    setHeader({ crumb: 'العروض', title: 'جميع العروض', action: { label: 'إنشاء عرض', onClick: () => navigate('/promotions/new') } })
+    setHeader({ crumb: 'العروض الترويجية', title: 'جميع العروض الترويجية', action: { label: 'إنشاء عرض', onClick: () => navigate('/promotions/new') } })
   }, [setHeader, navigate])
 
   useEffect(() => {

@@ -39,7 +39,8 @@ export const NAV: NavGroup[] = [
       { id: 'valuation', label: 'قيمة المخزون' },
       { id: 'moves', label: 'تحويلات المخزون' },
       { id: 'cyclecounts', label: 'الجرد الدوري' },
-      { id: 'pricing-schedules', label: 'جدولة الأسعار' }
+      { id: 'pricing-schedules', label: 'جدولة الأسعار' },
+      { id: 'offers', label: 'عروض المنتجات' }
     ]
   },
   {
@@ -70,7 +71,9 @@ export const NAV: NavGroup[] = [
     ]
   },
   {
-    id: 'promotions', label: 'العروض', icon: '🎁', children: [
+    // اسم مميّز عمداً — ده البيع الترويجي على مستوى السلة (Buy X Get Y / باقات)، مختلف
+    // تماماً عن "عروض المنتجات" (خصم على منتج فردي، تحت قسم المنتجات فوق).
+    id: 'promotions', label: 'العروض الترويجية', icon: '🎁', children: [
       { id: 'all', label: 'جميع العروض' },
       { id: 'new', label: 'إنشاء عرض' }
     ]

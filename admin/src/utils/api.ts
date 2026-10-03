@@ -1609,7 +1609,7 @@ export const api = {
   listOrderNotes: (orderId: string) => request<{ notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`),
   addOrderNote: (orderId: string, note: string) =>
     request<{ note: AdminOrderNote }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
-  listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string, status?: 'active' | 'deleted' | 'all' } = {}) =>
+  listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string, status?: 'active' | 'deleted' | 'all', offerOnly?: boolean } = {}) =>
     request<{ products: AdminProduct[] } & Partial<PageInfo>>(`/admin/products${buildQuery(params)}`),
   getProduct: (id: string) => request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`),
   createProduct: (body: AdminProductInput) =>
@@ -1620,6 +1620,8 @@ export const api = {
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   restoreProduct: (id: string) =>
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+  endProductOffer: (id: string) =>
+    request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/end-offer`, { method: 'POST' }),
   listProductImages: (productId: string) =>
     request<{ images: AdminProductImage[] }>(`/admin/products/${encodeURIComponent(productId)}/images`),
   uploadProductImage: async (productId: string, file: File, altText?: string) => {

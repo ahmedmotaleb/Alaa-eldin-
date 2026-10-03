@@ -163,6 +163,31 @@ describe('productImportService', () => {
       expect(updated[0].stock).toBe(20) // لم يتغيّر لأنه لم يُرسل ضمن الحقول المُحدَّثة
     })
 
+    // offer عمود GENERATED من السيرفر (oldPrice > price) — استيراد CSV بيغيّر price/oldPrice
+    // بس، ومفيش حاجة تانية مطلوبة عشان offer يفضل متزامن: قاعدة البيانات نفسها بتحسبه.
+    it('a created product with a real oldPrice > price is correctly reported as an offer', async () => {
+      await importValidatedRows([{
+        rowNumber: 2,
+        action: 'create',
+        data: { name: 'منتج عرض من الاستيراد', categoryId: CATEGORY_ID, slug: 'import-test-offer-create', unit: 'وحدة', price: 40, oldPrice: 60 }
+      }], USER_ID)
+      const { rows } = await pool.query('SELECT offer FROM products WHERE slug = $1', ['import-test-offer-create'])
+      expect(rows[0].offer).toBe(1)
+    })
+
+    it('a CSV update that invalidates the discount (price rises above oldPrice) turns the offer off', async () => {
+      await pool.query('UPDATE products SET old_price = 150 WHERE id = $1', [EXISTING_PRODUCT_ID]) // أكبر من السعر الحالي (20) فعلاً عرض
+      const before = await pool.query('SELECT offer FROM products WHERE id = $1', [EXISTING_PRODUCT_ID])
+      expect(before.rows[0].offer).toBe(1)
+
+      await importValidatedRows([{
+        rowNumber: 2, action: 'update', productId: EXISTING_PRODUCT_ID, data: { price: 200 } // بقى أكبر من old_price
+      }], USER_ID)
+
+      const after = await pool.query('SELECT offer FROM products WHERE id = $1', [EXISTING_PRODUCT_ID])
+      expect(after.rows[0].offer).toBe(0)
+    })
+
     it('fails a create row whose slug was taken by another request between preview and confirm', async () => {
       await pool.query(
         `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)

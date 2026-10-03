@@ -14,6 +14,8 @@ export interface ProductRow {
   emoji: string
   available: number
   bestseller: number
+  // عمود GENERATED حقيقي في قاعدة البيانات (old_price > price) — مقروء بس، مش بيتكتب فيه
+  // صراحة من أي كود هنا أبداً (راجع migration 0073)، فمستحيل يبقى قديم/غير متزامن.
   offer: number
   orderCount: number
   stock: number
@@ -62,7 +64,6 @@ export interface ProductWriteInput {
   emoji: string
   available: boolean
   bestseller: boolean
-  offer: boolean
   stock: number
   alertThreshold: number
   barcode: string
@@ -127,11 +128,11 @@ export async function createProduct(input: ProductWriteInput): Promise<Serialize
   let slug = await generateUniqueProductSlug(input.name)
 
   const insert = (slugToUse: string) => pool.query(
-    `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, offer, order_count, stock, alert_threshold, barcode, brand, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, $14, $15, $16, $17, $18)`,
+    `INSERT INTO products (id, slug, category_id, name, description, price, old_price, cost, unit, emoji, available, bestseller, order_count, stock, alert_threshold, barcode, brand, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13, $14, $15, $16, $17)`,
     [
       id, slugToUse, input.categoryId, input.name, input.description, input.price, input.oldPrice, input.cost, input.unit, input.emoji,
-      input.available ? 1 : 0, input.bestseller ? 1 : 0, input.offer ? 1 : 0, input.stock, input.alertThreshold, input.barcode, input.brand,
+      input.available ? 1 : 0, input.bestseller ? 1 : 0, input.stock, input.alertThreshold, input.barcode, input.brand,
       new Date().toISOString()
     ]
   )
@@ -172,12 +173,12 @@ export async function updateProduct(id: string, input: ProductWriteInput, update
     await client.query(
       `UPDATE products SET category_id=$1, name=$2, description=$3, price=$4,
          old_price=$5, cost=$6, unit=$7, emoji=$8, available=$9, bestseller=$10,
-         offer=$11, stock=$12, alert_threshold=$13, barcode=$14, brand=$15
-       WHERE id=$16`,
+         stock=$11, alert_threshold=$12, barcode=$13, brand=$14
+       WHERE id=$15`,
       [
         input.categoryId, input.name, input.description, input.price,
         input.oldPrice, input.cost, input.unit, input.emoji, input.available ? 1 : 0, input.bestseller ? 1 : 0,
-        input.offer ? 1 : 0, input.stock, input.alertThreshold, input.barcode, input.brand,
+        input.stock, input.alertThreshold, input.barcode, input.brand,
         id
       ]
     )
@@ -237,4 +238,29 @@ export async function restoreProduct(id: string): Promise<ProductRow | null> {
   if (!rowCount) return null
   const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
   return rows[0] ?? null
+}
+
+// "إنهاء العرض" من صفحة عروض المنتجات في لوحة التحكم — بيمسح old_price بس (السعر الحالي
+// وكل باقي بيانات المنتج فاضلة زي ما هي، والمنتج نفسه أبداً مش بيُحذف). offer بيرجع صفر
+// أوتوماتيكياً فوراً لأنه عمود GENERATED من old_price/price (راجع migration 0073)، مش حقل
+// لازم يتحدّث هنا بنفسه. idempotent: منتج من غير old_price أصلاً بيرجع نفس المنتج من غير
+// تسجيل أي صف تاريخ سعر جديد (مفيش تغيير فعلي حصل).
+export async function endProductOffer(id: string, adminUserId: string): Promise<SerializedProduct | null> {
+  const { rows: existingRows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  const existing = existingRows[0]
+  if (!existing) return null
+
+  if (existing.oldPrice !== null) {
+    await withTransaction(async client => {
+      await client.query('UPDATE products SET old_price = NULL WHERE id = $1', [id])
+      await client.query(
+        `INSERT INTO product_price_history (product_id, old_price, new_price, old_old_price, new_old_price, source, admin_user_id)
+         VALUES ($1, $2, $2, $3, NULL, 'end_offer', $4)`,
+        [id, existing.price, existing.oldPrice, adminUserId]
+      )
+    })
+  }
+
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  return serializeProduct(rows[0])
 }

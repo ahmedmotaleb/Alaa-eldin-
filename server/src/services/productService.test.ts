@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { createProduct, updateProduct, softDeleteProduct, restoreProduct, slugifyProductName, generateUniqueProductSlug, type ProductWriteInput } from './productService.js'
+import { createProduct, updateProduct, softDeleteProduct, restoreProduct, endProductOffer, slugifyProductName, generateUniqueProductSlug, type ProductWriteInput } from './productService.js'
 import { findProductByBarcode } from './productSkuService.js'
 
 const CATEGORY_ID = 'test-cat-product-service'
@@ -35,7 +35,6 @@ function baseInput(overrides: Partial<ProductWriteInput> = {}): ProductWriteInpu
     emoji: '🧪',
     available: true,
     bestseller: false,
-    offer: false,
     stock: 20,
     alertThreshold: 5,
     barcode: '',
@@ -125,6 +124,69 @@ describe('createProduct / updateProduct / findProductByBarcode', () => {
   it('returns null from updateProduct for a non-existent product id', async () => {
     const update = await updateProduct('does-not-exist', baseInput(), USER_ID)
     expect(update).toBeNull()
+  })
+})
+
+describe('offer derivation (products.offer is a GENERATED column, never a stale flag)', () => {
+  beforeEach(resetFixtures)
+  afterAll(resetFixtures)
+
+  it('reports offer=true only when oldPrice is a real number greater than price', async () => {
+    const noDiscount = await createProduct(baseInput({ name: 'منتج بدون خصم', price: 50, oldPrice: null }))
+    expect(noDiscount.offer).toBe(false)
+
+    const realDiscount = await createProduct(baseInput({ name: 'منتج بخصم حقيقي', price: 50, oldPrice: 70 }))
+    expect(realDiscount.offer).toBe(true)
+  })
+
+  it('never reports offer=true when oldPrice equals or is less than price (a stale/invalid "discount")', async () => {
+    const equal = await createProduct(baseInput({ name: 'سعر قديم يساوي السعر الحالي', price: 50, oldPrice: 50 }))
+    expect(equal.offer).toBe(false)
+
+    const lower = await createProduct(baseInput({ name: 'سعر قديم أقل من السعر الحالي', price: 50, oldPrice: 40 }))
+    expect(lower.offer).toBe(false)
+  })
+
+  it('updates offer automatically the moment price/oldPrice change via updateProduct, with no separate offer field needed', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج يتحول لعرض', price: 50, oldPrice: null }))
+    expect(product.offer).toBe(false)
+
+    const madeOffer = await updateProduct(product.id, baseInput({ name: 'منتج يتحول لعرض', price: 50, oldPrice: 65 }), USER_ID)
+    expect(madeOffer!.after.offer).toBe(true)
+
+    const endedOffer = await updateProduct(product.id, baseInput({ name: 'منتج يتحول لعرض', price: 50, oldPrice: null }), USER_ID)
+    expect(endedOffer!.after.offer).toBe(false)
+  })
+})
+
+describe('endProductOffer', () => {
+  beforeEach(resetFixtures)
+  afterAll(resetFixtures)
+
+  it('clears oldPrice, keeps the product and its current price, and the product stops being an offer', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج عليه عرض', price: 50, oldPrice: 70 }))
+    expect(product.offer).toBe(true)
+
+    const ended = await endProductOffer(product.id, USER_ID)
+    expect(ended).not.toBeNull()
+    expect(ended!.oldPrice).toBeUndefined()
+    expect(ended!.price).toBe(50)
+    expect(ended!.offer).toBe(false)
+
+    const { rows } = await pool.query('SELECT id FROM products WHERE id = $1', [product.id])
+    expect(rows).toHaveLength(1)
+  })
+
+  it('is idempotent: ending an offer on a product with no oldPrice is a harmless no-op', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج بدون عرض أصلاً', price: 50, oldPrice: null }))
+    const ended = await endProductOffer(product.id, USER_ID)
+    expect(ended).not.toBeNull()
+    expect(ended!.oldPrice).toBeUndefined()
+    expect(ended!.offer).toBe(false)
+  })
+
+  it('returns null for a non-existent product id', async () => {
+    expect(await endProductOffer('does-not-exist', USER_ID)).toBeNull()
   })
 })
 

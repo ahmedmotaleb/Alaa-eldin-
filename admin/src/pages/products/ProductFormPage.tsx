@@ -61,6 +61,7 @@ export function ProductFormPage() {
   stagedImagesRef.current = stagedImages
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteNotice, setDeleteNotice] = useState('')
+  const oldPriceInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -96,7 +97,9 @@ export function ProductFormPage() {
     setSuccess('')
     setSaving(true)
     try {
-      const payload: AdminProductInput = { ...form, offer: !!form.oldPrice && form.oldPrice > form.price }
+      // offer عمود GENERATED من السيرفر (oldPrice > price، راجع productService.ts) — السيرفر
+      // بيتجاهل أي قيمة offer متبعتة هنا، مش محتاجين نحسبها أو نرسلها.
+      const payload: AdminProductInput = { ...form }
       if (isEdit && id) {
         const { product } = await api.updateProduct(id, payload)
         setForm(product)
@@ -257,9 +260,22 @@ export function ProductFormPage() {
             <input type="number" value={form.price} onChange={e => set('price', Number(e.target.value))} />
           </label>
           <label>السعر قبل الخصم (ج.م)
-            <input type="number" value={form.oldPrice ?? ''} onChange={e => set('oldPrice', e.target.value ? Number(e.target.value) : undefined)} placeholder="اختياري" />
+            <input
+              ref={oldPriceInputRef} type="number" value={form.oldPrice ?? ''}
+              onChange={e => set('oldPrice', e.target.value ? Number(e.target.value) : undefined)} placeholder="اختياري"
+            />
           </label>
         </div>
+        {/* offer عمود GENERATED من السيرفر (oldPrice > price) — هنا بس عرض حالة حيّة من
+            نفس القيمتين، مفيش checkbox مستقل ممكن يتعارض مع السعرين. */}
+        {form.oldPrice && form.oldPrice > form.price ? (
+          <div className="admin-form-success">✅ هذا المنتج ظاهر في عروض اليوم</div>
+        ) : (
+          <div className="admin-form-help" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>هذا المنتج غير موجود في عروض اليوم</span>
+            <button type="button" className="admin-form-chip" onClick={() => oldPriceInputRef.current?.focus()}>إضافة إلى العروض</button>
+          </div>
+        )}
         <label>تكلفة المنتج (ج.م)
           <input type="number" value={form.cost} onChange={e => set('cost', Number(e.target.value))} />
           <span className="admin-form-help">الهامش الحالي: {form.price ? Math.round(((form.price - form.cost) / form.price) * 100) : 0}%</span>

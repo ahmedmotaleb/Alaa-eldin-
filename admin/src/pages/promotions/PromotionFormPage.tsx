@@ -95,7 +95,7 @@ export function PromotionFormPage() {
   const [categories, setCategories] = useState<AdminCategory[]>([])
 
   useEffect(() => {
-    setHeader({ crumb: 'العروض', title: isEdit ? 'تعديل عرض' : 'إنشاء عرض' })
+    setHeader({ crumb: 'العروض الترويجية', title: isEdit ? 'تعديل عرض ترويجي' : 'إنشاء عرض ترويجي' })
   }, [setHeader, isEdit])
 
   useEffect(() => {
