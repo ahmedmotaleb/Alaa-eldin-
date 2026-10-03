@@ -59,6 +59,8 @@ export function ProductFormPage() {
   const [stagedImages, setStagedImages] = useState<StagedProductImage[]>([])
   const stagedImagesRef = useRef(stagedImages)
   stagedImagesRef.current = stagedImages
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteNotice, setDeleteNotice] = useState('')
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -172,6 +174,37 @@ export function ProductFormPage() {
       window.alert('تعذر توليد SKU — قد يكون للمنتج SKU بالفعل')
     } finally {
       setSkuSaving(false)
+    }
+  }
+
+  // حذف ناعم (soft delete) بس — الصف فاضل في قاعدة البيانات، بيختفي من الكتالوج والبحث بس
+  // (راجع productService.softDeleteProduct). الاستعادة بترجّعه للقايمة العادية لكن بتفضل
+  // "مخفي" (available=0) لحد ما الأدمن يظهره بنفسه صراحةً من زر "معروض" فوق.
+  async function deleteProduct() {
+    if (!id) return
+    if (!window.confirm('سيتم حذف هذا المنتج. هذا إجراء قابل للتراجع (يمكن استعادته لاحقاً من قائمة "عرض المحذوفة")، لكنه سيختفي فوراً من الكتالوج ولن يظهر للعملاء.')) return
+    setDeleteBusy(true)
+    try {
+      await api.deleteProduct(id)
+      navigate('/products')
+    } catch {
+      window.alert('تعذر حذف المنتج')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  async function restoreProduct() {
+    if (!id) return
+    setDeleteBusy(true)
+    try {
+      const { product } = await api.restoreProduct(id)
+      setForm(product)
+      setDeleteNotice('تم استعادة المنتج — لا يزال مخفياً عن العملاء، أظهره من "حالة المنتج" أعلاه لو حابب')
+    } catch {
+      window.alert('تعذر استعادة المنتج')
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -313,6 +346,23 @@ export function ProductFormPage() {
           </label>
           {expirySuccess && <div className="admin-form-success">{expirySuccess}</div>}
           <button className="admin-form-save" disabled={expirySaving} onClick={saveExpirySettings}>حفظ إعداد الصلاحية</button>
+        </div>
+      )}
+
+      {isEdit && (
+        <div className="admin-form-card">
+          <div>
+            <div className="admin-form-card-title">{form.deleted ? 'المنتج محذوف' : 'حذف المنتج'}</div>
+            <div className="admin-form-card-sub">
+              {form.deleted
+                ? 'هذا المنتج محذوف حالياً ومخفي تماماً عن العملاء والكتالوج'
+                : 'حذف آمن (قابل للتراجع) — المنتج يختفي من الكتالوج فوراً لكن بياناته وسجله التاريخي (الطلبات والمخزون) يبقى محفوظاً'}
+            </div>
+          </div>
+          {deleteNotice && <div className="admin-form-success">{deleteNotice}</div>}
+          {form.deleted
+            ? <button className="admin-form-chip" disabled={deleteBusy} onClick={restoreProduct}>استعادة المنتج</button>
+            : <button className="admin-form-chip" style={{ background: '#FFECEC', color: '#B42318' }} disabled={deleteBusy} onClick={deleteProduct}>حذف المنتج</button>}
         </div>
       )}
     </div>

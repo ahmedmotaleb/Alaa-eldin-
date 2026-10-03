@@ -1,9 +1,10 @@
 import { pool } from '../db.js'
 
-// أفعال "آمنة" بالتعريف — بتعدّل حقول قابلة للتصحيح فوراً (الظهور/القسم/العلامة التجارية)
-// ولا تحذف أو تُفقد أي بيانات، على عكس عملية حذف مثلاً. السيرفر بالفعل مفيهوش أي DELETE
-// للمنتج الأساسي (منتجات مرتبطة بطلبات/سلة/مفضلة تاريخياً)، فمتعمّدين عدم إضافة حذف جماعي هنا.
-export type BulkProductActionType = 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand'
+// set_available/set_unavailable/set_category/set_brand بتعدّل حقول قابلة للتصحيح فوراً
+// ولا تفقد أي بيانات. delete/restore "تدميرية" أكتر (لو soft) فمحتاجة صلاحية products.delete
+// منفصلة (راجع الراوت) — لكن برضه soft delete بس (deleted_at)، مش DELETE فعلي من قاعدة
+// البيانات أبداً (راجع softDeleteProduct في productService.ts وتعليقها عن أسباب ده).
+export type BulkProductActionType = 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand' | 'delete' | 'restore'
 
 export interface BulkProductActionResult {
   updated: number
@@ -33,6 +34,20 @@ export async function applyBulkProductAction(
   if (action === 'set_brand') {
     const brand = payload.brand?.trim() ?? ''
     return applyUpdate('UPDATE products SET brand = $1 WHERE id = ANY($2::text[]) RETURNING id', [brand, ids], ids)
+  }
+
+  if (action === 'delete') {
+    return applyUpdate(
+      'UPDATE products SET deleted_at = now(), available = 0 WHERE id = ANY($1::text[]) AND deleted_at IS NULL RETURNING id',
+      [ids], ids
+    )
+  }
+
+  if (action === 'restore') {
+    return applyUpdate(
+      'UPDATE products SET deleted_at = NULL WHERE id = ANY($1::text[]) AND deleted_at IS NOT NULL RETURNING id',
+      [ids], ids
+    )
   }
 
   const available = action === 'set_available' ? 1 : 0

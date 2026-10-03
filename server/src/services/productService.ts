@@ -24,12 +24,14 @@ export interface ProductRow {
   tracksExpiry: number
   defaultShelfLifeDays: number | null
   sku: string | null
+  deletedAt: string | null
 }
 
 export const SELECT_PRODUCT = `
   SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
          unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
-         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays", sku
+         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays", sku,
+         deleted_at as "deletedAt"
   FROM products
 `
 
@@ -41,7 +43,9 @@ export function serializeProduct(row: ProductRow) {
     bestseller: !!row.bestseller,
     offer: !!row.offer,
     primaryImage: row.primaryImage ?? undefined,
-    tracksExpiry: !!row.tracksExpiry
+    tracksExpiry: !!row.tracksExpiry,
+    deleted: !!row.deletedAt,
+    deletedAt: row.deletedAt ?? undefined
   }
 }
 
@@ -208,4 +212,29 @@ export async function updateProduct(id: string, input: ProductWriteInput, update
     costChanged,
     priceChanged
   }
+}
+
+// حذف "آمن" بس — deleted_at + إخفاء فوري (available=0)، الصف نفسه فاضل زي ما هو في
+// الجدول عشان الجداول التاريخية (طلبات/استلام بضاعة/مرتجعات/جرد...) تقدر تكمل تربط عليه.
+// idempotent: استدعاء تاني على منتج محذوف أصلاً بيرجع null (مش بيعمل حاجة).
+export async function softDeleteProduct(id: string): Promise<ProductRow | null> {
+  const { rowCount } = await pool.query(
+    `UPDATE products SET deleted_at = now(), available = 0 WHERE id = $1 AND deleted_at IS NULL`,
+    [id]
+  )
+  if (!rowCount) return null
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  return rows[0] ?? null
+}
+
+// بترجّع المنتج للقايمة العادية بس — عمداً ما بتعيدش available=1 تلقائياً (المنتج فضل
+// مخفي لحد ما الأدمن يقرر يظهره بنفسه صراحة، نفس تحكم "إظهار المحدد" الموجود بالفعل).
+export async function restoreProduct(id: string): Promise<ProductRow | null> {
+  const { rowCount } = await pool.query(
+    `UPDATE products SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`,
+    [id]
+  )
+  if (!rowCount) return null
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE id = $1`, [id])
+  return rows[0] ?? null
 }

@@ -115,7 +115,7 @@ interface TemplateVariantRow {
 }
 
 export async function generateStockTemplateCsv(filters: StockTemplateFilters = {}): Promise<string> {
-  const conditions: string[] = []
+  const conditions: string[] = ['p.deleted_at IS NULL']
   const params: unknown[] = []
 
   if (filters.categoryId) { params.push(filters.categoryId); conditions.push(`p.category_id = $${params.length}`) }

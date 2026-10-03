@@ -144,7 +144,8 @@ function sortClause(sort: SortOption | undefined, hasSearch: boolean, searchPara
 // (بدون brand/unit/price نفسها، عشان القيم المعروضة كخيارات فلترة تعكس الفلاتر التانية
 // الفعّالة بس، مش تُستبعد بفلتر brand/unit نفسه اللي هي مُعروضة عشان يُختار منه).
 function buildConditions(params: ListProductsParams, values: unknown[], opts: { includeBrandUnitPrice: boolean }): { conditions: string[], searchParamIndex: number } {
-  const conditions: string[] = []
+  // منتج محذوف (soft delete) أبداً ما يظهرش في الواجهة الأمامية — بغض النظر عن أي فلتر تاني.
+  const conditions: string[] = ['p.deleted_at IS NULL']
   let searchParamIndex = -1
 
   if (params.category) {
@@ -260,7 +261,7 @@ export async function resolveProducts(ids: string[]): Promise<ProductCard[]> {
   const uniqueIds = [...new Set(ids)].filter(id => typeof id === 'string' && id.length > 0).slice(0, 200)
   if (!uniqueIds.length) return []
   const { rows } = await pool.query<ProductCardRow>(
-    `${CARD_SELECT} FROM products p ${PRIMARY_IMAGE_JOIN} WHERE p.id = ANY($1::text[])`,
+    `${CARD_SELECT} FROM products p ${PRIMARY_IMAGE_JOIN} WHERE p.id = ANY($1::text[]) AND p.deleted_at IS NULL`,
     [uniqueIds]
   )
   return rows.map(serializeCard)
@@ -356,7 +357,7 @@ export async function getProductBySlug(slug: string) {
             (SELECT show_exact_low_stock FROM store_settings WHERE id = 1) as "showExactLowStock"
      FROM products p
      JOIN categories c ON c.id = p.category_id
-     WHERE p.slug = $1`,
+     WHERE p.slug = $1 AND p.deleted_at IS NULL`,
     [slug]
   )
   const product = rows[0]

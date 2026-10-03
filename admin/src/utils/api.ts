@@ -328,7 +328,7 @@ export interface AdminCategory {
   productCount: number
 }
 
-export type BulkProductActionType = 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand'
+export type BulkProductActionType = 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand' | 'delete' | 'restore'
 
 export interface AdminProduct {
   id: string
@@ -353,6 +353,8 @@ export interface AdminProduct {
   tracksExpiry: boolean
   defaultShelfLifeDays: number | null
   sku: string | null
+  deleted?: boolean
+  deletedAt?: string
 }
 
 export interface ScannedBarcodeVariant {
@@ -1607,13 +1609,17 @@ export const api = {
   listOrderNotes: (orderId: string) => request<{ notes: AdminOrderNote[] }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`),
   addOrderNote: (orderId: string, note: string) =>
     request<{ note: AdminOrderNote }>(`/admin/orders/${encodeURIComponent(orderId)}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
-  listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string } = {}) =>
+  listProducts: (params: { page?: number, limit?: number, search?: string, categoryId?: string, status?: 'active' | 'deleted' | 'all' } = {}) =>
     request<{ products: AdminProduct[] } & Partial<PageInfo>>(`/admin/products${buildQuery(params)}`),
   getProduct: (id: string) => request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`),
   createProduct: (body: AdminProductInput) =>
     request<{ product: AdminProduct }>('/admin/products', { method: 'POST', body: JSON.stringify(body) }),
   updateProduct: (id: string, body: Partial<AdminProductInput>) =>
     request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteProduct: (id: string) =>
+    request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  restoreProduct: (id: string) =>
+    request<{ product: AdminProduct }>(`/admin/products/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
   listProductImages: (productId: string) =>
     request<{ images: AdminProductImage[] }>(`/admin/products/${encodeURIComponent(productId)}/images`),
   uploadProductImage: async (productId: string, file: File, altText?: string) => {

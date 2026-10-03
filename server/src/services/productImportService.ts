@@ -64,7 +64,7 @@ export async function validateImportRows(records: Record<string, string | undefi
   const categoryIds = new Set(categories.map(c => c.id))
 
   const { rows: existingProducts } = await pool.query<{ id: string; sku: string | null; slug: string; barcode: string }>(
-    'SELECT id, sku, slug, barcode FROM products'
+    'SELECT id, sku, slug, barcode FROM products WHERE deleted_at IS NULL'
   )
   const bySku = new Map(existingProducts.filter(p => p.sku).map(p => [p.sku as string, p]))
   const byId = new Map(existingProducts.map(p => [p.id, p]))
@@ -328,7 +328,7 @@ const IMPORT_TEMPLATE_HEADERS = [
 // و /import/confirm الموجود بالفعل). عمود categoryName للمرجعية بس (مش موجود في أعمدة الاستيراد
 // المتوقعة فبيتم تجاهله تلقائياً لو اترفع الملف تاني).
 export async function generateProductImportTemplateCsv(filters: ImportTemplateFilters = {}): Promise<string> {
-  const conditions: string[] = []
+  const conditions: string[] = ['p.deleted_at IS NULL']
   const params: unknown[] = []
   if (filters.categoryId) { params.push(filters.categoryId); conditions.push(`p.category_id = $${params.length}`) }
   if (filters.brand) { params.push(filters.brand); conditions.push(`p.brand = $${params.length}`) }

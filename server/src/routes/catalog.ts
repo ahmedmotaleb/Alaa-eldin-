@@ -37,7 +37,7 @@ catalogRouter.get('/categories', async (_req, res) => {
   setShortPublicCache(res, 60, 300)
   const { rows } = await pool.query<CategoryRow>(`
     SELECT c.id, c.name, c.emoji, c.tint, c.image_url as "imageUrl",
-           (SELECT count(*) FROM products p WHERE p.category_id = c.id) as "productCount"
+           (SELECT count(*) FROM products p WHERE p.category_id = c.id AND p.deleted_at IS NULL) as "productCount"
     FROM categories c
     ORDER BY c.sort_order
   `)

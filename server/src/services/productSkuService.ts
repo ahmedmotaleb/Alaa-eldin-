@@ -114,7 +114,7 @@ function serializeHit(row: ProductBarcodeHit): BarcodeProductRow {
 // (سعره ومخزونه الحقيقيين، مش بتوع المنتج الأساسي) — عشان الأدمن ميشوفش مخزون غلط.
 export async function findProductByBarcode(barcode: string): Promise<BarcodeProductRow | null> {
   const { rows: productRows } = await pool.query<ProductBarcodeHit>(
-    `${SELECT_PRODUCT_BARCODE_HIT} WHERE p.barcode = $1 AND p.barcode <> ''`,
+    `${SELECT_PRODUCT_BARCODE_HIT} WHERE p.barcode = $1 AND p.barcode <> '' AND p.deleted_at IS NULL`,
     [barcode]
   )
   if (productRows[0]) return serializeHit(productRows[0])
@@ -135,7 +135,7 @@ export async function findProductByBarcode(barcode: string): Promise<BarcodeProd
        ORDER BY pi.is_primary DESC, pi.sort_order ASC
        LIMIT 1
      ) img ON true
-     WHERE v.barcode = $1 AND v.barcode <> ''`,
+     WHERE v.barcode = $1 AND v.barcode <> '' AND p.deleted_at IS NULL`,
     [barcode]
   )
   const variantHit = variantRows[0]

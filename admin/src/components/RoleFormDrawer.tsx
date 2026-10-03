@@ -12,6 +12,7 @@ export const PERMISSION_LABEL: Record<string, string> = {
   'products.view': 'عرض المنتجات',
   'products.create': 'إضافة منتجات',
   'products.edit': 'تعديل المنتجات',
+  'products.delete': 'حذف/استعادة المنتجات',
   'products.cost_view': 'عرض تكلفة المنتجات',
   'products.pricing.bulk_update': 'تحديث الأسعار بالجملة',
   'products.cost.bulk_update': 'تحديث التكلفة بالجملة',

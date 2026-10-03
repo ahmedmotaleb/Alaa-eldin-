@@ -22,7 +22,7 @@ const CATEGORY_SELECT = 'SELECT id, name, emoji, tint, image_url as "imageUrl" F
 
 adminCategoriesRouter.get('/', async (_req, res) => {
   const { rows: categories } = await pool.query<CategoryRow>(CATEGORY_SELECT)
-  const { rows: counts } = await pool.query<{ categoryId: string, n: string }>('SELECT category_id as "categoryId", COUNT(*) as n FROM products GROUP BY category_id')
+  const { rows: counts } = await pool.query<{ categoryId: string, n: string }>('SELECT category_id as "categoryId", COUNT(*) as n FROM products WHERE deleted_at IS NULL GROUP BY category_id')
   const countMap = new Map(counts.map(c => [c.categoryId, Number(c.n)]))
   res.json({
     categories: categories.map(c => ({

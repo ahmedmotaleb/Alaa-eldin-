@@ -103,4 +103,36 @@ describe('bulkProductActionsService', () => {
     const result = await applyBulkProductAction([], 'set_unavailable', {})
     expect(result).toEqual({ updated: 0, failed: [] })
   })
+
+  it('soft-deletes all selected products: sets deleted_at + available=0, keeps the rows', async () => {
+    const result = await applyBulkProductAction([PRODUCT_A, PRODUCT_B], 'delete', {})
+    expect(result.updated).toBe(2)
+    expect(result.failed).toEqual([])
+
+    const { rows } = await pool.query('SELECT deleted_at, available FROM products WHERE id IN ($1, $2)', [PRODUCT_A, PRODUCT_B])
+    expect(rows).toHaveLength(2)
+    expect(rows.every(r => r.deleted_at !== null && r.available === 0)).toBe(true)
+  })
+
+  it('is idempotent: bulk-deleting an already-deleted product reports it as failed, not an error', async () => {
+    await applyBulkProductAction([PRODUCT_A], 'delete', {})
+    const result = await applyBulkProductAction([PRODUCT_A], 'delete', {})
+    expect(result.updated).toBe(0)
+    expect(result.failed).toEqual([{ productId: PRODUCT_A, reason: 'product_not_found' }])
+  })
+
+  it('bulk-restores selected deleted products without re-enabling availability', async () => {
+    await applyBulkProductAction([PRODUCT_A, PRODUCT_B], 'delete', {})
+    const result = await applyBulkProductAction([PRODUCT_A, PRODUCT_B], 'restore', {})
+    expect(result.updated).toBe(2)
+
+    const { rows } = await pool.query('SELECT deleted_at, available FROM products WHERE id IN ($1, $2)', [PRODUCT_A, PRODUCT_B])
+    expect(rows.every(r => r.deleted_at === null && r.available === 0)).toBe(true)
+  })
+
+  it('is idempotent: bulk-restoring a product that is not deleted reports it as failed', async () => {
+    const result = await applyBulkProductAction([PRODUCT_A], 'restore', {})
+    expect(result.updated).toBe(0)
+    expect(result.failed).toEqual([{ productId: PRODUCT_A, reason: 'product_not_found' }])
+  })
 })

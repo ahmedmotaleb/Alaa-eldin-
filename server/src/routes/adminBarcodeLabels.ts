@@ -54,7 +54,8 @@ adminBarcodeLabelsRouter.get('/search', requirePermission('products.barcode.view
     `SELECT p.id, p.name, p.barcode, p.sku, p.price, p.stock, p.brand, p.emoji, c.name as "categoryName"
      FROM products p
      JOIN categories c ON c.id = p.category_id
-     WHERE (
+     WHERE p.deleted_at IS NULL
+     AND (
        p.barcode = $2 OR p.sku ILIKE $1
        OR ${NORMALIZE_SQL('p.name')} ILIKE ${NORMALIZE_SQL('$1')}
        OR ${NORMALIZE_SQL('p.brand')} ILIKE ${NORMALIZE_SQL('$1')}

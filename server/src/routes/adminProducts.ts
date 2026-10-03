@@ -8,9 +8,13 @@ import { setProductSku, generateSkuForProduct, findProductByBarcode } from '../s
 import { toCsv, parseCsv, csvRecords } from '../csv.js'
 import { validateImportRows, importValidatedRows, generateProductImportTemplateCsv, type ImportConfirmRow } from '../services/productImportService.js'
 import { applyBulkProductAction, type BulkProductActionType } from '../services/bulkProductActionsService.js'
-import { SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, type ProductRow, type ProductWriteInput } from '../services/productService.js'
+import {
+  SELECT_PRODUCT, serializeProduct, createProduct, updateProduct, softDeleteProduct, restoreProduct,
+  type ProductRow, type ProductWriteInput
+} from '../services/productService.js'
 import { listVariantsForProduct, createVariant, updateVariant, deleteVariant, type VariantInput } from '../services/productVariantService.js'
 import { getPriceHistoryForProduct } from '../services/bulkOperationBatchService.js'
+import { userHasPermission } from '../services/permissionService.js'
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
@@ -51,6 +55,11 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
     params.push(req.query.categoryId.trim())
     conditions.push(`p.category_id = $${params.length}`)
   }
+  // status=active (افتراضي، بدون أي query param كمان) بيستبعد المحذوف — status=deleted
+  // بيعرض سلة المحذوفات بس (شاشة الاستعادة) — status=all بيعرض الاتنين مع بعض.
+  const status = typeof req.query.status === 'string' ? req.query.status : 'active'
+  if (status === 'deleted') conditions.push(`p.deleted_at IS NOT NULL`)
+  else if (status !== 'all') conditions.push(`p.deleted_at IS NULL`)
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   if (!paginationRequested) {
@@ -78,7 +87,7 @@ adminProductsRouter.get('/', requirePermission('products.view'), async (req, res
 // مسجّلة قبل '/:id' عمداً — نفس شكل المسار (segment واحد)، فلو اتسجلت بعده هيتقفل عليها
 // '/:id' الأول (id='export') وميوصلوش الطلب هنا أبداً.
 adminProductsRouter.get('/export', requirePermission('products.view'), async (_req, res) => {
-  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} ORDER BY name`)
+  const { rows } = await pool.query<ProductRow>(`${SELECT_PRODUCT} WHERE deleted_at IS NULL ORDER BY name`)
   const csv = toCsv(
     ['id', 'sku', 'barcode', 'name', 'price', 'oldPrice', 'cost', 'stock', 'alertThreshold', 'available', 'brand'],
     rows.map(p => [p.id, p.sku ?? '', p.barcode, p.name, p.price, p.oldPrice ?? '', p.cost, p.stock, p.alertThreshold, p.available ? '1' : '0', p.brand])
@@ -460,9 +469,13 @@ adminProductsRouter.post('/', requirePermission('products.create'), async (req, 
 
 // مسجّلة عمداً قبل '/:id' — '/bulk' segment واحد زي ':id'، فلو اتسجلت بعده كان هيبلعها
 // '/:id' باعتبار id='bulk' وميوصلوش الطلب هنا أبداً.
-const BULK_PRODUCT_ACTIONS: BulkProductActionType[] = ['set_available', 'set_unavailable', 'set_category', 'set_brand']
+const BULK_PRODUCT_ACTIONS: BulkProductActionType[] = ['set_available', 'set_unavailable', 'set_category', 'set_brand', 'delete', 'restore']
+const DESTRUCTIVE_BULK_ACTIONS: BulkProductActionType[] = ['delete', 'restore']
 
-adminProductsRouter.patch('/bulk', requirePermission('products.edit'), async (req, res) => {
+// مفيش requirePermission واحد ثابت هنا عمداً — delete/restore محتاجين products.delete
+// (صلاحية مستقلة عن products.edit، راجع migration 0072)، والباقي محتاج products.edit
+// زي ما كان دايماً. الفحص بيحصل يدوياً بعد ما نعرف الـ action المطلوب فعلياً.
+adminProductsRouter.patch('/bulk', async (req, res) => {
   const body = req.body as { productIds?: unknown, action?: unknown, categoryId?: unknown, brand?: unknown }
   if (!Array.isArray(body.productIds) || body.productIds.length === 0 || body.productIds.some(id => typeof id !== 'string')) {
     res.status(400).json({ error: 'missing_product_ids' })
@@ -473,6 +486,11 @@ adminProductsRouter.patch('/bulk', requirePermission('products.edit'), async (re
     return
   }
   const action = body.action as BulkProductActionType
+  const requiredPermission = DESTRUCTIVE_BULK_ACTIONS.includes(action) ? 'products.delete' : 'products.edit'
+  if (!(await userHasPermission(req.user!, requiredPermission))) {
+    res.status(403).json({ error: 'forbidden' })
+    return
+  }
   const productIds = body.productIds as string[]
   const categoryId = typeof body.categoryId === 'string' ? body.categoryId : undefined
   const brand = typeof body.brand === 'string' ? body.brand : undefined
@@ -487,6 +505,44 @@ adminProductsRouter.patch('/bulk', requirePermission('products.edit'), async (re
     newValues: { action, productIds, categoryId, brand, updated: result.updated, failed: result.failed }
   })
   res.json(result)
+})
+
+// حذف منتج واحد — soft delete بس (راجع تعليق softDeleteProduct في productService.ts).
+// idempotent: حذف منتج محذوف أصلاً بيرجع 404 (مش بيعمل حاجة تانية ولا بيرجّع خطأ غامض).
+adminProductsRouter.delete('/:id', requirePermission('products.delete'), async (req, res) => {
+  const deleted = await softDeleteProduct(String(req.params.id))
+  if (!deleted) {
+    res.status(404).json({ error: 'product_not_found' })
+    return
+  }
+  const product = serializeProduct(deleted)
+  logEvent('admin_product_updated', { source: 'single_delete', productId: req.params.id })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_deleted',
+    entityType: 'product',
+    entityId: String(req.params.id),
+    newValues: { name: product.name, sku: product.sku }
+  })
+  res.json({ product })
+})
+
+adminProductsRouter.post('/:id/restore', requirePermission('products.delete'), async (req, res) => {
+  const restored = await restoreProduct(String(req.params.id))
+  if (!restored) {
+    res.status(404).json({ error: 'product_not_found' })
+    return
+  }
+  const product = serializeProduct(restored)
+  logEvent('admin_product_updated', { source: 'single_restore', productId: req.params.id })
+  await recordAuditLog({
+    adminUserId: req.user!.id,
+    action: 'product_restored',
+    entityType: 'product',
+    entityId: String(req.params.id),
+    newValues: { name: product.name, sku: product.sku }
+  })
+  res.json({ product })
 })
 
 adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req, res) => {

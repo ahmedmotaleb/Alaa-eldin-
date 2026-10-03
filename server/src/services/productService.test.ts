@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { pool } from '../db.js'
-import { createProduct, updateProduct, slugifyProductName, generateUniqueProductSlug, type ProductWriteInput } from './productService.js'
+import { createProduct, updateProduct, softDeleteProduct, restoreProduct, slugifyProductName, generateUniqueProductSlug, type ProductWriteInput } from './productService.js'
 import { findProductByBarcode } from './productSkuService.js'
 
 const CATEGORY_ID = 'test-cat-product-service'
@@ -125,6 +125,58 @@ describe('createProduct / updateProduct / findProductByBarcode', () => {
   it('returns null from updateProduct for a non-existent product id', async () => {
     const update = await updateProduct('does-not-exist', baseInput(), USER_ID)
     expect(update).toBeNull()
+  })
+})
+
+describe('softDeleteProduct / restoreProduct', () => {
+  beforeEach(resetFixtures)
+  afterAll(resetFixtures)
+
+  it('soft-deletes a product: sets deleted_at + available=0, but keeps the row', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج للحذف الناعم' }))
+
+    const deleted = await softDeleteProduct(product.id)
+    expect(deleted).not.toBeNull()
+    expect(deleted!.deletedAt).not.toBeNull()
+    expect(deleted!.available).toBe(0)
+
+    const { rows } = await pool.query('SELECT id FROM products WHERE id = $1', [product.id])
+    expect(rows).toHaveLength(1)
+  })
+
+  it('is idempotent: deleting an already-deleted product returns null and does not error', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج محذوف بالفعل' }))
+    await softDeleteProduct(product.id)
+
+    const second = await softDeleteProduct(product.id)
+    expect(second).toBeNull()
+  })
+
+  it('returns null for deleting a non-existent product id', async () => {
+    expect(await softDeleteProduct('does-not-exist')).toBeNull()
+  })
+
+  it('restores a soft-deleted product, clearing deleted_at but NOT re-enabling availability', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج للاستعادة', available: true }))
+    await softDeleteProduct(product.id)
+
+    const restored = await restoreProduct(product.id)
+    expect(restored).not.toBeNull()
+    expect(restored!.deletedAt).toBeNull()
+    expect(restored!.available).toBe(0)
+  })
+
+  it('is idempotent: restoring a product that is not deleted returns null', async () => {
+    const product = await createProduct(baseInput({ name: 'منتج غير محذوف' }))
+    expect(await restoreProduct(product.id)).toBeNull()
+  })
+
+  it('excludes a soft-deleted product from findProductByBarcode', async () => {
+    const barcode = '6221030077777'
+    const product = await createProduct(baseInput({ name: 'منتج باركود محذوف', barcode }))
+    await softDeleteProduct(product.id)
+
+    expect(await findProductByBarcode(barcode)).toBeNull()
   })
 })
 

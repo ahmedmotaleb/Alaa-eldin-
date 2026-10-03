@@ -31,6 +31,10 @@ export function ProductsListPage() {
   const [bulkBrand, setBulkBrand] = useState('')
   const [bulkError, setBulkError] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
+  // status='active' (الافتراضي) بيعرض الكتالوج العادي، status='deleted' بيعرض سلة
+  // المحذوفات بس (شاشة استعادة) — مفيش عرض "all" في الواجهة عمداً، الهدف وضوح أي شاشة
+  // الأدمن شايفها دلوقتي، مش دمج الاتنين في جدول واحد مربك.
+  const [status, setStatus] = useState<'active' | 'deleted'>('active')
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: 'جميع المنتجات', action: { label: 'إضافة منتج', onClick: () => navigate('/products/add') } })
@@ -44,19 +48,19 @@ export function ProductsListPage() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => { setPage(1) }, [debouncedQuery, chip])
-  useEffect(() => { setSelected({}) }, [page, debouncedQuery, chip])
+  useEffect(() => { setPage(1) }, [debouncedQuery, chip, status])
+  useEffect(() => { setSelected({}) }, [page, debouncedQuery, chip, status])
 
   useEffect(() => {
     const categoryId = chip === 'الكل' ? undefined : categories.find(c => c.name === chip)?.id
-    api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId })
+    api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId, status })
       .then(({ products, totalPages, total }) => {
         setProducts(products)
         setTotalPages(totalPages ?? 1)
         setTotal(total ?? products.length)
       })
       .catch(err => setError(err instanceof ApiError ? 'تعذر تحميل المنتجات' : 'حدث خطأ، حاول مرة أخرى'))
-  }, [page, debouncedQuery, chip, categories])
+  }, [page, debouncedQuery, chip, categories, status])
 
   async function exportCsv() {
     try {
@@ -89,7 +93,7 @@ export function ProductsListPage() {
     setSelected(next)
   }
 
-  async function applyBulkAction(action: 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand') {
+  async function applyBulkAction(action: 'set_available' | 'set_unavailable' | 'set_category' | 'set_brand' | 'delete' | 'restore') {
     const productIds = Object.keys(selected).filter(id => selected[id])
     if (productIds.length === 0) return
 
@@ -97,6 +101,8 @@ export function ProductsListPage() {
       action === 'set_available' ? `سيتم إظهار ${productIds.length} منتج للعملاء. هل تريد المتابعة؟`
       : action === 'set_unavailable' ? `سيتم إخفاء ${productIds.length} منتج عن العملاء. هل تريد المتابعة؟`
       : action === 'set_category' ? `سيتم نقل ${productIds.length} منتج إلى هذا القسم. هل تريد المتابعة؟`
+      : action === 'delete' ? `سيتم حذف ${productIds.length} منتج. هذا إجراء قابل للتراجع (يمكن استعادة المنتجات من "عرض المحذوفة")، لكن المنتجات ستختفي فوراً من الكتالوج ولن تظهر للعملاء. هل تريد المتابعة؟`
+      : action === 'restore' ? `سيتم استعادة ${productIds.length} منتج. المنتجات المستعادة تفضل مخفية عن العملاء لحد ما تظهرها بنفسك من "إظهار المحدد". هل تريد المتابعة؟`
       : `سيتم تعيين "${bulkBrand.trim()}" كعلامة تجارية لـ ${productIds.length} منتج. هل تريد المتابعة؟`
     if (!window.confirm(confirmMessage)) return
 
@@ -113,7 +119,7 @@ export function ProductsListPage() {
       }
       setSelected({})
       const categoryId = chip === 'الكل' ? undefined : categories.find(c => c.name === chip)?.id
-      const refreshed = await api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId })
+      const refreshed = await api.listProducts({ page, limit: LIMIT, search: debouncedQuery.trim() || undefined, categoryId, status })
       setProducts(refreshed.products)
     } catch {
       setBulkError('تعذر تنفيذ الإجراء الجماعي')
@@ -157,6 +163,9 @@ export function ProductsListPage() {
             <button className="admin-form-chip" onClick={() => navigate('/products/bulk-stock')}>تحديث المخزون بالجملة</button>
             <button className="admin-form-chip" onClick={() => navigate('/products/bulk-cost')}>تحديث التكلفة بالجملة</button>
             <button className="admin-form-chip" onClick={() => navigate('/products/bulk-operations')}>العمليات الجماعية</button>
+            <button className="admin-form-chip" onClick={() => setStatus(s => s === 'deleted' ? 'active' : 'deleted')}>
+              {status === 'deleted' ? 'عرض النشطة' : 'عرض المحذوفة'}
+            </button>
           </div>
         </div>
         {csvNotice && <div className="admin-form-success" style={{ margin: '0 16px' }}>{csvNotice}</div>}
@@ -164,15 +173,22 @@ export function ProductsListPage() {
         {Object.values(selected).some(Boolean) && (
           <div className="admin-bulk-select-bar" style={{ margin: '0 16px 12px', padding: 12, background: '#EAF2FF', borderRadius: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <strong>تم تحديد {Object.values(selected).filter(Boolean).length} منتج</strong>
-            <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_available')}>إظهار المحدد</button>
-            <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_unavailable')}>إخفاء المحدد</button>
-            <select value={bulkCategoryId} onChange={e => setBulkCategoryId(e.target.value)}>
-              <option value="">نقل إلى قسم...</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button className="admin-form-chip" disabled={bulkBusy || !bulkCategoryId} onClick={() => applyBulkAction('set_category')}>تطبيق نقل القسم</button>
-            <input placeholder="علامة تجارية جديدة" value={bulkBrand} onChange={e => setBulkBrand(e.target.value)} style={{ width: 160 }} />
-            <button className="admin-form-chip" disabled={bulkBusy || !bulkBrand.trim()} onClick={() => applyBulkAction('set_brand')}>تطبيق العلامة التجارية</button>
+            {status === 'deleted' ? (
+              <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('restore')}>استعادة المحدد</button>
+            ) : (
+              <>
+                <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_available')}>إظهار المحدد</button>
+                <button className="admin-form-chip" disabled={bulkBusy} onClick={() => applyBulkAction('set_unavailable')}>إخفاء المحدد</button>
+                <select value={bulkCategoryId} onChange={e => setBulkCategoryId(e.target.value)}>
+                  <option value="">نقل إلى قسم...</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button className="admin-form-chip" disabled={bulkBusy || !bulkCategoryId} onClick={() => applyBulkAction('set_category')}>تطبيق نقل القسم</button>
+                <input placeholder="علامة تجارية جديدة" value={bulkBrand} onChange={e => setBulkBrand(e.target.value)} style={{ width: 160 }} />
+                <button className="admin-form-chip" disabled={bulkBusy || !bulkBrand.trim()} onClick={() => applyBulkAction('set_brand')}>تطبيق العلامة التجارية</button>
+                <button className="admin-form-chip" disabled={bulkBusy} style={{ background: '#FFECEC', color: '#B42318' }} onClick={() => applyBulkAction('delete')}>حذف المحدد</button>
+              </>
+            )}
             <button className="admin-form-chip" disabled={bulkBusy} onClick={() => setSelected({})}>إلغاء التحديد</button>
           </div>
         )}
@@ -219,7 +235,11 @@ export function ProductsListPage() {
                   <div className="admin-cell-plain" style={{ color: '#68746B' }}>{formatMoney(p.cost)}</div>
                   <div className="admin-cell-plain" style={{ fontWeight: 800, color: margin > .22 ? '#12813C' : '#B45309' }}>{Math.round(margin * 100)}%</div>
                   <div className="admin-cell-plain" style={{ color: low ? '#B42318' : '#3B4A40' }}>{p.stock} {p.unit}</div>
-                  <div><span className="admin-pill" style={{ background: p.available ? '#EAF8EF' : '#F1F4F2', color: p.available ? '#12813C' : '#68746B' }}>{p.available ? 'معروض' : 'مخفي'}</span></div>
+                  <div>
+                    {p.deleted
+                      ? <span className="admin-pill" style={{ background: '#FFECEC', color: '#B42318' }}>محذوف</span>
+                      : <span className="admin-pill" style={{ background: p.available ? '#EAF8EF' : '#F1F4F2', color: p.available ? '#12813C' : '#68746B' }}>{p.available ? 'معروض' : 'مخفي'}</span>}
+                  </div>
                 </div>
               )
             })}

@@ -2,7 +2,7 @@ import { pool } from '../db.js'
 
 export const ALL_PERMISSIONS = [
   'orders.view', 'orders.update_status', 'orders.cancel', 'orders.print',
-  'products.view', 'products.create', 'products.edit', 'products.cost_view',
+  'products.view', 'products.create', 'products.edit', 'products.delete', 'products.cost_view',
   'inventory.view', 'inventory.adjust', 'inventory.receive', 'inventory.import',
   'purchases.view', 'purchases.create', 'purchases.receive',
   'customers.view', 'discounts.manage', 'analytics.view',

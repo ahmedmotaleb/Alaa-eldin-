@@ -95,14 +95,15 @@ async function searchProducts(term: string): Promise<ProductSearchResult[]> {
     `SELECT p.id, p.name, p.price, p.stock, c.name as "categoryName"
      FROM products p
      JOIN categories c ON c.id = p.category_id
-     WHERE p.barcode ILIKE $3 OR p.sku ILIKE $3
+     WHERE p.deleted_at IS NULL
+       AND (p.barcode ILIKE $3 OR p.sku ILIKE $3
         OR ${NORMALIZE_SQL('p.name')} ILIKE ${NORMALIZE_SQL('$3')}
         OR ${NORMALIZE_SQL('p.brand')} ILIKE ${NORMALIZE_SQL('$3')}
         OR EXISTS (
           SELECT 1 FROM product_variants v
           WHERE v.product_id = p.id
             AND (v.barcode ILIKE $3 OR v.sku ILIKE $3 OR ${NORMALIZE_SQL('v.name')} ILIKE ${NORMALIZE_SQL('$3')})
-        )
+        ))
      ORDER BY
        CASE
          WHEN p.barcode ILIKE $1 OR p.sku ILIKE $1 THEN 0

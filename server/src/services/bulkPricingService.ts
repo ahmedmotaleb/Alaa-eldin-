@@ -155,7 +155,7 @@ interface TemplateVariantRow {
 // القالب بيتولّد من قاعدة البيانات مباشرة، مش ملف فاضي عام — كل الفلاتر اختيارية ومطبّقة
 // على مستوى المنتج (متغيرات منتج مطابق للفلتر بتتضمّن كلها تلقائياً).
 export async function generatePricingTemplateCsv(filters: PricingTemplateFilters = {}): Promise<string> {
-  const conditions: string[] = []
+  const conditions: string[] = ['p.deleted_at IS NULL']
   const params: unknown[] = []
 
   if (filters.categoryId) { params.push(filters.categoryId); conditions.push(`p.category_id = $${params.length}`) }
