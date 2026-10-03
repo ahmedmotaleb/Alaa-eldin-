@@ -29,12 +29,22 @@ export interface ProductRow {
   deletedAt: string | null
 }
 
+// img.image_url عمداً عبر LEFT JOIN LATERAL على نفس نمط SELECT_PRODUCT_WITH_IMAGE في
+// adminProducts.ts — قبل كده الاستعلام ده (المستخدم في GET /:id وكل مسارات الكتابة هنا)
+// كان من غير primaryImage خالص، فـ serializeProduct كان بيرجّعه undefined دايماً بغض النظر
+// عن وجود صورة فعلية للمنتج من عدمه.
 export const SELECT_PRODUCT = `
-  SELECT id, slug, category_id as "categoryId", name, description, price, old_price as "oldPrice", cost,
-         unit, emoji, available, bestseller, offer, order_count as "orderCount", stock, alert_threshold as "alertThreshold",
-         barcode, brand, tracks_expiry as "tracksExpiry", default_shelf_life_days as "defaultShelfLifeDays", sku,
-         deleted_at as "deletedAt"
-  FROM products
+  SELECT p.id, p.slug, p.category_id as "categoryId", p.name, p.description, p.price, p.old_price as "oldPrice", p.cost,
+         p.unit, p.emoji, p.available, p.bestseller, p.offer, p.order_count as "orderCount", p.stock, p.alert_threshold as "alertThreshold",
+         p.barcode, p.brand, p.tracks_expiry as "tracksExpiry", p.default_shelf_life_days as "defaultShelfLifeDays", p.sku,
+         p.deleted_at as "deletedAt", img.image_url as "primaryImage"
+  FROM products p
+  LEFT JOIN LATERAL (
+    SELECT image_url FROM product_images pi
+    WHERE pi.product_id = p.id
+    ORDER BY pi.is_primary DESC, pi.sort_order ASC
+    LIMIT 1
+  ) img ON true
 `
 
 export function serializeProduct(row: ProductRow) {

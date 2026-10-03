@@ -102,6 +102,20 @@ describe('POST /api/admin/products/:id/images (Cloudinary configured, upload moc
     expect(res.body.image.isPrimary).toBe(true)
   })
 
+  // GET /api/admin/products/:id كان من غير أي primaryImage خالص (مفيش LEFT JOIN على
+  // product_images في SELECT_PRODUCT) — صورة منتج مرفوعة بنجاح كانت تفضل غير ظاهرة لأي كود
+  // بيعتمد على هذا الـ endpoint بالتحديد. راجع productService.ts SELECT_PRODUCT.
+  it('GET /api/admin/products/:id reflects the uploaded image as primaryImage', async () => {
+    mockUploadSuccess('single-product-fetch-key')
+    const agent = await adminAgent()
+    const upload = await agent.post(`/api/admin/products/${PRODUCT_ID}/images`).attach('image', JPEG_BYTES, { filename: 'photo.jpg', contentType: 'image/jpeg' })
+    expect(upload.status).toBe(201)
+
+    const res = await agent.get(`/api/admin/products/${PRODUCT_ID}`)
+    expect(res.status).toBe(200)
+    expect(res.body.product.primaryImage).toContain('single-product-fetch-key')
+  })
+
   it('uploads a valid PNG successfully', async () => {
     mockUploadSuccess('png-key')
     const agent = await adminAgent()
