@@ -315,25 +315,51 @@ export function BarcodeScanPage() {
     navigate('/products/add', { state: { prefillBarcode: notFoundBarcode } })
   }
 
+  // بيحدّث مخزون "الجزء" اللي فعلياً اتعدّل بس — المتغيّر لو كان هو المتغيّر الممسوح، وإلا
+  // المنتج الأساسي. أبداً ما بيلمسش stock المنتج الأساسي لو كان المتغيّر هو المقصود، حتى لو
+  // الرد رجع بنجاح — فصل واضح بين الاتنين يمنع تضارب أرصدة.
+  function applyNewStock(current: ScannedBarcodeProduct, newStock: number): ScannedBarcodeProduct {
+    return current.variant ? { ...current, variant: { ...current.variant, stock: newStock } } : { ...current, stock: newStock }
+  }
+
+  function stockActionErrorMessage(err: unknown): string {
+    if (err instanceof ApiError && err.code === 'variant_not_found') {
+      return 'هذا المتغير لم يعد موجودًا — امسح الباركود مرة أخرى'
+    }
+    return err instanceof ApiError && err.code === 'insufficient_stock' ? 'الكمية المطلوبة أكبر من المخزون المتاح' : 'تعذر تحديث المخزون'
+  }
+
   async function doRestock() {
-    if (!product || restockQty <= 0) return
+    if (!product || !Number.isFinite(restockQty) || restockQty <= 0) return
     try {
-      const { newStock } = await api.createStockMovement({ productId: product.id, type: 'restock', quantityChange: restockQty, note: 'إضافة سريعة عبر مسح الباركود' })
-      setProduct({ ...product, stock: newStock })
+      const { newStock } = await api.createStockMovement({
+        productId: product.id,
+        variantId: product.variant?.id ?? undefined,
+        type: 'restock',
+        quantityChange: restockQty,
+        note: 'إضافة سريعة عبر مسح الباركود'
+      })
+      setProduct(current => current && applyNewStock(current, newStock))
       setActionMessage('تم زيادة المخزون')
-    } catch {
-      window.alert('تعذر تحديث المخزون')
+    } catch (err) {
+      window.alert(stockActionErrorMessage(err))
     }
   }
 
   async function doAdjust() {
-    if (!product || adjustQty === 0) return
+    if (!product || !Number.isFinite(adjustQty) || adjustQty === 0) return
     try {
-      const { newStock } = await api.createStockMovement({ productId: product.id, type: 'adjustment', quantityChange: adjustQty, note: 'تسوية سريعة عبر مسح الباركود' })
-      setProduct({ ...product, stock: newStock })
+      const { newStock } = await api.createStockMovement({
+        productId: product.id,
+        variantId: product.variant?.id ?? undefined,
+        type: 'adjustment',
+        quantityChange: adjustQty,
+        note: 'تسوية سريعة عبر مسح الباركود'
+      })
+      setProduct(current => current && applyNewStock(current, newStock))
       setActionMessage('تم تسجيل التسوية')
-    } catch {
-      window.alert('تعذر تسجيل التسوية')
+    } catch (err) {
+      window.alert(stockActionErrorMessage(err))
     }
   }
 
@@ -420,7 +446,8 @@ export function BarcodeScanPage() {
               <SafeImage sources={[product.primaryImage]} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} fallback={product.emoji} />
             </div>
             <div>
-              <div className="admin-form-card-title">{product.name}{product.variant ? ` — ${product.variant.name}` : ''}</div>
+              <div className="admin-form-card-title">المنتج: {product.name}</div>
+              {product.variant && <div className="admin-form-card-sub">المتغير: <strong>{product.variant.name}</strong></div>}
               <div className="admin-form-card-sub">
                 الباركود: {product.variant ? product.variant.barcode : product.barcode}
                 {(product.variant ? product.variant.sku : product.sku) ? ` — SKU: ${product.variant ? product.variant.sku : product.sku}` : ''}
@@ -432,7 +459,7 @@ export function BarcodeScanPage() {
             الوحدة: <strong>{product.unit}</strong> — الحالة: <strong>{(product.variant ? product.variant.available : product.available) ? 'معروض' : 'غير معروض'}</strong>
           </div>
           <div className="admin-form-help">
-            المخزون الحالي: <strong>{product.variant ? product.variant.stock : product.stock}</strong> — السعر: <strong>{formatMoney(product.variant ? product.variant.price : product.price)}</strong>
+            {product.variant ? 'مخزون المتغير الحالي' : 'المخزون الحالي'}: <strong>{product.variant ? product.variant.stock : product.stock}</strong> — السعر: <strong>{formatMoney(product.variant ? product.variant.price : product.price)}</strong>
           </div>
 
           <span className="admin-form-chips">
@@ -441,14 +468,14 @@ export function BarcodeScanPage() {
             <button type="button" className="admin-form-chip" onClick={() => navigate('/purchasing/receiving')}>استلام بضاعة</button>
           </span>
 
-          <label>زيادة مخزون سريعة
+          <label>{product.variant ? `إضافة لمخزون ${product.variant.name}` : 'زيادة مخزون سريعة'}
             <span style={{ display: 'flex', gap: 8 }}>
               <input type="number" min={1} value={restockQty} onChange={e => setRestockQty(Number(e.target.value))} style={{ width: 100 }} />
               <button type="button" className="admin-form-chip" onClick={doRestock}>إضافة</button>
             </span>
           </label>
 
-          <label>تسوية مخزون (+/-)
+          <label>{product.variant ? `تسوية مخزون ${product.variant.name} (+/-)` : 'تسوية مخزون (+/-)'}
             <span style={{ display: 'flex', gap: 8 }}>
               <input type="number" value={adjustQty} onChange={e => setAdjustQty(Number(e.target.value))} style={{ width: 100 }} />
               <button type="button" className="admin-form-chip" onClick={doAdjust}>تسجيل</button>

@@ -122,11 +122,35 @@ describe('POST /api/admin/stock-movements — variant-level (variantId set)', ()
     expect(variantRows[0].stock).toBe(5)
   })
 
-  it('rejects a variantId that does not belong to the given productId', async () => {
+  it('rejects a variantId that does not exist at all', async () => {
     const { agent } = await adminAgent()
     const res = await agent.post('/api/admin/stock-movements').send({ productId: PRODUCT_ID, variantId: 'does-not-exist', type: 'restock', quantityChange: 1 })
     expect(res.status).toBe(404)
-    expect(res.body.error).toBe('product_not_found')
+    expect(res.body.error).toBe('variant_not_found')
+
+    const { rows } = await pool.query<{ stock: number }>('SELECT stock FROM products WHERE id = $1', [PRODUCT_ID])
+    expect(rows[0].stock).toBe(10)
+  })
+
+  it('rejects a variant that exists but belongs to a different product, without touching either product', async () => {
+    const { agent } = await adminAgent()
+    const otherProductId = `${PREFIX}other-product`
+    await pool.query(
+      `INSERT INTO products (id, slug, category_id, name, description, price, cost, unit, emoji, available, stock, created_at)
+       VALUES ($1, $1, $2, 'منتج آخر', 'وصف', 20, 10, 'قطعة', '🧪', 1, 7, now())`,
+      [otherProductId, CATEGORY_ID]
+    )
+
+    const res = await agent.post('/api/admin/stock-movements').send({ productId: otherProductId, variantId: VARIANT_ID, type: 'restock', quantityChange: 1 })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('variant_product_mismatch')
+
+    const { rows: variantRows } = await pool.query<{ stock: number }>('SELECT stock FROM product_variants WHERE id = $1', [VARIANT_ID])
+    expect(variantRows[0].stock).toBe(5)
+    const { rows: otherRows } = await pool.query<{ stock: number }>('SELECT stock FROM products WHERE id = $1', [otherProductId])
+    expect(otherRows[0].stock).toBe(7)
+
+    await pool.query('DELETE FROM products WHERE id = $1', [otherProductId])
   })
 
   it('is safe under concurrent overlapping decrements on the same variant — never goes negative', async () => {

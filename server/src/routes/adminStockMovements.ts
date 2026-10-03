@@ -108,11 +108,17 @@ adminStockMovementsRouter.post('/', async (req, res) => {
     // فيوصل الرصيد لسالب فعلياً رغم إن الشرط `newStock < 0` اتفحص في الاتنين قبل الكتابة.
     let newStock: number
     if (normalizedVariantId) {
-      const { rows } = await client.query<{ stock: number }>(
-        'SELECT stock FROM product_variants WHERE id = $1 AND product_id = $2 FOR UPDATE',
-        [normalizedVariantId, productId]
+      // الاستعلام هنا عمداً بدون شرط product_id في WHERE — عشان نقدر نفرّق بين "المتغيّر
+      // ده مش موجود أصلاً" (variant_not_found) و"المتغيّر موجود لكن تابع لمنتج تاني"
+      // (variant_product_mismatch)، بدل ما الاتنين يرجعوا نفس الخطأ العام. أبداً مفيش
+      // fallback صامت يعدّل مخزون المنتج الأساسي لو المتغيّر مش مطابق — ده ممكن يفسد
+      // المخزون الحقيقي بصمت.
+      const { rows } = await client.query<{ stock: number, productId: string }>(
+        'SELECT stock, product_id as "productId" FROM product_variants WHERE id = $1 FOR UPDATE',
+        [normalizedVariantId]
       )
-      if (!rows[0]) return { error: 'product_not_found' as const }
+      if (!rows[0]) return { error: 'variant_not_found' as const }
+      if (rows[0].productId !== productId) return { error: 'variant_product_mismatch' as const }
       newStock = rows[0].stock + quantityChange
       if (newStock < 0) return { error: 'insufficient_stock' as const }
       await client.query('UPDATE product_variants SET stock = $1 WHERE id = $2', [newStock, normalizedVariantId])
@@ -137,7 +143,8 @@ adminStockMovementsRouter.post('/', async (req, res) => {
   })
 
   if ('error' in result) {
-    res.status(result.error === 'product_not_found' ? 404 : 400).json({ error: result.error })
+    const status = result.error === 'product_not_found' || result.error === 'variant_not_found' ? 404 : 400
+    res.status(status).json({ error: result.error })
     return
   }
 
