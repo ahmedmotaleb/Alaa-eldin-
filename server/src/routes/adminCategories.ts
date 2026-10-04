@@ -64,7 +64,14 @@ adminCategoriesRouter.post('/:id/image', uploadRateLimit, upload.single('image')
   }
 
   const uploaded = await uploadImage(file.buffer)
-  await pool.query('UPDATE categories SET image_url = $1, image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
+  try {
+    await pool.query('UPDATE categories SET image_url = $1, image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
+  } catch (err) {
+    // رفع Cloudinary نجح بس تحديث القاعدة فشل بعده — الملف البعيد الجديد يتيم (مش متربط
+    // بأي صف)، والصورة القديمة لسه هي المعتمدة فعلاً؛ نحذف اليتيم بأفضل-جهد قبل ما نرمي الخطأ.
+    await deleteRemoteImage(uploaded.storageKey).catch(() => {})
+    throw err
+  }
   if (rows[0].imageStorageKey) await deleteRemoteImage(rows[0].imageStorageKey).catch(() => {})
 
   await recordAuditLog({

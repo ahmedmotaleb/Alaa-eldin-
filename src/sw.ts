@@ -5,7 +5,7 @@
 // زي ما كان في vite.config.ts قبل كده، منقول هنا حرفياً عشان محدش سلوك يتغيّر.
 import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
-import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies'
+import { CacheFirst, NetworkFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 
@@ -29,10 +29,18 @@ registerRoute(
 
 registerRoute(
   // settings مستبعد عمداً — إعدادات تشغيلية (زي آخر ميعاد توصيل نفس اليوم) لازم تفضل
-  // طازة دايماً، مش فيها أي تخزين مؤقت حتى StaleWhileRevalidate (راجع server/src/routes/settings.ts).
+  // طازة دايماً، مفيش أي تخزين مؤقت حتى NetworkFirst (راجع server/src/routes/settings.ts).
+  //
+  // كان StaleWhileRevalidate قبل كده — بيرجّع نسخة الكاش القديمة فوراً دايماً (بما فيها
+  // image_url قديم لقسم/بانر الأدمن غيّر صورته)، ويحدّث الكاش بالخلفية بس لطلب الزيارة
+  // الجاية. ده يعني أي عميل بيزور مرة واحدة ومايرجعش تاني، أو بيكرّر الصفحة نفسها خلال
+  // ساعة (ExpirationPlugin)، كان يفضل شايف الصورة القديمة من غير ما يعرف. NetworkFirst
+  // بيحاول الشبكة الحقيقية أولاً دايماً (نفس الـ Cache-Control اللي السيرفر فعلاً بيحدده
+  // في setShortPublicCache)، ومايرجعش لنسخة الكاش إلا لو فعلاً مفيش نت.
   ({ url }) => ['/api/categories', '/api/banners'].includes(url.pathname),
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'catalog-config',
+    networkTimeoutSeconds: 4,
     plugins: [new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 60 * 60 })]
   })
 )

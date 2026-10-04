@@ -165,11 +165,21 @@ adminBannersRouter.post('/:id/image', uploadRateLimit, upload.single('image'), a
   }
 
   const uploaded = await uploadImage(file.buffer)
+  // رفع Cloudinary نجح بس تحديث القاعدة فشل بعده — الملف البعيد الجديد يتيم (مش متربط
+  // بأي صف)، والصورة القديمة لسه هي المعتمدة فعلاً؛ نحذف اليتيم بأفضل-جهد قبل ما نرمي الخطأ.
+  try {
+    if (isMobile) {
+      await pool.query('UPDATE banners SET mobile_image_url = $1, mobile_image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
+    } else {
+      await pool.query('UPDATE banners SET image_url = $1, image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
+    }
+  } catch (err) {
+    await deleteRemoteImage(uploaded.storageKey).catch(() => {})
+    throw err
+  }
   if (isMobile) {
-    await pool.query('UPDATE banners SET mobile_image_url = $1, mobile_image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
     if (rows[0].mobileImageStorageKey) await deleteRemoteImage(rows[0].mobileImageStorageKey).catch(() => {})
   } else {
-    await pool.query('UPDATE banners SET image_url = $1, image_storage_key = $2 WHERE id = $3', [uploaded.url, uploaded.storageKey, req.params.id])
     if (rows[0].imageStorageKey) await deleteRemoteImage(rows[0].imageStorageKey).catch(() => {})
   }
 
