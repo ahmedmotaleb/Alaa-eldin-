@@ -50,7 +50,7 @@ function errorMessageFor(err: unknown): string {
   return 'تعذر رفع الصورة، حاول مرة أخرى'
 }
 
-export function ProductImagesManager({ productId }: { productId: string }) {
+export function ProductImagesManager({ productId, refreshKey }: { productId: string, refreshKey?: number }) {
   const [images, setImages] = useState<AdminProductImage[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -67,12 +67,15 @@ export function ProductImagesManager({ productId }: { productId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
 
+  // refreshKey اختياري — بيتغيّر من خارج الكومبوننت (مثلاً بعد إعادة محاولة رفع صورة فشلت
+  // وقت إنشاء منتج جديد، راجع ProductFormPage) عشان يفرض إعادة تحميل قائمة الصور فعلياً من
+  // السيرفر، من غير ما الأدمن يحتاج يعمل refresh للصفحة بنفسه.
   useEffect(() => {
     api.listProductImages(productId)
       .then(({ images }) => setImages(images))
       .catch(() => setError('تعذر تحميل صور المنتج'))
       .finally(() => setLoading(false))
-  }, [productId])
+  }, [productId, refreshKey])
 
   useEffect(() => {
     api.getIntegrationsStatus()

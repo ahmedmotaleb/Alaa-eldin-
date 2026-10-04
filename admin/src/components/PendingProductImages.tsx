@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '../utils/api'
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE_BYTES } from './ProductImagesManager'
 
 export interface StagedProductImage {
@@ -19,6 +20,16 @@ interface Props {
 export function PendingProductImages({ staged, onChange }: Props) {
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // null = لسه بنتحقق/الحالة مش معروفة بعد — نفس مبدأ ProductImagesManager، مش بنعرض أي
+  // تحذير لحد ما نتأكد فعلياً. الرفع الحقيقي مش هيحصل إلا بعد حفظ المنتج (createProduct)،
+  // فالتحذير هنا استباقي بس — الحفظ نفسه مسموح يستمر حتى لو Cloudinary غير متصل.
+  const [cloudinaryConnected, setCloudinaryConnected] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    api.getIntegrationsStatus()
+      .then(({ cloudinary }) => setCloudinaryConnected(cloudinary.connected))
+      .catch(() => setCloudinaryConnected(null))
+  }, [])
 
   function addFile(file: File) {
     setError('')
@@ -46,6 +57,10 @@ export function PendingProductImages({ staged, onChange }: Props) {
         <div className="admin-form-card-sub">هترفع فعلياً بعد حفظ المنتج مباشرة — أول صورة هتبقى الرئيسية</div>
       </div>
 
+      {cloudinaryConnected === false && (
+        <div className="admin-form-error">Cloudinary غير متصل — لا يمكن رفع الصور حالياً</div>
+      )}
+
       {error && <div className="admin-form-error">{error}</div>}
 
       {staged.length > 0 && (
@@ -60,6 +75,7 @@ export function PendingProductImages({ staged, onChange }: Props) {
                   </span>
                 )}
               </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#12813C', textAlign: 'center', marginTop: 6 }}>جاهزة للرفع</div>
               <button
                 type="button"
                 onClick={() => remove(index)}

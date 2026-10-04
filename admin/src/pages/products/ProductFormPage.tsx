@@ -8,6 +8,7 @@ import { ProductVariantsManager } from '../../components/ProductVariantsManager'
 import { ProductPriceHistory } from '../../components/ProductPriceHistory'
 import { BarcodeCameraView } from '../../components/BarcodeScannerInput'
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
+import { setPendingUploadOutcome, takePendingUploadOutcome } from '../../utils/pendingProductUploads'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
@@ -26,7 +27,8 @@ const SAVE_ERROR_MESSAGES: Record<string, string> = {
   invalid_stock: 'الكمية المتاحة لازم تكون رقم صفر أو أكبر',
   invalid_alert_threshold: 'حد تنبيه المخزون لازم يكون رقم صفر أو أكبر',
   category_not_found: 'التصنيف المختار غير موجود، اختر تصنيف تاني',
-  product_not_found: 'المنتج غير موجود، ربما تم حذفه'
+  product_not_found: 'المنتج غير موجود، ربما تم حذفه',
+  barcode_already_used: 'هذا الباركود مستخدم بالفعل'
 }
 
 const emptyForm: AdminProductInput = {
@@ -61,15 +63,21 @@ export function ProductFormPage() {
   const [stagedImages, setStagedImages] = useState<StagedProductImage[]>([])
   const stagedImagesRef = useRef(stagedImages)
   stagedImagesRef.current = stagedImages
-  // لو المنتج اتعمل فعلاً (ضغطة حفظ سابقة لمنتج جديد) لكن صورة واحدة أو أكتر فشل رفعها —
-  // بيتحط هنا عشان ضغطة "حفظ" تانية تعرف تعيد محاولة رفع الصور بس، مش تعمل منتج جديد تاني.
-  const [createdProductId, setCreatedProductId] = useState<string | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteNotice, setDeleteNotice] = useState('')
   const oldPriceInputRef = useRef<HTMLInputElement>(null)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const [scanConfirmation, setScanConfirmation] = useState('')
   const [barcodeDuplicate, setBarcodeDuplicate] = useState<{ id: string, label: string } | null>(null)
+  // صور فشل رفعها بعد إنشاء منتج جديد — بتتحمّل هنا من pendingProductUploads بعد التنقّل
+  // لصفحة التعديل (راجع save()). منفصلة عن stagedImages لأن دي للمنتج الجديد قبل الحفظ،
+  // وده "رفع متبقٍّ" لمنتج موجود بالفعل.
+  const [retryImages, setRetryImages] = useState<StagedProductImage[]>([])
+  const retryImagesRef = useRef(retryImages)
+  retryImagesRef.current = retryImages
+  const [retryBusy, setRetryBusy] = useState(false)
+  const [imagesRefreshKey, setImagesRefreshKey] = useState(0)
+  const [imagesUploadedSuccess, setImagesUploadedSuccess] = useState(false)
 
   // نفس هوك المسح بالكاميرا المستخدم في BarcodeScanPage بالظبط (BarcodeDetector/ZXing، تبديل
   // كاميرا، فلاش، تبريد) — هنا بس بيحدّث form.barcode مباشرة، أبداً مفيش بحث عن منتج تلقائي
@@ -99,6 +107,19 @@ export function ProductFormPage() {
       .then(({ product }) => { setForm(product); setSkuInput(product.sku ?? '') })
       .catch(() => setError('تعذر تحميل بيانات المنتج'))
       .finally(() => setLoading(false))
+
+    // لو جاي من صفحة "إضافة منتج" فوراً بعد إنشائه — صور فشل رفعها (لو في) محمولة هنا، أو
+    // علامة نجاح كامل (راجع save() وPendingUploadOutcome). القراءة بتمسح القيمة فوراً.
+    const outcome = takePendingUploadOutcome(id)
+    if (outcome) {
+      if (outcome.failed.length > 0) {
+        setRetryImages(outcome.failed)
+      } else if (outcome.hadImages) {
+        setImagesUploadedSuccess(true)
+      }
+      setSuccess('تم حفظ المنتج')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   // معاينات الصور المختارة قبل الحفظ عبارة عن blob URLs محلية — لازم تتحرر (revoke) لما
@@ -127,45 +148,55 @@ export function ProductFormPage() {
     }
   }
 
-  // بيترفع كل صورة staged لسه موجودة، وبيسيب جوه stagedImages بس اللي فشل رفعها فعلياً —
-  // عشان ضغطة "إعادة المحاولة" تقدر تعيد المحاولة على الصور الفاشلة بس من غير ما تكرر رفع
-  // صورة اترفعت بنجاح من قبل. منتنقلش لصفحة التعديل إلا لما كل الصور تترفع بنجاح، أو الأدمن
-  // يختار صراحةً "الاستمرار بدونها".
-  async function uploadStagedImages(productId: string) {
-    const remaining: StagedProductImage[] = []
-    for (const staged of stagedImagesRef.current) {
+  // رفع صور منتج جديد بعد إنشائه بنجاح — خطوة واحدة فقط، من غير أي حلقة إعادة محاولة داخلية؛
+  // أي فشل بيُحمل (pendingProductUploads) للتنقّل الفوري لصفحة التعديل، فإعادة المحاولة
+  // الفعلية بتحصل هناك (retryFailedImages) على منتج موجود بالفعل، لا أبداً عن طريق إنشاء
+  // منتج تاني. بيرجع الصور اللي فشلت بس (الناجحة بترفع URLها تلقائياً).
+  async function uploadImagesAfterCreate(productId: string, images: StagedProductImage[]): Promise<StagedProductImage[]> {
+    const failed: StagedProductImage[] = []
+    for (const staged of images) {
       try {
         await api.uploadProductImage(productId, staged.file)
         URL.revokeObjectURL(staged.previewUrl)
       } catch {
-        remaining.push(staged)
+        failed.push(staged)
       }
     }
-    setStagedImages(remaining)
-    if (remaining.length === 0) {
-      setSuccess('تم حفظ المنتج')
-      navigate(`/products/edit/${productId}`, { replace: true })
-    } else {
-      setError(remaining.length === 1 ? 'تم حفظ المنتج، لكن تعذر رفع صورة واحدة — أعد المحاولة أو تابع بدونها' : `تم حفظ المنتج، لكن تعذر رفع ${remaining.length} صور — أعد المحاولة أو تابع بدونها`)
-    }
+    return failed
   }
 
-  function continueWithoutRemainingImages() {
-    if (!createdProductId) return
-    stagedImagesRef.current.forEach(img => URL.revokeObjectURL(img.previewUrl))
-    setStagedImages([])
-    navigate(`/products/edit/${createdProductId}`, { replace: true })
+  // إعادة محاولة الصور اللي فشل رفعها (منتج موجود بالفعل، إما إحنا لسه عليه من إنشاء جديد،
+  // أو من فتح صفحة تعديل فيها رفع متبقٍّ). بعد نجاح الكل — refreshKey بيتغيّر عشان
+  // ProductImagesManager يجيب القائمة تاني من السيرفر فوراً (listProductImages حقيقي، مش
+  // افتراض محلي)، تأكيداً إن الصورة بقت موجودة فعلاً.
+  async function retryFailedImages() {
+    if (!id || retryImages.length === 0) return
+    setRetryBusy(true)
+    try {
+      const stillFailing = await uploadImagesAfterCreate(id, retryImagesRef.current)
+      setRetryImages(stillFailing)
+      if (stillFailing.length === 0) {
+        setImagesRefreshKey(k => k + 1)
+        setImagesUploadedSuccess(true)
+      }
+    } finally {
+      setRetryBusy(false)
+    }
   }
 
   async function save() {
     setError('')
     setSuccess('')
+    setImagesUploadedSuccess(false)
+    // باركود متطابق مع منتج (أو متغيّر) تاني — ممنوع الحفظ أصلاً، مش بس تحذير. الفحص
+    // الحقيقي/النهائي على السيرفر برضه (barcode_already_used أسفل)، ده بس منع استباقي
+    // بيوفّر رحلة شبكة كاملة لحالة واضحة أصلاً.
+    if (barcodeDuplicate) {
+      setError('هذا الباركود مستخدم بالفعل — غيّر الباركود قبل الحفظ')
+      return
+    }
     setSaving(true)
     try {
-      // المنتج اتعمل فعلاً من ضغطة سابقة ولسه في انتظار رفع صور فشلت — "حفظ" هنا بس بيعيد
-      // محاولة رفع الصور المتبقية، أبداً ما بيعملش منتج جديد تاني (لمنع تكرار إنشاء منتج).
-      if (createdProductId) { await uploadStagedImages(createdProductId); return }
-
       // offer عمود GENERATED من السيرفر (oldPrice > price، راجع productService.ts) — السيرفر
       // بيتجاهل أي قيمة offer متبعتة هنا، مش محتاجين نحسبها أو نرسلها.
       const payload: AdminProductInput = { ...form }
@@ -175,8 +206,14 @@ export function ProductFormPage() {
         setSuccess('تم حفظ التعديلات')
       } else {
         const { product } = await api.createProduct(payload)
-        setCreatedProductId(product.id)
-        await uploadStagedImages(product.id)
+        const images = stagedImagesRef.current
+        const failed = await uploadImagesAfterCreate(product.id, images)
+        setStagedImages([])
+        setPendingUploadOutcome(product.id, { failed, hadImages: images.length > 0 })
+        // التنقّل لصفحة التعديل بيحصل دايماً هنا — نجح رفع الصور أو فشل، المنتج أصلاً
+        // محفوظ بالفعل ومينفعش يضيع؛ حالة الصور (نجاح/فشل مع إعادة محاولة) بتُعرض هناك.
+        navigate(`/products/edit/${product.id}`, { replace: true })
+        return
       }
     } catch (err) {
       if (err instanceof ApiError && SAVE_ERROR_MESSAGES[err.code]) setError(SAVE_ERROR_MESSAGES[err.code])
@@ -271,7 +308,25 @@ export function ProductFormPage() {
 
   return (
     <div className="admin-form-grid">
-      {isEdit && id && <ProductImagesManager productId={id} />}
+      {isEdit && id && retryImages.length > 0 && (
+        <div className="admin-form-card">
+          <div className="admin-form-error">
+            {retryImages.length === 1 ? 'تم حفظ المنتج، لكن لم يتم رفع الصورة' : `تم حفظ المنتج، لكن لم يتم رفع ${retryImages.length} صور`}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {retryImages.map(img => (
+              <img key={img.previewUrl} src={img.previewUrl} alt="" style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 8, border: '1px solid #dce4de', background: '#fff' }} />
+            ))}
+          </div>
+          <button type="button" className="admin-form-save" disabled={retryBusy} onClick={retryFailedImages}>
+            {retryBusy ? 'جارِ رفع الصورة...' : 'إعادة رفع الصورة'}
+          </button>
+        </div>
+      )}
+      {isEdit && imagesUploadedSuccess && retryImages.length === 0 && (
+        <div className="admin-form-success">تم رفع الصور بنجاح</div>
+      )}
+      {isEdit && id && <ProductImagesManager productId={id} refreshKey={imagesRefreshKey} />}
       {!isEdit && <PendingProductImages staged={stagedImages} onChange={setStagedImages} />}
       {isEdit && id && <ProductAlternativesManager productId={id} />}
       {isEdit && id && <ProductVariantsManager productId={id} />}
@@ -414,14 +469,7 @@ export function ProductFormPage() {
 
         {error && <div className="admin-form-error">{error}</div>}
         {success && <div className="admin-form-success">{success}</div>}
-        <button className="admin-form-save" disabled={saving} onClick={save}>
-          {createdProductId ? 'إعادة محاولة رفع الصور' : (isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج')}
-        </button>
-        {createdProductId && stagedImages.length > 0 && (
-          <button type="button" className="admin-form-chip" disabled={saving} onClick={continueWithoutRemainingImages}>
-            الاستمرار بدون هذه الصور
-          </button>
-        )}
+        <button className="admin-form-save" disabled={saving} onClick={save}>{isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج'}</button>
       </div>
 
       {isEdit && (

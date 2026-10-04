@@ -376,3 +376,35 @@ describe('getPublicVariantsForProduct', () => {
     expect(after?.lowStockRemaining).toBe(3)
   })
 })
+
+// primaryImage على نفس استعلامات الواجهة العامة (listProducts لصفحة المتجر/الكتالوج،
+// getProductBySlug لصفحة تفاصيل المنتج) — مش بس GET /api/admin/products/:id (مُغطّى في
+// adminProductImagesConfigured.test.ts). القيمة نفسها بتيجي من نفس LEFT JOIN LATERAL على
+// product_images في SELECT_PRODUCT_LIST/SELECT_PRODUCT_DETAIL جوه catalogService.ts.
+describe('primaryImage on public catalog queries', () => {
+  it('listProducts returns primaryImage for a product that has an uploaded image, and leaves it undefined otherwise', async () => {
+    await pool.query(
+      `INSERT INTO product_images (id, product_id, image_url, storage_key, alt_text, sort_order, is_primary, created_at)
+       VALUES ('test-pub-img-1', 'cat-p1', 'https://res.cloudinary.com/test/image/upload/pub-key.webp', 'pub-key', '', 0, 1, now())`
+    )
+    const { products } = await listProducts({ limit: 100 })
+    const withImage = products.find(p => p.id === 'cat-p1')
+    const withoutImage = products.find(p => p.id === 'cat-p2')
+    expect(withImage?.primaryImage).toBe('https://res.cloudinary.com/test/image/upload/pub-key.webp')
+    expect(withoutImage?.primaryImage).toBeUndefined()
+  })
+
+  // getProductBySlug (صفحة تفاصيل المنتج) بيرجّع gallery كاملة (كل الصور، كل واحدة بعلامة
+  // isPrimary الخاصة بيها) بدل حقل primaryImage مفرد — الفرونت إند (ProductPage.tsx) بالفعل
+  // بيستخرج primaryImage بنفسه من gallery.find(isPrimary) ?? gallery[0]، فمفيش حقل مفرد
+  // متوقّع هنا أصلاً؛ ده شكل API متعمّد ومختلف عن listProducts، مش نقص.
+  it('getProductBySlug exposes the uploaded image in gallery, marked as primary', async () => {
+    await pool.query(
+      `INSERT INTO product_images (id, product_id, image_url, storage_key, alt_text, sort_order, is_primary, created_at)
+       VALUES ('test-pub-img-2', 'cat-p1', 'https://res.cloudinary.com/test/image/upload/pub-detail-key.webp', 'pub-detail-key', '', 0, 1, now())`
+    )
+    const product = await getProductBySlug('cat-p1')
+    expect(product?.gallery).toHaveLength(1)
+    expect(product?.gallery[0]).toMatchObject({ url: 'https://res.cloudinary.com/test/image/upload/pub-detail-key.webp', isPrimary: true })
+  })
+})

@@ -313,3 +313,77 @@ describe('product offers (/api/admin/products offerOnly + end-offer)', () => {
     await pool.query('DELETE FROM roles WHERE id = $1', [viewOnlyRoleId])
   })
 })
+
+// idx_products_barcode_unique (منتج مقابل منتج) موجود فعلاً في القاعدة من migration 0052،
+// لكن مفيش حماية منه على مستوى القاعدة لحالة منتج مقابل باركود متغيّر (جدول مختلف تماماً)
+// — الفحص الاستباقي في POST /وPATCH /:id (findProductByBarcode) هو اللي بيغطّي الحالتين
+// سوا، قبل أي كتابة فعلية. راجع adminProducts.ts.
+describe('barcode uniqueness on create/update (/api/admin/products)', () => {
+  function fullProductPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      categoryId: CATEGORY_ID, name: 'منتج اختبار الباركود', description: 'وصف', price: 10, cost: 5,
+      unit: 'قطعة', emoji: '🧪', available: true, stock: 20, alertThreshold: 5, barcode: '', brand: '',
+      ...overrides
+    }
+  }
+
+  it('blocks creating a product with a barcode already used by another product', async () => {
+    const agent = await fullAdminAgent()
+    const barcode = `${PREFIX}bc-dup-product`
+    const first = await agent.post('/api/admin/products').send(fullProductPayload({ barcode }))
+    expect(first.status).toBe(201)
+
+    const second = await agent.post('/api/admin/products').send(fullProductPayload({ barcode, name: 'منتج تاني بنفس الباركود' }))
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('barcode_already_used')
+
+    const { rows } = await pool.query('SELECT count(*) as n FROM products WHERE barcode = $1', [barcode])
+    expect(Number(rows[0].n)).toBe(1)
+  })
+
+  it('blocks creating a product with a barcode already used by an existing variant of another product', async () => {
+    const agent = await fullAdminAgent()
+    const parentId = await createTestProduct('bc-variant-parent')
+    const variantBarcode = `${PREFIX}bc-dup-variant`
+    await pool.query(
+      `INSERT INTO product_variants (id, product_id, name, sku, barcode, price, cost, stock, available, sort_order, created_at)
+       VALUES ($1, $2, 'متغيّر اختبار', NULL, $3, 15, 7, 10, 1, 0, now())`,
+      [`${PREFIX}variant-bc-dup`, parentId, variantBarcode]
+    )
+
+    const res = await agent.post('/api/admin/products').send(fullProductPayload({ barcode: variantBarcode }))
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe('barcode_already_used')
+
+    const { rows } = await pool.query('SELECT count(*) as n FROM products WHERE barcode = $1', [variantBarcode])
+    expect(Number(rows[0].n)).toBe(0)
+  })
+
+  it('blocks updating a product to a barcode already used by another product', async () => {
+    const agent = await fullAdminAgent()
+    const barcode = `${PREFIX}bc-update-taken`
+    const takenBy = await agent.post('/api/admin/products').send(fullProductPayload({ barcode }))
+    expect(takenBy.status).toBe(201)
+    const toUpdateId = await createTestProduct('bc-update-target')
+
+    const res = await agent.patch(`/api/admin/products/${toUpdateId}`).send(fullProductPayload({ barcode, name: 'منتج هدف التحديث' }))
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe('barcode_already_used')
+
+    const { rows } = await pool.query('SELECT barcode FROM products WHERE id = $1', [toUpdateId])
+    expect(rows[0].barcode).toBe('')
+  })
+
+  it('allows updating a product while keeping its own current barcode unchanged', async () => {
+    const agent = await fullAdminAgent()
+    const barcode = `${PREFIX}bc-self-unchanged`
+    const created = await agent.post('/api/admin/products').send(fullProductPayload({ barcode }))
+    expect(created.status).toBe(201)
+    const productId = created.body.product.id
+
+    const res = await agent.patch(`/api/admin/products/${productId}`).send(fullProductPayload({ barcode, name: 'اسم محدّث لنفس المنتج' }))
+    expect(res.status).toBe(200)
+    expect(res.body.product.name).toBe('اسم محدّث لنفس المنتج')
+    expect(res.body.product.barcode).toBe(barcode)
+  })
+})

@@ -457,7 +457,28 @@ adminProductsRouter.post('/', requirePermission('products.create'), async (req, 
     return
   }
 
-  const product = await createProduct(result.data)
+  // تحقق استباقي قبل الكتابة — بيغطي حالة مفقودة من قيد التفرّد في القاعدة نفسه: باركود
+  // المنتج الجديد بيتشابه مع باركود متغيّر (product_variants.barcode) تابع لمنتج تاني —
+  // ده قيد تفرّد منفصل تماماً عن idx_products_barcode_unique (جدول مختلف)، فمفيش حماية منه
+  // على مستوى القاعدة أصلاً. findProductByBarcode بيدوّر في الاتنين (منتج أو متغيّر) بتطابق
+  // تام. راجع نفس الفحص في PATCH /:id تحت.
+  if (result.data.barcode) {
+    const existing = await findProductByBarcode(result.data.barcode)
+    if (existing) { res.status(409).json({ error: 'barcode_already_used' }); return }
+  }
+
+  let product: Awaited<ReturnType<typeof createProduct>>
+  try {
+    product = await createProduct(result.data)
+  } catch (err) {
+    // idx_products_barcode_unique (migration 0052) -- أفضل-جهد إضافي لسباق نادر (طلبين
+    // متزامنين فاتوا الفحص الاستباقي فوق سوا)، من غير ما يرجع 500 عام (server_error).
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'barcode_already_used' })
+      return
+    }
+    throw err
+  }
   logEvent('admin_product_created', { productId: product.id })
   await recordAuditLog({
     adminUserId: req.user!.id,
@@ -584,7 +605,26 @@ adminProductsRouter.patch('/:id', requirePermission('products.edit'), async (req
     return
   }
 
-  const update = await updateProduct(String(req.params.id), result.data, req.user!.id)
+  // نفس الفحص الاستباقي في POST / فوق — لكن هنا لازم نستثني حالة واحدة: المنتج يحتفظ
+  // بباركوده الحالي نفسه من غير تغيير (findProductByBarcode هيرجّع المنتج ده نفسه، ده مش
+  // تكرار فعلي أبداً).
+  if (result.data.barcode) {
+    const existingMatch = await findProductByBarcode(result.data.barcode)
+    if (existingMatch && existingMatch.id !== req.params.id) { res.status(409).json({ error: 'barcode_already_used' }); return }
+  }
+
+  let update: Awaited<ReturnType<typeof updateProduct>>
+  try {
+    update = await updateProduct(String(req.params.id), result.data, req.user!.id)
+  } catch (err) {
+    // idx_products_barcode_unique (migration 0052) -- أفضل-جهد إضافي لسباق نادر. راجع نفس
+    // المعالجة في POST / فوق.
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'barcode_already_used' })
+      return
+    }
+    throw err
+  }
   if (!update) {
     res.status(404).json({ error: 'product_not_found' })
     return
