@@ -1,54 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api, ApiError, type ScannedBarcodeProduct } from '../../utils/api'
 import { formatMoney } from '../../utils/money'
 import { SafeImage } from '../../components/SafeImage'
+import { BarcodeCameraView } from '../../components/BarcodeScannerInput'
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
 import type { LayoutContext } from '../../components/AdminLayout'
-import type { IScannerControls } from '@zxing/browser'
 
-// Chrome/Edge بيدعموا BarcodeDetector الأصلي؛ متصفحات تانية (Safari, Firefox) لأ. مفيش
-// استثناء هنا — لو مش موجود، بنستخدم @zxing/browser كـ fallback كامل بنفس تجربة المستخدم
-// بالظبط (راجع startCameraScan)، مش شاشة "غير مدعوم".
-declare global {
-  interface Window {
-    BarcodeDetector?: new (options?: { formats: string[] }) => {
-      detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>
-    }
-  }
-}
-
-type CameraState =
-  | 'idle' | 'starting' | 'scanning'
-  | 'permission-denied' | 'no-camera' | 'camera-in-use' | 'insecure-context' | 'error'
-
-// كولداون قصير بعد كل مسح ناجح — يمنع نفس الباركود (أو أي باركود) من يتسجّل أكتر من مرة
-// خلال نفس الثانية ونص (إطارات فيديو متتالية بترجع نفس القراءة قبل ما الكاميرا تتوقف فعلياً).
-const SCAN_COOLDOWN_MS = 1500
 // حد زمني بين أحرف قارئ باركود فيزيائي حقيقي (أسرع بكتير من كتابة إنسان عادي) — لو الفرق
 // بين ضغطتين أكبر من ده، نعتبرها كتابة طبيعية جديدة ونصفّر البفر بدل ما نخلطها بمسح سابق.
 const SCANNER_KEY_GAP_MS = 60
 const MIN_SCANNER_BUFFER_LENGTH = 4
-
-interface ZxingModule {
-  BrowserMultiFormatReader: typeof import('@zxing/browser').BrowserMultiFormatReader
-  BarcodeFormat: typeof import('@zxing/library').BarcodeFormat
-  DecodeHintType: typeof import('@zxing/library').DecodeHintType
-}
-
-// تحميل lazy لمكتبة ZXing — ما بتتحمّلش إلا فعلياً وقت الحاجة ليها (أول ما نحتاج fallback عن
-// BarcodeDetector الأصلي). بما إن الصفحة دي نفسها بالفعل route-level lazy في App.tsx، المكتبة
-// هتدخل في نفس chunk الصفحة، مش في الحزمة الأساسية لأي حال.
-let zxingModulePromise: Promise<ZxingModule> | null = null
-function loadZxing(): Promise<ZxingModule> {
-  if (!zxingModulePromise) {
-    zxingModulePromise = Promise.all([import('@zxing/browser'), import('@zxing/library')]).then(([browser, library]) => ({
-      BrowserMultiFormatReader: browser.BrowserMultiFormatReader,
-      BarcodeFormat: library.BarcodeFormat,
-      DecodeHintType: library.DecodeHintType
-    }))
-  }
-  return zxingModulePromise
-}
 
 export function BarcodeScanPage() {
   const navigate = useNavigate()
@@ -60,22 +22,14 @@ export function BarcodeScanPage() {
   const [restockQty, setRestockQty] = useState(1)
   const [adjustQty, setAdjustQty] = useState(0)
   const [actionMessage, setActionMessage] = useState('')
-  const [cameraState, setCameraState] = useState<CameraState>('idle')
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
-  const [currentDeviceIndex, setCurrentDeviceIndex] = useState(0)
-  const [torchSupported, setTorchSupported] = useState(false)
-  const [torchOn, setTorchOn] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const rafRef = useRef<number | null>(null)
-  const zxingControlsRef = useRef<IScannerControls | null>(null)
-  const lastScanRef = useRef<{ value: string, at: number } | null>(null)
   // بفر لوحة مفاتيح قارئ باركود فيزيائي شغّال حتى لو مفيش عنصر عنده focus فعلياً (راجع
   // handleGlobalKeyDown) — مختلف تماماً عن onKeyDown المحلي بتاع input الباركود العادي.
   const scannerBufferRef = useRef('')
   const scannerLastKeyAtRef = useRef(0)
+
+  const scanner = useBarcodeScanner({ onDetected: value => { setCode(value); lookup(value) } })
 
   useEffect(() => {
     setHeader({ crumb: 'المخزون', title: 'مسح الباركود' })
@@ -84,31 +38,6 @@ export function BarcodeScanPage() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
-
-  const stopCamera = useCallback(() => {
-    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
-    zxingControlsRef.current?.stop()
-    zxingControlsRef.current = null
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    streamRef.current = null
-    setTorchSupported(false)
-    setTorchOn(false)
-    setCameraState(current => (current === 'scanning' || current === 'starting' ? 'idle' : current))
-  }, [])
-
-  // تنضيف إجباري: إيقاف الكاميرا عند مغادرة الصفحة، إغلاق الكومبوننت، أو اختفاء التبويب —
-  // أبداً مفيش لمبة كاميرا شغّالة بعد ما الأدمن يسيب الصفحة.
-  useEffect(() => {
-    return () => stopCamera()
-  }, [stopCamera])
-
-  useEffect(() => {
-    function onVisibilityChange() {
-      if (document.hidden) stopCamera()
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [stopCamera])
 
   async function lookup(rawCode: string) {
     const value = rawCode.trim()
@@ -180,135 +109,13 @@ export function BarcodeScanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function onBarcodeDetected(value: string) {
-    const now = Date.now()
-    if (lastScanRef.current && lastScanRef.current.value === value && now - lastScanRef.current.at < SCAN_COOLDOWN_MS) return
-    lastScanRef.current = { value, at: now }
-    stopCamera()
-    if (navigator.vibrate) navigator.vibrate(120)
-    playBeep()
-    setCode(value)
-    lookup(value)
-  }
-
-  // نغمة تأكيد قصيرة (Web Audio API، من غير ملف صوت) — اختيارية تماماً، أي فشل (مثلاً
-  // AudioContext مش مدعوم أو تفاعل المستخدم غير كافٍ) بيتجاهل بهدوء من غير ما يأثّر على
-  // باقي تدفّق المسح.
-  function playBeep() {
-    try {
-      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!AudioContextClass) return
-      const ctx = new AudioContextClass()
-      const oscillator = ctx.createOscillator()
-      const gain = ctx.createGain()
-      oscillator.type = 'sine'
-      oscillator.frequency.value = 1400
-      gain.gain.value = 0.12
-      oscillator.connect(gain)
-      gain.connect(ctx.destination)
-      oscillator.start()
-      oscillator.stop(ctx.currentTime + 0.12)
-      oscillator.onended = () => ctx.close()
-    } catch {
-      // صوت اختياري بالكامل — أي فشل هنا ما ينفعش يوقف أو يأثّر على نتيجة المسح.
-    }
-  }
-
-  function checkTorchSupport(stream: MediaStream) {
-    const track = stream.getVideoTracks()[0]
-    const capabilities = track?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined
-    setTorchSupported(!!capabilities?.torch)
-  }
-
-  async function toggleTorch() {
-    const track = streamRef.current?.getVideoTracks()[0]
-    if (!track) return
-    try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet] })
-      setTorchOn(current => !current)
-    } catch {
-      // بعض المتصفحات بترجع torch في الـ capabilities لكن فعلياً بترفض تطبيقها — أفضل-جهد.
-    }
-  }
-
-  // إذن الكاميرا بيتطلب بس لما المستخدم يضغط "فتح الكاميرا ومسح الباركود" صراحة — مش تلقائي
-  // عند فتح الصفحة. BarcodeDetector الأصلي بيتستخدم لو موجود، وإلا ZXing (lazy-loaded) —
-  // تجربة المستخدم (الكاميرا، الإطار، الاهتزاز، التبريد) نفس واحدة في الحالتين.
-  async function startCameraScan(deviceId?: string) {
-    if (!window.isSecureContext) { setCameraState('insecure-context'); return }
-    if (!navigator.mediaDevices?.getUserMedia) { setCameraState('error'); return }
-
-    setCameraState('starting')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }
-      })
-      streamRef.current = stream
-      checkTorchSupport(stream)
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
-      setCameraState('scanning')
-
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        setVideoDevices(devices.filter(d => d.kind === 'videoinput'))
-      } catch {
-        // تعداد الأجهزة فشل — مش حرج، زرار "تغيير الكاميرا" هيفضل مخفي بس (videoDevices.length <= 1)
-      }
-
-      if (window.BarcodeDetector) {
-        const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] })
-        const tick = async () => {
-          if (!videoRef.current || !streamRef.current) return
-          try {
-            const results = await detector.detect(videoRef.current)
-            if (results[0]?.rawValue) { onBarcodeDetected(results[0].rawValue); return }
-          } catch {
-            // إطار مش قابل للتحليل — نجرب تاني الإطار الجاي، من غير ما نوقف المسح.
-          }
-          rafRef.current = requestAnimationFrame(tick)
-        }
-        rafRef.current = requestAnimationFrame(tick)
-      } else {
-        const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = await loadZxing()
-        const hints = new Map()
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128
-        ])
-        const reader = new BrowserMultiFormatReader(hints)
-        if (!videoRef.current || !streamRef.current) return
-        const controls = await reader.decodeFromStream(stream, videoRef.current, (result) => {
-          if (result) onBarcodeDetected(result.getText())
-        })
-        zxingControlsRef.current = controls
-      }
-    } catch (err) {
-      const name = err instanceof DOMException ? err.name : ''
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') setCameraState('permission-denied')
-      else if (name === 'NotFoundError' || name === 'OverconstrainedError') setCameraState('no-camera')
-      else if (name === 'NotReadableError' || name === 'TrackStartError') setCameraState('camera-in-use')
-      else setCameraState('error')
-      stopCamera()
-    }
-  }
-
-  async function switchCamera() {
-    if (videoDevices.length < 2) return
-    const nextIndex = (currentDeviceIndex + 1) % videoDevices.length
-    setCurrentDeviceIndex(nextIndex)
-    stopCamera()
-    await startCameraScan(videoDevices[nextIndex].deviceId)
-  }
-
   function scanAnotherProduct() {
     setProduct(null)
     setError('')
     setNotFoundBarcode('')
     setCode('')
     inputRef.current?.focus()
-    startCameraScan()
+    scanner.startCameraScan()
   }
 
   function goToCreateProductWithBarcode() {
@@ -363,14 +170,6 @@ export function BarcodeScanPage() {
     }
   }
 
-  const cameraErrorMessage: Record<string, string> = {
-    'permission-denied': 'تم رفض إذن الكاميرا',
-    'no-camera': 'لم يتم العثور على كاميرا',
-    'camera-in-use': 'الكاميرا مستخدمة بواسطة تطبيق آخر',
-    'insecure-context': 'الكاميرا تحتاج اتصال HTTPS آمن',
-    error: 'تعذر تشغيل الكاميرا'
-  }
-
   return (
     <div className="admin-form-grid">
       <div className="admin-form-card">
@@ -392,39 +191,13 @@ export function BarcodeScanPage() {
           <button type="submit" className="admin-form-chip" style={{ marginTop: 6 }}>بحث</button>
         </form>
 
-        {(cameraState === 'permission-denied' || cameraState === 'no-camera' || cameraState === 'camera-in-use' || cameraState === 'insecure-context' || cameraState === 'error') && (
-          <>
-            <div className="admin-form-error">{cameraErrorMessage[cameraState]}</div>
-            {cameraState !== 'insecure-context' && (
-              <button type="button" className="admin-form-chip" onClick={() => startCameraScan()}>إعادة المحاولة</button>
-            )}
-          </>
-        )}
-
-        {(cameraState === 'idle' || cameraState === 'starting') && (
-          <button type="button" className="barcode-scan-camera-btn" disabled={cameraState === 'starting'} onClick={() => startCameraScan()}>
-            {cameraState === 'starting' ? 'جارِ تشغيل الكاميرا...' : '📷 فتح الكاميرا ومسح الباركود'}
+        {(scanner.cameraState === 'idle' || scanner.cameraState === 'starting') && (
+          <button type="button" className="barcode-scan-camera-btn" disabled={scanner.cameraState === 'starting'} onClick={() => scanner.startCameraScan()}>
+            {scanner.cameraState === 'starting' ? 'جارِ تشغيل الكاميرا...' : '📷 فتح الكاميرا ومسح الباركود'}
           </button>
         )}
 
-        {cameraState === 'scanning' && (
-          <div className="barcode-scan-camera-wrap">
-            <video ref={videoRef} muted playsInline className="barcode-scan-video" />
-            <div className="barcode-scan-overlay">
-              <div className="barcode-scan-frame" />
-              <div className="barcode-scan-hint">ضع الباركود داخل الإطار</div>
-            </div>
-            <div className="barcode-scan-controls">
-              <button type="button" className="admin-form-chip" onClick={stopCamera}>إيقاف الكاميرا</button>
-              {videoDevices.length > 1 && (
-                <button type="button" className="admin-form-chip" onClick={switchCamera}>تغيير الكاميرا</button>
-              )}
-              {torchSupported && (
-                <button type="button" className="admin-form-chip" onClick={toggleTorch}>{torchOn ? 'إيقاف الفلاش' : 'تشغيل الفلاش'}</button>
-              )}
-            </div>
-          </div>
-        )}
+        <BarcodeCameraView scanner={scanner} hint="ضع الباركود داخل الإطار" />
 
         {error && (
           <div className="admin-form-error">

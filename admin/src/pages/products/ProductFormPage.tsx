@@ -6,6 +6,8 @@ import { PendingProductImages, type StagedProductImage } from '../../components/
 import { ProductAlternativesManager } from '../../components/ProductAlternativesManager'
 import { ProductVariantsManager } from '../../components/ProductVariantsManager'
 import { ProductPriceHistory } from '../../components/ProductPriceHistory'
+import { BarcodeCameraView } from '../../components/BarcodeScannerInput'
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner'
 import type { LayoutContext } from '../../components/AdminLayout'
 
 const UNITS = ['قطعة', 'عبوة', 'كرتونة', 'كجم', 'جرام', 'لتر', 'مل', 'زجاجة']
@@ -59,9 +61,26 @@ export function ProductFormPage() {
   const [stagedImages, setStagedImages] = useState<StagedProductImage[]>([])
   const stagedImagesRef = useRef(stagedImages)
   stagedImagesRef.current = stagedImages
+  // لو المنتج اتعمل فعلاً (ضغطة حفظ سابقة لمنتج جديد) لكن صورة واحدة أو أكتر فشل رفعها —
+  // بيتحط هنا عشان ضغطة "حفظ" تانية تعرف تعيد محاولة رفع الصور بس، مش تعمل منتج جديد تاني.
+  const [createdProductId, setCreatedProductId] = useState<string | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteNotice, setDeleteNotice] = useState('')
   const oldPriceInputRef = useRef<HTMLInputElement>(null)
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const [scanConfirmation, setScanConfirmation] = useState('')
+  const [barcodeDuplicate, setBarcodeDuplicate] = useState<{ id: string, label: string } | null>(null)
+
+  // نفس هوك المسح بالكاميرا المستخدم في BarcodeScanPage بالظبط (BarcodeDetector/ZXing، تبديل
+  // كاميرا، فلاش، تبريد) — هنا بس بيحدّث form.barcode مباشرة، أبداً مفيش بحث عن منتج تلقائي
+  // وقت المسح جوه نموذج المنتج نفسه (ده المنتج اللي الأدمن بيضيفه/يعدّله دلوقتي، مش بحث).
+  const scanner = useBarcodeScanner({
+    onDetected: value => {
+      set('barcode', value)
+      setScanConfirmation(value)
+      checkBarcodeDuplicate(value)
+    }
+  })
 
   useEffect(() => {
     setHeader({ crumb: 'المنتجات', title: isEdit ? 'تعديل منتج' : 'إضافة منتج' })
@@ -92,11 +111,61 @@ export function ProductFormPage() {
     setForm(current => ({ ...current, [key]: value }))
   }
 
+  // بعد باركود مسحوح أو مكتوب يدوياً — تطابق تام مع باركود منتج تاني أو متغيّر تابع لمنتج
+  // تاني (findProductByBarcode بالفعل بيدوّر في الاتنين، راجع productSkuService.ts). لو
+  // المنتج اللي رجع هو نفس المنتج اللي بنعدّله دلوقتي (باركوده الحالي نفسه ملمسوش)، ده مش
+  // تكرار فعلي. أي خطأ شبكة هنا بيتجاهل بهدوء — الفحص ده مساعد، مش شرط لإتمام الحفظ.
+  async function checkBarcodeDuplicate(rawValue: string) {
+    const value = rawValue.trim()
+    if (!value) { setBarcodeDuplicate(null); return }
+    try {
+      const { product: found } = await api.findProductByBarcode(value)
+      if (found.id === id) { setBarcodeDuplicate(null); return }
+      setBarcodeDuplicate({ id: found.id, label: found.variant ? `${found.name} (المتغيّر: ${found.variant.name})` : found.name })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) setBarcodeDuplicate(null)
+    }
+  }
+
+  // بيترفع كل صورة staged لسه موجودة، وبيسيب جوه stagedImages بس اللي فشل رفعها فعلياً —
+  // عشان ضغطة "إعادة المحاولة" تقدر تعيد المحاولة على الصور الفاشلة بس من غير ما تكرر رفع
+  // صورة اترفعت بنجاح من قبل. منتنقلش لصفحة التعديل إلا لما كل الصور تترفع بنجاح، أو الأدمن
+  // يختار صراحةً "الاستمرار بدونها".
+  async function uploadStagedImages(productId: string) {
+    const remaining: StagedProductImage[] = []
+    for (const staged of stagedImagesRef.current) {
+      try {
+        await api.uploadProductImage(productId, staged.file)
+        URL.revokeObjectURL(staged.previewUrl)
+      } catch {
+        remaining.push(staged)
+      }
+    }
+    setStagedImages(remaining)
+    if (remaining.length === 0) {
+      setSuccess('تم حفظ المنتج')
+      navigate(`/products/edit/${productId}`, { replace: true })
+    } else {
+      setError(remaining.length === 1 ? 'تم حفظ المنتج، لكن تعذر رفع صورة واحدة — أعد المحاولة أو تابع بدونها' : `تم حفظ المنتج، لكن تعذر رفع ${remaining.length} صور — أعد المحاولة أو تابع بدونها`)
+    }
+  }
+
+  function continueWithoutRemainingImages() {
+    if (!createdProductId) return
+    stagedImagesRef.current.forEach(img => URL.revokeObjectURL(img.previewUrl))
+    setStagedImages([])
+    navigate(`/products/edit/${createdProductId}`, { replace: true })
+  }
+
   async function save() {
     setError('')
     setSuccess('')
     setSaving(true)
     try {
+      // المنتج اتعمل فعلاً من ضغطة سابقة ولسه في انتظار رفع صور فشلت — "حفظ" هنا بس بيعيد
+      // محاولة رفع الصور المتبقية، أبداً ما بيعملش منتج جديد تاني (لمنع تكرار إنشاء منتج).
+      if (createdProductId) { await uploadStagedImages(createdProductId); return }
+
       // offer عمود GENERATED من السيرفر (oldPrice > price، راجع productService.ts) — السيرفر
       // بيتجاهل أي قيمة offer متبعتة هنا، مش محتاجين نحسبها أو نرسلها.
       const payload: AdminProductInput = { ...form }
@@ -106,21 +175,8 @@ export function ProductFormPage() {
         setSuccess('تم حفظ التعديلات')
       } else {
         const { product } = await api.createProduct(payload)
-        let failedUploads = 0
-        for (const staged of stagedImages) {
-          try {
-            await api.uploadProductImage(product.id, staged.file)
-          } catch {
-            failedUploads++
-          }
-          URL.revokeObjectURL(staged.previewUrl)
-        }
-        setStagedImages([])
-        if (failedUploads > 0) {
-          window.alert('تم حفظ المنتج، لكن تعذر رفع صورة واحدة أو أكثر — أضفها من صفحة التعديل')
-        }
-        setSuccess('تم حفظ المنتج')
-        navigate(`/products/edit/${product.id}`, { replace: true })
+        setCreatedProductId(product.id)
+        await uploadStagedImages(product.id)
       }
     } catch (err) {
       if (err instanceof ApiError && SAVE_ERROR_MESSAGES[err.code]) setError(SAVE_ERROR_MESSAGES[err.code])
@@ -307,8 +363,45 @@ export function ProductFormPage() {
           <div className="admin-form-card-sub">التتبع والتنبيهات</div>
         </div>
         <label>الباركود (اختياري)
-          <input value={form.barcode} onChange={e => set('barcode', e.target.value)} placeholder="اتركه فارغاً لو المنتج من غير باركود" />
+          <input
+            ref={barcodeInputRef}
+            value={form.barcode}
+            onChange={e => { set('barcode', e.target.value); setScanConfirmation(''); setBarcodeDuplicate(null) }}
+            onBlur={() => checkBarcodeDuplicate(form.barcode)}
+            onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
+            placeholder="اتركه فارغاً لو المنتج من غير باركود"
+          />
         </label>
+        <span className="admin-form-chips">
+          <button
+            type="button" className="admin-form-chip"
+            disabled={scanner.cameraState === 'starting'}
+            onClick={() => scanner.startCameraScan()}
+          >
+            📷 مسح بالكاميرا
+          </button>
+          <button
+            type="button" className="admin-form-chip"
+            onClick={() => { barcodeInputRef.current?.focus(); barcodeInputRef.current?.select() }}
+          >
+            🔎 استخدام قارئ الباركود
+          </button>
+        </span>
+
+        <BarcodeCameraView scanner={scanner} hint="ضع الباركود داخل الإطار" />
+
+        {scanConfirmation && <div className="admin-form-success">تم مسح الباركود: {scanConfirmation}</div>}
+        {barcodeDuplicate && (
+          <div className="admin-form-error">
+            هذا الباركود مستخدم بالفعل — {barcodeDuplicate.label}
+            <button
+              type="button" className="admin-form-chip" style={{ marginInlineStart: 8 }}
+              onClick={() => navigate(`/products/edit/${barcodeDuplicate.id}`)}
+            >
+              عرض المنتج
+            </button>
+          </div>
+        )}
         <div className="admin-row-2">
           <label>الكمية المتاحة
             <input type="number" value={form.stock} onChange={e => set('stock', Number(e.target.value))} />
@@ -321,7 +414,14 @@ export function ProductFormPage() {
 
         {error && <div className="admin-form-error">{error}</div>}
         {success && <div className="admin-form-success">{success}</div>}
-        <button className="admin-form-save" disabled={saving} onClick={save}>{isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج'}</button>
+        <button className="admin-form-save" disabled={saving} onClick={save}>
+          {createdProductId ? 'إعادة محاولة رفع الصور' : (isEdit ? 'حفظ التعديلات' : 'حفظ ونشر المنتج')}
+        </button>
+        {createdProductId && stagedImages.length > 0 && (
+          <button type="button" className="admin-form-chip" disabled={saving} onClick={continueWithoutRemainingImages}>
+            الاستمرار بدون هذه الصور
+          </button>
+        )}
       </div>
 
       {isEdit && (
